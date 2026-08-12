@@ -1,0 +1,16 @@
+[Unit]
+Description=Aplikasi Kasir Node API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/kasir
+EnvironmentFile=/var/www/kasir/.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
