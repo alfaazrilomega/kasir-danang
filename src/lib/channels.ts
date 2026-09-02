@@ -14,10 +14,12 @@ export interface ChannelSeed {
 }
 
 export const DEFAULT_CHANNELS: ChannelSeed[] = [
-  { code: 'offline', name: 'Offline / Kasir', fee_percent: 0, default_term_days: 0 },
+  { code: 'offline', name: 'Offline', fee_percent: 0, default_term_days: 0 },
+  { code: 'tiktok', name: 'TikTok', fee_percent: 8, default_term_days: 14 },
   { code: 'shopee', name: 'Shopee', fee_percent: 8, default_term_days: 14 },
-  { code: 'tiktok', name: 'TikTok Shop', fee_percent: 8, default_term_days: 14 },
   { code: 'tokopedia', name: 'Tokopedia', fee_percent: 6, default_term_days: 14 },
+  { code: 'website', name: 'Website', fee_percent: 0, default_term_days: 0 },
+  { code: 'whatsapp', name: 'WhatsApp', fee_percent: 0, default_term_days: 0 },
 ];
 
 export const OFFLINE_CHANNEL = 'offline';

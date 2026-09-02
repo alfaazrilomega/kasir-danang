@@ -50,6 +50,23 @@
   .dark .btn-ghost { @apply text-ink-200 hover:bg-ink-800; }
   .btn-danger { @apply btn bg-red-500 text-white hover:bg-red-600; }
 
+  /*
+   * Tombol yang diletakkan di atas header berwarna (gradien brand).
+   * Warnanya SAMA di mode terang maupun gelap karena latarnya selalu ungu,
+   * bukan latar halaman.
+   *
+   * Kenapa perlu varian sendiri: sebelumnya tombol-tombol ini memakai
+   * `variant="secondary"` lalu ditimpa `className="bg-white ..."`. Aturan
+   * `.dark .btn-secondary` adalah selektor keturunan (spesifisitas 0,2,0)
+   * sehingga mengalahkan utility `bg-white` (0,1,0). Di mode gelap latarnya
+   * berubah jadi ink-800 sementara teksnya tetap gelap karena `!text-ink-900`
+   * — hasilnya gelap di atas gelap dan tidak terbaca.
+   */
+  .btn-on-brand { @apply btn bg-white text-ink-900 hover:bg-white/90; }
+  .dark .btn-on-brand { @apply bg-white text-ink-900 hover:bg-white/90; }
+  .btn-on-brand-soft { @apply btn bg-white/10 text-white hover:bg-white/20; }
+  .dark .btn-on-brand-soft { @apply bg-white/10 text-white hover:bg-white/20; }
+
   .input {
     @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm
            placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20

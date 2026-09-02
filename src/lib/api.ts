@@ -17,6 +17,9 @@ export interface QueryResult<T = unknown> {
 interface AuthUser {
   id: string;
   email: string;
+  /** Diisi server; sumber kebenaran toko aktif untuk sesi ini. */
+  store_id?: string | null;
+  role?: string | null;
 }
 
 interface AuthSession {
@@ -76,7 +79,7 @@ type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'INITIAL_SESSI
 type AuthListener = (event: AuthEvent, session: AuthSession | null) => void | Promise<void>;
 
 interface QueryFilter {
-  type: 'eq' | 'in';
+  type: 'eq' | 'in' | 'not_in';
   column: string;
   value?: unknown;
   values?: unknown[];
@@ -160,7 +163,11 @@ export class KasirApiClient {
         { method: 'GET' },
       );
       if (error) {
-        removeToken();
+        // Hanya buang token kalau server BENAR-BENAR menolaknya. Sebelumnya
+        // error apa pun (termasuk jaringan putus sesaat atau server sibuk)
+        // ikut menghapus token, sehingga pengguna tiba-tiba terlempar ke
+        // halaman login di tengah pemakaian.
+        if (error.status === 401 || error.status === 403) removeToken();
         return { data: { session: null }, error };
       }
       return { data: { session: data?.session ?? null }, error: null };
@@ -343,6 +350,11 @@ class QueryBuilder<T = unknown> {
 
   in(column: string, values: unknown[]) {
     this.filters.push({ type: 'in', column, values });
+    return this;
+  }
+
+  not_in(column: string, values: unknown[]) {
+    this.filters.push({ type: 'not_in', column, values });
     return this;
   }
 

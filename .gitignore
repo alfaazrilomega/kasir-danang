@@ -10,3 +10,8 @@ dist-ssr
 .idea
 *.log
 *.tsbuildinfo
+
+# Tangkapan layar hasil pemeriksaan otomatis: bukti sementara, bukan sumber.
+# Isinya 8 MB dan ditulis ulang tiap kali suite dijalankan.
+audit_screenshots
+.antigravity

@@ -28,12 +28,23 @@ import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { db } from '@/lib/db';
+import { expenseCategoryLabel } from '@/lib/expenseCategories';
 import { useAuth } from '@/stores/auth';
-import { pullRecentOrders, pullShifts } from '@/lib/sync';
+import { pullOrderReturns, pullExpenses, pullRecentOrders, pullShifts } from '@/lib/sync';
 import { getBackendClient, type AdminUser } from '@/lib/api';
 import { hasCapability, normalizeRole, roleLabel } from '@/lib/roles';
 import { channelLabel } from '@/lib/channels';
 import { formatDate, formatDateTime, formatMoney, formatNumber, cn } from '@/lib/format';
+import {
+  buildCsv,
+  csvFilename,
+  date as csvDate,
+  dateTime as csvDateTime,
+  downloadCsv,
+  int as csvInt,
+  num as csvNum,
+  text as csvText,
+} from '@/lib/csvFormat';
 import type { Order, OrderItem, PaymentMethod, Product, Shift } from '@/types';
 
 type Tab = 'daily' | 'shift' | 'cashier' | 'channel' | 'pnl' | 'best';
@@ -87,6 +98,8 @@ export function Reports() {
     if (storeId) {
       pullRecentOrders(storeId, 500);
       pullShifts(storeId);
+      pullExpenses(storeId);
+      pullOrderReturns(storeId);
     }
   }, [storeId]);
 
@@ -110,6 +123,8 @@ export function Reports() {
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
   const shifts =
     useLiveQuery(() => db.shifts.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const expenses =
+    useLiveQuery(() => db.expenses.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
 
   const ranges = useMemo(() => {
     const fStart = new Date(from + 'T00:00:00').getTime();
@@ -119,6 +134,8 @@ export function Reports() {
     const prevStart = prevEnd - span;
     return { fStart, tEnd, prevStart, prevEnd };
   }, [from, to]);
+
+  const orderReturns = useLiveQuery(() => db.order_returns.toArray(), []) ?? [];
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 
@@ -139,8 +156,52 @@ export function Reports() {
     [orders, ranges],
   );
 
-  const curStats = useMemo(() => computeStats(cur, items, productById), [cur, items, productById]);
-  const prevStats = useMemo(() => computeStats(prev, items, productById), [prev, items, productById]);
+  // Retur dipetakan ke periode lewat tanggal returnya, bukan tanggal pesanan
+  // aslinya: uang keluar pada saat retur dicatat.
+  const sumRefunds = (start: number, end: number) =>
+    orderReturns
+      .filter((r) => {
+        const ts = new Date(r.created_at).getTime();
+        return ts >= start && ts <= end;
+      })
+      .reduce((sum, r) => sum + Number(r.refund_amount || 0), 0);
+  const curRefunds = useMemo(
+    () => sumRefunds(ranges.fStart, ranges.tEnd),
+    [orderReturns, ranges],
+  );
+  const prevRefunds = useMemo(
+    () => sumRefunds(ranges.prevStart, ranges.prevEnd),
+    [orderReturns, ranges],
+  );
+
+  const curStats = useMemo(
+    () => computeStats(cur, items, productById, curRefunds),
+    [cur, items, productById, curRefunds],
+  );
+
+  // Pengeluaran operasional pada rentang aktif. Hanya tabel expenses yang
+  // dibaca — cash_movements 'out' sengaja diabaikan supaya biaya yang dibayar
+  // tunai dari laci tidak terhitung dua kali.
+  const expensesInRange = useMemo(
+    () => expenses.filter((e) => e.expense_date >= from && e.expense_date <= to),
+    [expenses, from, to],
+  );
+  const expenseTotal = useMemo(
+    () => expensesInRange.reduce((sum, e) => sum + Number(e.amount || 0), 0),
+    [expensesInRange],
+  );
+  const expenseByCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of expensesInRange) {
+      map.set(e.category, (map.get(e.category) ?? 0) + Number(e.amount || 0));
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [expensesInRange]);
+  const netProfit = curStats.gross - expenseTotal;
+  const prevStats = useMemo(
+    () => computeStats(prev, items, productById, prevRefunds),
+    [prev, items, productById, prevRefunds],
+  );
 
   const trends = {
     sales: pctChange(curStats.sales, prevStats.sales),
@@ -203,7 +264,7 @@ export function Reports() {
     const orderIds = new Set(cur.map((o) => o.id));
     const tally = new Map<
       string,
-      { name: string; qty: number; revenue: number; cost: number; image: string | null }
+      { name: string; sku: string | null; qty: number; revenue: number; cost: number; image: string | null }
     >();
     let totalQty = 0;
     for (const it of items as OrderItem[]) {
@@ -211,16 +272,20 @@ export function Reports() {
       const product = it.product_id ? productById.get(it.product_id) : null;
       const cost = Number(it.cost_price ?? product?.cost_price ?? 0);
       const key = it.product_id ?? it.name;
-      const prev = tally.get(key) ?? { name: it.name, qty: 0, revenue: 0, cost: 0, image: null };
+      const prev = tally.get(key) ?? { name: it.name, sku: product?.sku ?? null, qty: 0, revenue: 0, cost: 0, image: null };
       prev.qty += it.qty;
       prev.revenue += it.price * it.qty;
       prev.cost += cost * it.qty;
+      if (product?.sku) prev.sku = product.sku;
       tally.set(key, prev);
       totalQty += it.qty;
     }
     for (const p of products) {
       const v = tally.get(p.id);
-      if (v) v.image = p.image_url;
+      if (v) {
+        v.image = p.image_url;
+        if (p.sku) v.sku = p.sku;
+      }
     }
     return Array.from(tally.values())
       .map((v) => ({
@@ -394,82 +459,78 @@ export function Reports() {
   }
 
   function exportCSV() {
-    const rows: string[] = [];
+    // Semua ekspor CSV memakai format bersama (pemisah ";", angka & tanggal
+    // lokal) supaya berkasnya langsung rapi saat dibuka di Excel.
+    let headers: string[] = [];
+    const rows: unknown[][] = [];
     if (tab === 'daily') {
-      rows.push('Tanggal,Pesanan,Penjualan,Pajak,Diskon');
+      headers = ['Tanggal', 'Pesanan', 'Penjualan', 'Pajak', 'Diskon'];
       for (const d of dailyBuckets) {
-        rows.push([d.date, d.orders, d.sales, d.tax, d.discount].join(','));
+        rows.push([csvDate(d.date), csvInt(d.orders), csvInt(d.sales), csvInt(d.tax), csvInt(d.discount)]);
       }
     } else if (tab === 'best') {
-      rows.push('Produk,Qty,Pendapatan,HPP,Laba,Porsi');
+      headers = ['SKU', 'Produk', 'Qty', 'Pendapatan', 'HPP', 'Laba', 'Porsi (%)'];
       for (const b of bestSellers) {
-        rows.push(
-          [escapeCsv(b.name), b.qty, b.revenue, b.cost, b.profit, (b.share * 100).toFixed(1) + '%'].join(','),
-        );
+        rows.push([
+          csvText(b.sku), csvText(b.name), csvInt(b.qty), csvInt(b.revenue),
+          csvInt(b.cost), csvInt(b.profit), csvNum(b.share * 100, 1),
+        ]);
       }
     } else if (tab === 'cashier') {
-      rows.push('Kasir,Role,Shift,Order,Batal,Penjualan,Rata-rata/Order,Diskon,HPP,Laba Kotor,Margin (%),Item Terjual,Tunai,Non-Tunai,Selisih Kas,Transaksi Terakhir');
+      headers = [
+        'Kasir', 'Role', 'Shift', 'Order', 'Batal', 'Penjualan', 'Rata-rata per Order',
+        'Diskon', 'HPP', 'Laba Kotor', 'Margin (%)', 'Item Terjual', 'Tunai',
+        'Non-Tunai', 'Selisih Kas', 'Transaksi Terakhir',
+      ];
       for (const c of cashierRows) {
         const nonCash = c.byMethod.card + c.byMethod.ewallet + c.byMethod.qris;
-        rows.push(
-          [
-            escapeCsv(c.name),
-            escapeCsv(c.role ?? '-'),
-            c.shifts,
-            c.orders,
-            c.canceled,
-            c.sales,
-            Math.round(c.aov),
-            c.discount,
-            c.cogs,
-            c.gross,
-            c.margin.toFixed(1),
-            c.qty,
-            c.byMethod.cash,
-            nonCash,
-            c.varianceCount ? c.variance : '',
-            c.lastOrder ?? '',
-          ].join(','),
-        );
+        rows.push([
+          csvText(c.name), csvText(c.role), csvInt(c.shifts), csvInt(c.orders),
+          csvInt(c.canceled), csvInt(c.sales), csvInt(c.aov), csvInt(c.discount),
+          csvInt(c.cogs), csvInt(c.gross), csvNum(c.margin, 1), csvInt(c.qty),
+          csvInt(c.byMethod.cash), csvInt(nonCash),
+          c.varianceCount ? csvInt(c.variance) : '',
+          csvDateTime(c.lastOrder),
+        ]);
       }
     } else if (tab === 'channel') {
-      rows.push('Channel,Order,Penjualan,Penyesuaian,Order Tempo,Piutang,Lewat Tempo');
+      headers = ['Channel', 'Order', 'Penjualan', 'Penyesuaian', 'Order Tempo', 'Piutang', 'Lewat Tempo'];
       for (const c of channelReport) {
-        rows.push(
-          [escapeCsv(c.name), c.orders, c.sales, c.adjustment, c.tempoOrders, c.receivable, c.overdue].join(','),
-        );
+        rows.push([
+          csvText(c.name), csvInt(c.orders), csvInt(c.sales), csvInt(c.adjustment),
+          csvInt(c.tempoOrders), csvInt(c.receivable), csvInt(c.overdue),
+        ]);
       }
     } else if (tab === 'pnl') {
-      rows.push('Metric,Value');
-      rows.push(['Pendapatan (netto)', curStats.revenue].join(','));
-      rows.push(['HPP', curStats.cogs].join(','));
-      rows.push(['Laba kotor', curStats.gross].join(','));
-      rows.push(['Margin (%)', curStats.margin.toFixed(1)].join(','));
-      rows.push(['Pajak terkumpul', curStats.tax].join(','));
-      rows.push(['Total diskon', curStats.discount].join(','));
+      headers = ['Keterangan', 'Nilai'];
+      rows.push(['Pendapatan (netto)', csvInt(curStats.revenue)]);
+      rows.push(['Retur / refund', csvInt(curStats.refunds)]);
+      rows.push(['HPP', csvInt(curStats.cogs)]);
+      rows.push(['Laba kotor', csvInt(curStats.gross)]);
+      rows.push(['Pengeluaran operasional', csvInt(expenseTotal)]);
+      for (const [cat, amount] of expenseByCategory) {
+        rows.push(['  ' + expenseCategoryLabel(cat), csvInt(amount)]);
+      }
+      rows.push(['Laba bersih', csvInt(netProfit)]);
+      rows.push(['Margin kotor (%)', csvNum(curStats.margin, 1)]);
+      rows.push([
+        'Margin bersih (%)',
+        csvNum(curStats.revenue ? (netProfit / curStats.revenue) * 100 : 0, 1),
+      ]);
+      rows.push(['Pajak terkumpul', csvInt(curStats.tax)]);
+      rows.push(['Total diskon', csvInt(curStats.discount)]);
     } else {
-      rows.push('Buka,Tutup,Saldo Awal,Penjualan,Saldo Akhir,Selisih');
+      headers = ['Buka', 'Tutup', 'Saldo Awal', 'Penjualan', 'Saldo Akhir', 'Selisih'];
       for (const s of shiftsInRange) {
         const diff = (s.closing_cash ?? 0) - (s.expected_cash ?? 0);
-        rows.push(
-          [
-            s.opened_at,
-            s.closed_at ?? '',
-            s.opening_cash,
-            s.total_sales,
-            s.closing_cash ?? '',
-            diff,
-          ].join(','),
-        );
+        rows.push([
+          csvDateTime(s.opened_at), csvDateTime(s.closed_at), csvInt(s.opening_cash),
+          csvInt(s.total_sales), s.closing_cash === null || s.closing_cash === undefined ? '' : csvInt(s.closing_cash),
+          csvInt(diff),
+        ]);
       }
     }
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `kasir-${tab}-${from}_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(csvFilename('laporan-' + tab, from + '_' + to), buildCsv(headers, rows));
   }
 
   const trendHint = 'vs periode sebelumnya';
@@ -499,7 +560,7 @@ export function Reports() {
                 className="bg-transparent focus:outline-none"
               />
             </div>
-            <Button onClick={exportCSV} className="bg-white !text-ink-900 hover:bg-white/90">
+            <Button onClick={exportCSV} variant="onBrand">
               <Download size={16} /> Export CSV
             </Button>
           </div>
@@ -1146,6 +1207,13 @@ export function Reports() {
                   label="Pendapatan (sebelum pajak)"
                   value={formatMoney(curStats.revenue, store?.currency)}
                 />
+                {curStats.refunds > 0 && (
+                  <Row
+                    label="Retur / refund"
+                    value={`-${formatMoney(curStats.refunds, store?.currency)}`}
+                    negative
+                  />
+                )}
                 <Row
                   label="HPP (Cost of Goods Sold)"
                   value={`-${formatMoney(curStats.cogs, store?.currency)}`}
@@ -1155,6 +1223,27 @@ export function Reports() {
                   label="Laba Kotor"
                   value={formatMoney(curStats.gross, store?.currency)}
                   bold
+                />
+                <hr className="border-ink-100 dark:border-ink-800" />
+                <Row
+                  label="Pengeluaran Operasional"
+                  value={`-${formatMoney(expenseTotal, store?.currency)}`}
+                  negative
+                />
+                {expenseByCategory.map(([cat, amount]) => (
+                  <Row
+                    key={cat}
+                    label={`   ${expenseCategoryLabel(cat)}`}
+                    value={formatMoney(amount, store?.currency)}
+                    hint
+                  />
+                ))}
+                <hr className="border-ink-100 dark:border-ink-800" />
+                <Row
+                  label="Laba Bersih"
+                  value={formatMoney(netProfit, store?.currency)}
+                  bold
+                  negative={netProfit < 0}
                 />
                 <hr className="border-ink-100 dark:border-ink-800" />
                 <Row
@@ -1168,9 +1257,17 @@ export function Reports() {
                   hint
                 />
               </dl>
+              {expenseTotal === 0 && (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                  Belum ada pengeluaran tercatat pada rentang ini, jadi Laba Bersih masih sama
+                  dengan Laba Kotor. Catat biaya sewa, gaji, dan listrik di halaman Pengeluaran
+                  supaya angkanya mencerminkan kondisi sebenarnya.
+                </p>
+              )}
               <p className="mt-3 text-xs text-ink-500">
                 HPP dihitung dari <code>cost_price</code> tiap produk yang terjual. Pastikan modal
-                produk terisi di halaman Products supaya laba akurat.
+                produk terisi di halaman Products supaya laba akurat. Laba Bersih = Laba Kotor
+                dikurangi pengeluaran operasional pada rentang yang sama.
               </p>
             </>
           )}
@@ -1627,6 +1724,8 @@ interface Stats {
   count: number;
   aov: number;
   revenue: number;
+  /** Nilai retur pada periode ini. Sudah dipotong dari `revenue`. */
+  refunds: number;
   cogs: number;
   gross: number;
   margin: number;
@@ -1636,6 +1735,7 @@ function computeStats(
   orderList: Order[],
   items: OrderItem[],
   productById: Map<string, Product>,
+  refunds: number,
 ): Stats {
   let sales = 0,
     tax = 0,
@@ -1657,17 +1757,20 @@ function computeStats(
     const cost = Number(it.cost_price ?? product?.cost_price ?? 0);
     cogs += cost * it.qty;
   }
-  const gross = revenue - cogs;
+  // Retur memotong pendapatan: uang yang dikembalikan bukan lagi pendapatan.
+  const netRevenue = revenue - refunds;
+  const gross = netRevenue - cogs;
   return {
     sales,
     tax,
     discount,
     count,
     aov: count ? sales / count : 0,
-    revenue,
+    revenue: netRevenue,
+    refunds,
     cogs,
     gross,
-    margin: revenue ? (gross / revenue) * 100 : 0,
+    margin: netRevenue ? (gross / netRevenue) * 100 : 0,
   };
 }
 
@@ -1742,8 +1845,4 @@ function compact(n: number): string {
   }
   if (n >= 1_000) return Math.round(n / 1_000) + 'K';
   return String(n);
-}
-
-function escapeCsv(s: string) {
-  return /["\n,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

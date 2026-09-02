@@ -28,6 +28,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, TextArea } from '@/components/ui/Input';
 import { useAuth } from '@/stores/auth';
+import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { usePinLock } from '@/stores/pinLock';
 import { useUI } from '@/stores/ui';
 import { PinSetupModal } from '@/components/pin/PinSetupModal';
@@ -129,6 +130,7 @@ export function Settings() {
 
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [online, setOnline] = useState<boolean>(navigator.onLine);
   const [pinModal, setPinModal] = useState<null | 'create' | 'change' | 'disable'>(null);
   const pinEnabled = usePinLock((s) => s.pinEnabled);
@@ -316,6 +318,12 @@ export function Settings() {
 
   return (
     <div className="space-y-5 pb-28">
+      <ImportExportModal
+        open={transferOpen}
+        storeId={profile?.store_id ?? ''}
+        onClose={() => setTransferOpen(false)}
+        onImported={() => { void refreshProfile(); }}
+      />
       <div className="rounded-3xl bg-brand-600 text-white p-6 md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -766,6 +774,9 @@ export function Settings() {
         <div className="mt-4 flex flex-wrap gap-2">
           <Button onClick={manualSync} variant="secondary" disabled={busy}>
             <RefreshCcw size={14} /> Sync sekarang
+          </Button>
+          <Button onClick={() => setTransferOpen(true)} variant="secondary" disabled={busy}>
+            <Database size={14} /> Impor / Ekspor Data
           </Button>
           <Button onClick={wipeLocal} variant="secondary">
             <Trash2 size={14} /> Hapus cache lokal

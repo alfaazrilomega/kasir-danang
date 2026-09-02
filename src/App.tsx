@@ -8,6 +8,7 @@ import { PinLockGate } from '@/components/pin/PinLockGate';
 import { Dashboard } from '@/pages/Dashboard';
 import { MenuPage } from '@/pages/Menu';
 import { Orders } from '@/pages/Orders';
+import OrderReturns from '@/pages/OrderReturns';
 import { Customers } from '@/pages/Customers';
 import { Products } from '@/pages/Products';
 import { Suppliers } from '@/pages/Suppliers';
@@ -17,6 +18,9 @@ import { Settings } from '@/pages/Settings';
 import { Login } from '@/pages/Login';
 import { Shifts } from '@/pages/Shifts';
 import { Reports } from '@/pages/Reports';
+import { Expenses } from '@/pages/Expenses';
+import { StockOpnamePage } from '@/pages/StockOpname';
+import { StockMutation } from '@/pages/StockMutation';
 import { UsersPage } from '@/pages/Users';
 import { CustomerPortal } from '@/pages/CustomerPortal';
 import { useAuth } from '@/stores/auth';
@@ -52,12 +56,16 @@ export default function App() {
         <Route path="/" element={<ProtectedRoute><AdminLayout><Dashboard /></AdminLayout></ProtectedRoute>} />
         <Route path="/menu" element={<ProtectedRoute><AdminLayout><MenuPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/orders" element={<ProtectedRoute><AdminLayout><Orders /></AdminLayout></ProtectedRoute>} />
+        <Route path="/returns" element={<ProtectedRoute><AdminLayout><OrderReturns /></AdminLayout></ProtectedRoute>} />
         <Route path="/customers" element={<ProtectedRoute><AdminLayout><Customers /></AdminLayout></ProtectedRoute>} />
         <Route path="/products" element={<ProtectedRoute><AdminLayout><Products /></AdminLayout></ProtectedRoute>} />
         <Route path="/suppliers" element={<ProtectedRoute><AdminLayout><Suppliers /></AdminLayout></ProtectedRoute>} />
         <Route path="/purchases" element={<ProtectedRoute><AdminLayout><Purchases /></AdminLayout></ProtectedRoute>} />
         <Route path="/promos" element={<ProtectedRoute><AdminLayout><Promos /></AdminLayout></ProtectedRoute>} />
         <Route path="/shifts" element={<ProtectedRoute><AdminLayout><Shifts /></AdminLayout></ProtectedRoute>} />
+        <Route path="/stock-mutation" element={<ProtectedRoute><AdminLayout><StockMutation /></AdminLayout></ProtectedRoute>} />
+        <Route path="/stock-opname" element={<ProtectedRoute><AdminLayout><StockOpnamePage /></AdminLayout></ProtectedRoute>} />
+        <Route path="/expenses" element={<ProtectedRoute><AdminLayout><Expenses /></AdminLayout></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><AdminLayout><Reports /></AdminLayout></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><AdminLayout><UsersPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><AdminLayout><Settings /></AdminLayout></ProtectedRoute>} />

@@ -49,8 +49,9 @@ import { SalesChart } from '@/components/dashboard/SalesChart';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
+import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { cn, formatMoney, formatNumber, formatDateTime } from '@/lib/format';
-import { pullReference, pullRecentOrders } from '@/lib/sync';
+import { pullReference, pullRecentOrders, pullInventoryReference } from '@/lib/sync';
 import { getBackendClient, type AdminUser } from '@/lib/api';
 import { ROLE_LABELS, roleLabel } from '@/lib/roles';
 import { AdminHeaderActions } from '@/components/layout/AdminLayout';
@@ -126,14 +127,35 @@ export function Dashboard() {
   const { profile, store } = useAuth();
   const storeId = profile?.store_id ?? '';
   const [refreshing, setRefreshing] = useState(false);
-  const [period, setPeriod] = useState<Period>('this-month');
+  const [seeding, setSeeding] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [period, setPeriod] = useState<Period>('today');
+  const [historyProductId, setHistoryProductId] = useState<string | null>(null);
+
+  async function handleSeed1000() {
+    if (!confirm('Hasilkan 1.000+ data demo acak dan terkoneksi (Produk, Transaksi, PO, Shift, Customer)? Data lokal akan diperbarui.')) {
+      return;
+    }
+    setSeeding(true);
+    try {
+      const { generate1000Data } = await import('@/lib/seed1000');
+      const res = await generate1000Data(storeId || 'store-default-001');
+      toast.success(`Berhasil membuat ${res.totalRecords} data acak terkoneksi!`);
+      if (storeId) {
+        pullRecentOrders(storeId, 500);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menghasilkan data demo.');
+    } finally {
+      setSeeding(false);
+    }
+  }
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [stockQuery, setStockQuery] = useState('');
   const [stockCategory, setStockCategory] = useState('all');
   const [stockStatus, setStockStatus] = useState<StockStatusFilter>('all');
   const [stockLimit, setStockLimit] = useState(10);
-  const [historyProductId, setHistoryProductId] = useState<string | null>(null);
 
   // The rail lives in AdminLayout now; `?module=` picks which panel this page shows.
   const adminModule: AdminModuleKey =
@@ -545,6 +567,10 @@ export function Dashboard() {
             <option value="last-30">30 hari terakhir</option>
           </select>
         )}
+        <Button variant="secondary" size="sm" onClick={() => setTransferOpen(true)}>
+          <Database size={14} />
+          <span className="hidden sm:inline">Impor / Ekspor Data</span>
+        </Button>
         <Button variant="secondary" size="sm" onClick={() => navigate('/users')}>
           <UserCog size={14} />
           <span className="hidden sm:inline">Kelola User</span>
@@ -554,6 +580,16 @@ export function Dashboard() {
           <span className="hidden sm:inline">Gudang</span>
         </Button>
       </AdminHeaderActions>
+
+      <ImportExportModal
+        open={transferOpen}
+        storeId={storeId}
+        onClose={() => setTransferOpen(false)}
+        onImported={() => {
+          // Data berubah total; tarik ulang supaya angka di layar ikut benar.
+          if (storeId) void pullInventoryReference(storeId);
+        }}
+      />
 
       <div className="space-y-5">
           {adminModule === 'overview' ? (
@@ -1353,7 +1389,7 @@ function AdminModuleLanding({
             <p className="mt-1 text-sm opacity-80">
               {ready
                 ? 'Menu ini diarahkan ke halaman operasional yang sudah ada di aplikasi.'
-                : 'Untuk modul ini, database supplier/retur/pengeluaran detail perlu ditambahkan pada migration berikutnya.'}
+                : 'Untuk modul ini, database supplier/pengeluaran detail perlu ditambahkan pada migration berikutnya.'}
             </p>
           </div>
         </div>

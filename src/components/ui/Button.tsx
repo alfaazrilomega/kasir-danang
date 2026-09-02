@@ -1,7 +1,7 @@
 import { forwardRef, type ButtonHTMLAttributes } from 'react';
 import { cn } from '@/lib/format';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'onBrand' | 'onBrandSoft';
 type Size = 'sm' | 'md' | 'lg';
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -14,6 +14,9 @@ const variantClass: Record<Variant, string> = {
   secondary: 'btn-secondary',
   ghost: 'btn-ghost',
   danger: 'btn-danger',
+  // Untuk tombol di atas header berwarna; tidak ikut berubah saat mode gelap.
+  onBrand: 'btn-on-brand',
+  onBrandSoft: 'btn-on-brand-soft',
 };
 
 const sizeClass: Record<Size, string> = {

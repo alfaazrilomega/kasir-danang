@@ -44,7 +44,15 @@ const REQUIRED_COLUMNS = {
     'received_amount', 'change_amount', 'points_earned', 'created_at',
     'sales_channel', 'payment_term', 'due_date', 'paid_amount', 'settled_at',
     'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
-    'adjusted_by',
+    'adjusted_by', 'external_order_no',
+  ],
+  order_returns: [
+    'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',
+    'created_by', 'created_at',
+  ],
+  order_return_items: [
+    'id', 'return_id', 'product_id', 'name', 'sku', 'barcode', 'qty',
+    'refund_price', 'restock', 'note',
   ],
   order_items: ['id', 'order_id', 'product_id', 'name', 'size', 'qty', 'price', 'cost_price', 'note'],
   shifts: [
@@ -58,16 +66,17 @@ const REQUIRED_COLUMNS = {
   suppliers: [
     'id', 'store_id', 'name', 'contact_name', 'phone', 'email', 'address',
     'default_term_days', 'default_dp_percent', 'notes', 'is_active', 'created_at',
+    'currency', 'exchange_rate',
   ],
   purchases: [
     'id', 'store_id', 'supplier_id', 'invoice_number', 'status', 'order_date',
     'expected_date', 'due_date', 'subtotal', 'discount', 'tax', 'other_cost',
     'total', 'paid_amount', 'dp_percent', 'received_at', 'notes', 'created_by',
-    'created_at',
+    'created_at', 'currency', 'exchange_rate',
   ],
   purchase_items: [
     'id', 'purchase_id', 'product_id', 'name', 'sku', 'qty', 'received_qty',
-    'cost_price', 'subtotal', 'note',
+    'cost_price', 'subtotal', 'note', 'barcode', 'original_cost_price', 'currency',
   ],
   purchase_payments: [
     'id', 'store_id', 'purchase_id', 'type', 'amount', 'method', 'paid_at',
@@ -80,6 +89,29 @@ const REQUIRED_COLUMNS = {
   order_payments: [
     'id', 'store_id', 'order_id', 'amount', 'method', 'paid_at', 'reference',
     'note', 'created_by', 'created_at',
+  ],
+  role_permissions: [
+    'id', 'store_id', 'role', 'capability', 'enabled', 'updated_at',
+  ],
+  stock_opnames: [
+    'id', 'store_id', 'status', 'note', 'counted_by', 'started_at',
+    'posted_at', 'created_at',
+  ],
+  stock_opname_items: [
+    'id', 'opname_id', 'product_id', 'system_qty', 'counted_qty', 'note',
+  ],
+  expenses: [
+    'id', 'store_id', 'category', 'description', 'amount', 'expense_date',
+    'payment_method', 'shift_id', 'created_by', 'created_at',
+  ],
+  product_channel_mappings: [
+    'id', 'store_id', 'product_id', 'channel_code', 'external_sku',
+    'external_url', 'is_synced', 'last_synced_at', 'created_at',
+  ],
+  supplier_product_mappings: [
+    'id', 'store_id', 'supplier_id', 'product_id', 'supplier_sku',
+    'supplier_barcode', 'supplier_product_name', 'last_cost_price',
+    'currency', 'created_at',
   ],
 };
 

@@ -8,6 +8,7 @@ import {
   Download,
   ImagePlus,
   Layers,
+  Link2,
   Loader2,
   Package,
   Pencil,
@@ -28,12 +29,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
-import { pullInventoryReference, adjustStock } from '@/lib/sync';
+import { pullInventoryReference, adjustStock, writeThrough } from '@/lib/sync';
+import {
+  ChannelSkuSection,
+  validateChannelDrafts,
+  type ChannelMappingDraft,
+} from '@/components/products/ChannelSkuSection';
+import { findSkuConflict } from '@/lib/skuLookup';
+import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
 import { CATEGORY_ICONS, getCategoryIcon } from '@/lib/categoryIcons';
 import { formatBytes, resizeImageToDataUrl } from '@/lib/imageUpload';
 import { resolveFeatures } from '@/lib/industries';
-import type { Category, Product, ProductSize } from '@/types';
+import type { Category, Product, ProductChannelMapping, ProductSize, SalesChannel } from '@/types';
 
 interface FormState {
   id?: string;
@@ -50,6 +58,7 @@ interface FormState {
   stock_qty: number;
   min_stock: number;
   sizes: ProductSize[];
+  channelMappings: ChannelMappingDraft[];
 }
 
 const emptyForm: FormState = {
@@ -70,7 +79,24 @@ const emptyForm: FormState = {
     { label: 'M', price_modifier: 5000 },
     { label: 'L', price_modifier: 10000 },
   ],
+  channelMappings: [],
 };
+
+/**
+ * Buang mapping kembar untuk (channel, SKU) yang sama.
+ * Data lama bisa mengandung duplikat karena seed demo pernah dijalankan dua
+ * kali dengan id acak; tanpa ini form produk terkunci oleh error validasi yang
+ * tidak bisa diperbaiki user.
+ */
+function dedupeMappings<T extends { channel_code: string; external_sku: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((m) => {
+    const key = `${m.channel_code.toUpperCase()}|${m.external_sku.trim().toUpperCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export function Products() {
   const { profile, store } = useAuth();
@@ -90,6 +116,26 @@ export function Products() {
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
   const categories =
     useLiveQuery(() => db.categories.where('store_id').equals(storeId).sortBy('sort_order'), [storeId]) ?? [];
+  const channelMappings =
+    useLiveQuery(
+      () => db.product_channel_mappings.where('store_id').equals(storeId).toArray(),
+      [storeId],
+    ) ?? [];
+  const channelRows =
+    useLiveQuery(
+      () => db.sales_channels.where('store_id').equals(storeId).sortBy('sort_order'),
+      [storeId],
+    ) ?? [];
+
+  const mappingsByProduct = useMemo(() => {
+    const map = new Map<string, ProductChannelMapping[]>();
+    for (const m of channelMappings) {
+      const list = map.get(m.product_id);
+      if (list) list.push(m);
+      else map.set(m.product_id, [m]);
+    }
+    return map;
+  }, [channelMappings]);
 
   const filtered = useMemo(
     () =>
@@ -141,8 +187,55 @@ export function Products() {
       stock_qty: Number(p.stock_qty ?? 0),
       min_stock: Number(p.min_stock ?? 0),
       sizes: p.sizes ?? [],
+      channelMappings: dedupeMappings(channelMappings.filter((m) => m.product_id === p.id))
+        .map((m) => ({
+          id: m.id,
+          channel_code: m.channel_code,
+          external_sku: m.external_sku,
+          external_url: m.external_url ?? '',
+          is_synced: m.is_synced,
+          last_synced_at: m.last_synced_at,
+        })),
     });
     setOpen(true);
+  }
+
+  /**
+   * Simpan mapping SKU platform setelah produknya tersimpan.
+   * Hanya jalan saat online: seluruh pullX melakukan destructive replace,
+   * jadi baris yang dibuat offline akan terhapus diam-diam saat sync berikutnya.
+   */
+  async function saveChannelMappings(productId: string) {
+    if (!navigator.onLine) return;
+    const api = getBackendClient();
+
+    const previous = channelMappings.filter((m) => m.product_id === productId);
+    const keptIds = new Set(form.channelMappings.map((d) => d.id));
+    const removed = previous.filter((m) => !keptIds.has(m.id));
+
+    for (const row of removed) {
+      const { error } = await api.from('product_channel_mappings').delete().eq('id', row.id);
+      if (error) throw error;
+      await db.product_channel_mappings.delete(row.id);
+    }
+
+    if (!form.channelMappings.length) return;
+
+    const rows: ProductChannelMapping[] = form.channelMappings.map((d) => ({
+      id: d.id,
+      store_id: storeId,
+      product_id: productId,
+      channel_code: d.channel_code,
+      external_sku: d.external_sku.trim(),
+      external_url: d.external_url.trim() || null,
+      // Status sinkronisasi dibawa apa adanya, bukan di-reset tiap edit.
+      is_synced: d.is_synced,
+      last_synced_at: d.last_synced_at,
+    }));
+
+    const { error } = await api.from('product_channel_mappings').upsert(rows);
+    if (error) throw error;
+    await db.product_channel_mappings.bulkPut(rows);
   }
 
   async function save() {
@@ -150,6 +243,25 @@ export function Products() {
       toast.error('Nama wajib diisi.');
       return;
     }
+
+    // Keunikan HARUS dicek di sini: /api/query menelan error database, jadi
+    // pelanggaran unique index Postgres tidak akan muncul sebagai error.
+    const skuTrimmed = form.sku.trim();
+    if (skuTrimmed) {
+      const clash = findSkuConflict(skuTrimmed, products, form.id);
+      if (clash) {
+        toast.error(`SKU "${skuTrimmed}" sudah dipakai produk "${clash.name}".`);
+        return;
+      }
+    }
+
+    const otherMappings = channelMappings.filter((m) => m.product_id !== form.id);
+    const draftError = validateChannelDrafts(form.channelMappings, otherMappings);
+    if (draftError) {
+      toast.error(draftError);
+      return;
+    }
+
     setBusy(true);
     const api = getBackendClient();
     const row: Product = {
@@ -170,12 +282,19 @@ export function Products() {
       track_stock: form.track_stock,
     };
     try {
-      if (navigator.onLine) {
-        const { error } = await api.from('products').upsert(row);
-        if (error) throw error;
-      }
+      // writeThrough: kalau offline, perubahan masuk antrean dan dikirim saat
+      // online lagi. Sebelumnya panggilan API dilewati begitu saja sehingga
+      // edit offline hilang tanpa pemberitahuan saat data ditarik ulang.
+      const { queued } = await writeThrough('products', 'upsert', row);
       await db.products.put(row);
-      toast.success(form.id ? 'Produk diperbarui.' : 'Produk ditambahkan.');
+      await saveChannelMappings(row.id);
+      toast.success(
+        queued
+          ? 'Produk disimpan lokal. Akan dikirim ke server saat online.'
+          : form.id
+            ? 'Produk diperbarui.'
+            : 'Produk ditambahkan.',
+      );
       setOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan.');
@@ -216,21 +335,37 @@ export function Products() {
             />
           </div>
           <Button
-            variant="secondary"
             onClick={() => setCatManagerOpen(true)}
-            className="bg-white !text-ink-900 hover:bg-white/90"
+            variant="onBrand"
           >
             <Layers size={16} /> Kategori ({categories.length})
           </Button>
           <Button
-            variant="secondary"
-            onClick={() => exportProductsCSV(filtered, categories)}
-            className="bg-white !text-ink-900 hover:bg-white/90"
+            onClick={async () => {
+              const { exportProductsBySKU } = await import('@/lib/exportUtils');
+              const count = await exportProductsBySKU(filtered, categories);
+              toast.success(`${count} produk diekspor.`);
+            }}
+            variant="onBrand"
             disabled={filtered.length === 0}
           >
             <Download size={16} /> Export CSV
           </Button>
-          <Button onClick={startNew} className="bg-white !text-ink-900 hover:bg-white/90">
+          <Button
+            onClick={async () => {
+              const { exportChannelMappings } = await import('@/lib/exportUtils');
+              const count = await exportChannelMappings();
+              if (!count) {
+                toast.message('Belum ada mapping SKU platform untuk diekspor.');
+                return;
+              }
+              toast.success(`${count} mapping SKU platform diekspor.`);
+            }}
+            variant="onBrand"
+          >
+            <Link2 size={16} /> Export SKU Platform
+          </Button>
+          <Button onClick={startNew} variant="onBrand">
             <Plus size={16} /> Tambah Produk
           </Button>
         </div>
@@ -296,8 +431,24 @@ export function Products() {
                         </div>
                       </td>
                       <td className="py-3">
-                        <div className="text-xs font-mono">{p.sku ?? '—'}</div>
+                        <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{p.sku ?? '—'}</div>
                         <div className="text-[10px] text-ink-500 font-mono">{p.barcode ?? '—'}</div>
+                        <div className="mt-0.5 flex flex-wrap gap-1">
+                          {(mappingsByProduct.get(p.id) ?? []).map((m) => (
+                            <span
+                              key={m.id}
+                              title={m.external_sku}
+                              className="inline-flex items-center rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
+                            >
+                              {channelLabel(m.channel_code, channelRows)}
+                            </span>
+                          ))}
+                          {!(mappingsByProduct.get(p.id) ?? []).length && (
+                            <span className="inline-flex items-center rounded-md bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-400">
+                              Toko fisik
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
                       <td className="py-3">{formatMoney(price, store?.currency)}</td>
@@ -361,6 +512,8 @@ export function Products() {
           categories={categories}
           currency={store?.currency ?? 'IDR'}
           existingSkus={products.filter((p) => p.id !== form.id).map((p) => p.sku ?? '')}
+          channelRows={channelRows}
+          otherMappings={channelMappings.filter((m) => m.product_id !== form.id)}
           onCancel={() => setOpen(false)}
           onSave={save}
           busy={busy}
@@ -380,13 +533,15 @@ export function Products() {
 }
 
 function ProductForm({
-  form, setForm, categories, currency, existingSkus, onCancel, onSave, busy,
+  form, setForm, categories, currency, existingSkus, channelRows, otherMappings, onCancel, onSave, busy,
 }: {
   form: FormState;
   setForm: (f: FormState) => void;
   categories: Category[];
   currency: string;
   existingSkus: string[];
+  channelRows: SalesChannel[];
+  otherMappings: { id: string; channel_code: string; external_sku: string }[];
   onCancel: () => void;
   onSave: () => void;
   busy: boolean;
@@ -486,6 +641,16 @@ function ProductForm({
               />
             </div>
           </div>
+        </section>
+
+        <section>
+          <ChannelSkuSection
+            internalSku={form.sku}
+            value={form.channelMappings}
+            onChange={(next) => setForm({ ...form, channelMappings: next })}
+            channelRows={channelRows}
+            otherMappings={otherMappings}
+          />
         </section>
 
         <section>
@@ -846,46 +1011,6 @@ function ImagePicker({
       </details>
     </div>
   );
-}
-
-function escapeCsv(v: string | number | null | undefined): string {
-  const s = v == null ? '' : String(v);
-  return /["\n,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function exportProductsCSV(products: Product[], categories: Category[]) {
-  const catName = new Map(categories.map((c) => [c.id, c.name]));
-  const header = [
-    'name', 'sku', 'barcode', 'category', 'base_price', 'cost_price',
-    'margin_pct', 'stock_qty', 'min_stock', 'track_stock', 'is_active',
-  ];
-  const rows = [header.join(',')];
-  for (const p of products) {
-    const price = Number(p.base_price);
-    const cost = Number(p.cost_price ?? 0);
-    const marginPct = price > 0 ? ((price - cost) / price) * 100 : 0;
-    rows.push([
-      escapeCsv(p.name),
-      escapeCsv(p.sku),
-      escapeCsv(p.barcode),
-      escapeCsv(catName.get(p.category_id ?? '') ?? ''),
-      price,
-      cost,
-      marginPct.toFixed(2),
-      p.track_stock ? Number(p.stock_qty ?? 0) : '',
-      p.track_stock ? Number(p.min_stock ?? 0) : '',
-      p.track_stock ? 'yes' : 'no',
-      p.is_active ? 'yes' : 'no',
-    ].join(','));
-  }
-  // UTF-8 BOM so Excel opens currency/Unicode correctly.
-  const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `products-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function StockAdjustModal({

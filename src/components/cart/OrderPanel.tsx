@@ -28,20 +28,20 @@ import { useCart, cartTotals } from '@/stores/cart';
 import { useAuth } from '@/stores/auth';
 import { useUI } from '@/stores/ui';
 import { resolveFeatures } from '@/lib/industries';
-import { cn, formatMoney, nextOrderNumber, uuid } from '@/lib/format';
+import { cn, formatMoney, nextOrderNumber, uuid, isUuid } from '@/lib/format';
 import type { Customer, Order, OrderItem, OrderType, PaymentMethod, Promo } from '@/types';
-import { channelFeePercent, isMarketplace, resolveChannels } from '@/lib/channels';
+import { channelFeePercent, channelLabel, isMarketplace, resolveChannels } from '@/lib/channels';
 import { enqueueOrder } from '@/lib/sync';
-import { logSaleToActiveShift } from '@/pages/Shifts';
+import { logSaleToActiveShift } from '@/lib/shiftHelpers';
 import { ReceiptModal } from '@/components/cart/ReceiptModal';
 
 export function OrderPanel() {
   const {
     lines, orderType, tableNumber, payment, customerId, promo, manualDiscount, receivedAmount,
-    parked, salesChannel, paymentTerm, dueDate,
-    setOrderType, setTable, setPayment, updateQty, remove, setNote, clear, setPromo,
+    parked, salesChannel, paymentTerm, dueDate, externalOrderNo,
+    setOrderType, setTable, setPayment, updateQty, remove, setNote, setPrice, clear, setPromo,
     setManualDiscount, setReceivedAmount, setCustomer, park, resume, dropParked,
-    setSalesChannel, setPaymentTerm, setDueDate,
+    setSalesChannel, setPaymentTerm, setDueDate, setExternalOrderNo,
   } = useCart();
   const { profile, store } = useAuth();
   const collapsed = useUI((s) => s.cartCollapsed);
@@ -54,7 +54,45 @@ export function OrderPanel() {
     [lines, taxRate, promo, manualDiscount, pointsPerAmount],
   );
   const [busy, setBusy] = useState(false);
-  const [orderNumber, setOrderNumber] = useState(() => nextOrderNumber());
+
+  const channelRows =
+    useLiveQuery(
+      () => db.sales_channels.where('store_id').equals(profile?.store_id ?? '').toArray(),
+      [profile?.store_id],
+    ) ?? [];
+  const channels = useMemo(() => resolveChannels(channelRows), [channelRows]);
+
+  // Peringatan lunak untuk No. Pesanan yang sudah pernah dicatat. Sengaja tidak
+  // memblokir: kolomnya tidak unique di database (lihat migrasi 009), dan
+  // pembatalan/pesanan ulang bisa memakai nomor yang sama.
+  const duplicateOrder = useLiveQuery(async () => {
+    const target = externalOrderNo.trim().toUpperCase();
+    if (!target) return null;
+    const rows = await db.orders.where('store_id').equals(profile?.store_id ?? '').toArray();
+    return rows.find((row) => (row.external_order_no ?? '').toUpperCase() === target) ?? null;
+  }, [externalOrderNo, profile?.store_id]) ?? null;
+
+  const getNextNum = (channel = salesChannel) =>
+    nextOrderNumber({
+      storeName: store?.name || 'Toko',
+      platform: channelLabel(channel, channelRows),
+    });
+  // Pakai getNextNum supaya konsisten dengan pergantian channel: sebelumnya
+  // render pertama memakai kode mentah ("shopee") sedangkan getNextNum memakai
+  // label ("Shopee"), jadi nomor berubah sendiri saat channel diklik.
+  const [orderNumber, setOrderNumber] = useState(() => getNextNum(salesChannel));
+  // Order ID yang diketik kasir. Kosong berarti pakai nomor otomatis.
+  const [manualOrderNo, setManualOrderNo] = useState('');
+  const finalOrderNumber = manualOrderNo.trim() || orderNumber;
+
+  // Nomor pesanan wajib unik: Retur Barang memanggil pesanan lewat nomor ini,
+  // jadi dua pesanan bernomor sama membuat pencarian retur menjadi ambigu.
+  const duplicateOrderNumber = useLiveQuery(async () => {
+    const target = manualOrderNo.trim().toUpperCase();
+    if (!target) return null;
+    const rows = await db.orders.where('store_id').equals(profile?.store_id ?? '').toArray();
+    return rows.find((row) => (row.order_number ?? '').toUpperCase() === target) ?? null;
+  }, [manualOrderNo, profile?.store_id]) ?? null;
   const [promoOpen, setPromoOpen] = useState(false);
   const [custOpen, setCustOpen] = useState(false);
   const [parkedOpen, setParkedOpen] = useState(false);
@@ -64,12 +102,6 @@ export function OrderPanel() {
     () => (customerId ? db.customers.get(customerId) : Promise.resolve<Customer | undefined>(undefined)),
     [customerId],
   );
-  const channelRows =
-    useLiveQuery(
-      () => db.sales_channels.where('store_id').equals(profile?.store_id ?? '').toArray(),
-      [profile?.store_id],
-    ) ?? [];
-  const channels = useMemo(() => resolveChannels(channelRows), [channelRows]);
   const feePercent = channelFeePercent(salesChannel, channelRows);
   const isTempo = paymentTerm === 'tempo';
   // Perkiraan uang yang benar-benar masuk setelah potongan marketplace.
@@ -79,9 +111,10 @@ export function OrderPanel() {
   const cashShort =
     payment === 'cash' && !isTempo && receivedAmount > 0 && receivedAmount < totals.total;
 
-  /** Ganti channel: marketplace default tempo, offline default tunai. */
+  /** Ganti channel: marketplace default tempo, offline default tunai. Update suffix order_number. */
   function pickChannel(code: string) {
     setSalesChannel(code);
+    setOrderNumber(getNextNum(code));
     const meta = channels.find((c) => c.code === code);
     if (isMarketplace(code)) {
       setPaymentTerm('tempo');
@@ -106,8 +139,24 @@ export function OrderPanel() {
       toast.error('Uang yang diterima kurang dari total.');
       return;
     }
+    if (duplicateOrderNumber) {
+      toast.error(
+        `Order ID ${manualOrderNo.trim()} sudah dipakai pesanan lain. Ganti nomornya.`,
+      );
+      return;
+    }
     if (isTempo && !dueDate) {
       toast.error('Penjualan tempo wajib punya tanggal jatuh tempo.');
+      return;
+    }
+    if (
+      duplicateOrder &&
+      !confirm(
+        `No. Pesanan ${externalOrderNo.trim()} sudah tercatat di ${duplicateOrder.order_number}.
+
+Lanjutkan simpan?`,
+      )
+    ) {
       return;
     }
     setBusy(true);
@@ -124,8 +173,10 @@ export function OrderPanel() {
       id: orderId,
       store_id: profile.store_id,
       customer_id: customerId,
-      cashier_id: profile.id,
-      order_number: orderNumber,
+      // Akun demo punya id non-UUID ('usr-cashier-001') yang tidak ada di
+      // tabel profiles, jadi dikirim null agar order tetap tersimpan di server.
+      cashier_id: isUuid(profile.id) ? profile.id : null,
+      order_number: finalOrderNumber,
       subtotal: totals.subtotal,
       tax: totals.tax,
       discount: totals.discount,
@@ -152,6 +203,9 @@ export function OrderPanel() {
       adjustment_note: null,
       adjusted_at: null,
       adjusted_by: null,
+      external_order_no: isMarketplace(salesChannel)
+        ? externalOrderNo.trim() || null
+        : null,
     };
     const itemsPayload = lines.map((l) => ({
       product_id: l.product_id,
@@ -176,8 +230,8 @@ export function OrderPanel() {
 
       toast.success(
         isTempo
-          ? `Order ${orderNumber} dicatat sebagai piutang, jatuh tempo ${dueDate}.`
-          : `Order ${orderNumber} disimpan.`,
+          ? `Order ${finalOrderNumber} dicatat sebagai piutang, jatuh tempo ${dueDate}.`
+          : `Order ${finalOrderNumber} disimpan.`,
       );
       setLastOrder({
         order: order as Order,
@@ -189,7 +243,8 @@ export function OrderPanel() {
         customer: customer ?? null,
       });
       clear();
-      setOrderNumber(nextOrderNumber());
+      setOrderNumber(getNextNum());
+      setManualOrderNo('');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan order.');
     } finally {
@@ -255,7 +310,7 @@ export function OrderPanel() {
                 )}
               </span>
               <span className="text-left">
-                <span className="block text-[11px] text-ink-500">Order {orderNumber}</span>
+                <span className="block text-[11px] text-ink-500">Order {finalOrderNumber}</span>
                 <span className="block text-sm font-semibold">{formatMoney(totals.total, store?.currency)}</span>
               </span>
             </span>
@@ -311,7 +366,7 @@ export function OrderPanel() {
         <div className="flex items-center justify-between p-4 border-b border-ink-100 dark:border-ink-800">
           <div>
             <div className="text-sm font-semibold">Order Details</div>
-            <div className="text-xs text-ink-500">Order ID {orderNumber}</div>
+            <div className="text-xs text-ink-500">Order ID {finalOrderNumber}</div>
           </div>
           <div className="flex items-center gap-2">
             {parked.length > 0 && (
@@ -438,6 +493,30 @@ export function OrderPanel() {
                   className="flex-1 min-w-0 rounded-lg border border-ink-200 dark:border-ink-700 dark:bg-ink-900 px-2 py-1 text-xs focus:outline-none focus:border-brand-500"
                 />
               </div>
+              {/* Harga satuan bisa ditimpa manual: potongan tiap marketplace
+                  berbeda, jadi yang dibayar pembeli sering tidak sama dengan
+                  harga master produk. */}
+              <div className="mt-2 flex items-center gap-2">
+                <label className="text-[11px] text-ink-500 dark:text-ink-400">Harga satuan</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={l.price}
+                  onChange={(e) => setPrice(i, Number(e.target.value))}
+                  className="w-28 rounded-lg border border-ink-200 px-2 py-1 text-right text-xs tabular-nums focus:border-brand-500 focus:outline-none dark:border-ink-700 dark:bg-ink-900"
+                />
+                {l.price !== l.base_price && (
+                  <button
+                    type="button"
+                    onClick={() => setPrice(i, l.base_price)}
+                    className="text-[11px] text-brand-600 underline-offset-2 hover:underline dark:text-brand-300"
+                    title={`Harga master ${formatMoney(l.base_price, store?.currency)}`}
+                  >
+                    kembalikan
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -536,6 +615,62 @@ export function OrderPanel() {
                 </button>
               ))}
             </div>
+
+            {/* Order ID boleh diketik sendiri. Kalau dikosongkan, nomor otomatis
+                yang dipakai — jadi kasir tidak perlu mengisi apa pun untuk
+                penjualan biasa. */}
+            <div className="mt-2">
+              <label className="mb-1 block text-[11px] font-semibold text-ink-600 dark:text-ink-300">
+                Order ID
+              </label>
+              <div className="flex gap-1.5">
+                <input
+                  className="input flex-1"
+                  value={manualOrderNo}
+                  onChange={(e) => setManualOrderNo(e.target.value)}
+                  placeholder={orderNumber}
+                />
+                {manualOrderNo.trim() !== '' && (
+                  <Button type="button" variant="secondary" onClick={() => setManualOrderNo('')}>
+                    Otomatis
+                  </Button>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-400">
+                {manualOrderNo.trim()
+                  ? 'Nomor manual dipakai; penomoran otomatis dilewati.'
+                  : `Dikosongkan berarti pakai nomor otomatis: ${orderNumber}`}
+              </p>
+              {duplicateOrderNumber && (
+                <p className="mt-1 text-[11px] font-medium text-rose-600 dark:text-rose-300">
+                  Order ID ini sudah dipakai. Nomor pesanan harus unik supaya retur
+                  bisa memanggilnya kembali.
+                </p>
+              )}
+            </div>
+
+            {isMarketplace(salesChannel) && (
+              <div className="mt-2">
+                <label className="mb-1 block text-[11px] font-semibold text-ink-600 dark:text-ink-300">
+                  No. Pesanan Platform
+                </label>
+                <input
+                  className="input"
+                  value={externalOrderNo}
+                  onChange={(e) => setExternalOrderNo(e.target.value)}
+                  placeholder="cth. 2608113TQ8HWAB / 585506423461087094"
+                />
+                <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-400">
+                  Nomor asli dari platform, dipakai untuk mencocokkan dana settlement.
+                  Kosongkan bila channel ini tidak punya nomor pesanan.
+                </p>
+                {duplicateOrder && (
+                  <p className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-300">
+                    No. Pesanan ini sudah tercatat di {duplicateOrder.order_number}.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -609,14 +744,14 @@ export function OrderPanel() {
                 const id = park();
                 if (id) {
                   toast.success('Order di-park. Resume kapan saja.');
-                  setOrderNumber(nextOrderNumber());
+                  setOrderNumber(getNextNum());
                 }
               }}
               title="Park / hold order (Ctrl+P)"
             >
               <Pause size={14} /> Park
             </Button>
-            <Button id="btn-cancel-order" variant="secondary" className="flex-1" onClick={() => { clear(); setOrderNumber(nextOrderNumber()); }}>
+            <Button id="btn-cancel-order" variant="secondary" className="flex-1" onClick={() => { clear(); setOrderNumber(getNextNum()); }}>
               Cancel
             </Button>
             <Button id="btn-place-order" className="flex-1" onClick={placeOrder} disabled={busy} title="Place order (F9)">Place Order</Button>

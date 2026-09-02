@@ -303,7 +303,7 @@ export function Promos() {
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
-          <Button onClick={startNew} className="bg-white !text-ink-900 hover:bg-white/90">
+          <Button onClick={startNew} variant="onBrand">
             <Plus size={16} /> Tambah Promo
           </Button>
         </div>

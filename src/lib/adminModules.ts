@@ -14,8 +14,8 @@ import {
   ShoppingBag,
   ShoppingCart,
   Tags,
-  Truck,
   Undo2,
+  Truck,
   UserCog,
   Users,
   WalletCards,
@@ -26,26 +26,21 @@ import type { UserRole } from '@/types';
 
 export type AdminModuleKey =
   | 'overview'
-  | 'roles'
   | 'users'
   | 'store-settings'
-  | 'categories'
   | 'suppliers'
   | 'customers'
   | 'products'
   | 'stock-mutation'
   | 'stock-opname'
   | 'supplier-purchase'
-  | 'supplier-return'
   | 'shift'
   | 'pos'
   | 'transactions'
-  | 'customer-return'
+  | 'returns'
   | 'promos'
   | 'expenses'
   | 'sales-report'
-  | 'cashier-report'
-  | 'profit-report'
   | 'stock-report';
 
 export interface AdminModuleItem {
@@ -81,7 +76,6 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
   {
     title: 'Pengaturan Sistem',
     items: [
-      { key: 'roles', label: 'Role', icon: ShieldCheck, route: '/users', description: 'Kelola hak akses dan role user.' },
       { key: 'users', label: 'User', icon: UserCog, route: '/users', description: 'Tambah admin gudang, kasir, dan pembeli.' },
       { key: 'store-settings', label: 'Store Settings', icon: SettingsIcon, route: '/settings', description: 'Profil toko, struk, pajak, fitur POS.' },
     ],
@@ -89,7 +83,6 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
   {
     title: 'Master Data',
     items: [
-      { key: 'categories', label: 'Category', icon: Tags, route: '/products', description: 'Kategori produk dan menu.' },
       { key: 'suppliers', label: 'Suppliers', icon: Truck, route: '/suppliers', description: 'Database pemasok, termin, dan DP default.' },
       { key: 'customers', label: 'Customers', icon: Users, route: '/customers', description: 'Data pelanggan dan loyalitas.' },
       { key: 'products', label: 'Produk', icon: Boxes, route: '/products', description: 'Produk, barcode, harga beli, harga jual, stok.' },
@@ -98,15 +91,14 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
   {
     title: 'Inventory',
     items: [
-      { key: 'stock-mutation', label: 'Mutasi Stok', icon: RotateCcw, capability: 'manageInventory', description: 'Riwayat pergerakan keluar masuk stok.' },
-      { key: 'stock-opname', label: 'Stock Opname', icon: ClipboardCheck, capability: 'manageInventory', description: 'Persiapan audit stok fisik.' },
+      { key: 'stock-mutation', label: 'Mutasi Stok', icon: RotateCcw, route: '/stock-mutation', capability: 'manageInventory', description: 'Riwayat pergerakan stok dengan filter dan export.' },
+      { key: 'stock-opname', label: 'Stock Opname', icon: ClipboardCheck, route: '/stock-opname', capability: 'manageInventory', description: 'Hitung stok fisik, bandingkan, dan posting selisih.' },
     ],
   },
   {
     title: 'Transaksi Supplier',
     items: [
       { key: 'supplier-purchase', label: 'Pembelian Supplier', icon: ShoppingCart, route: '/purchases', description: 'Nota pembelian, DP, pelunasan, dan terima barang.' },
-      { key: 'supplier-return', label: 'Retur Supplier', icon: Undo2, capability: 'managePurchasing', description: 'Pengembalian barang ke supplier.', status: 'planned' },
     ],
   },
   {
@@ -115,17 +107,15 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
       { key: 'shift', label: 'Shift Kasir', icon: ClipboardList, route: '/shifts', description: 'Buka/tutup shift dan kas harian.' },
       { key: 'pos', label: 'POS Kasir', icon: ShoppingBag, route: '/menu', description: 'Input pemesanan dan pembayaran.' },
       { key: 'transactions', label: 'Riwayat Transaksi', icon: History, route: '/orders', description: 'Order, status pembayaran, dan struk.' },
-      { key: 'customer-return', label: 'Retur Customer', icon: RotateCcw, capability: 'useCashier', description: 'Retur penjualan pelanggan.', status: 'planned' },
+      { key: 'returns', label: 'Retur Barang', icon: Undo2, route: '/returns', capability: 'useCashier', description: 'Retur barang berbasis nomor pemesanan.' },
       { key: 'promos', label: 'Promo', icon: Percent, route: '/promos', description: 'Diskon, voucher, dan kampanye penjualan.' },
-      { key: 'expenses', label: 'Pengeluaran', icon: WalletCards, route: '/shifts', description: 'Cash movement keluar dari shift.' },
+      { key: 'expenses', label: 'Pengeluaran', icon: WalletCards, route: '/expenses', capability: 'manageExpenses', description: 'Biaya operasional toko: sewa, gaji, listrik, dll.' },
     ],
   },
   {
     title: 'Laporan',
     items: [
       { key: 'sales-report', label: 'Laporan Penjualan', icon: BarChart3, route: '/reports', description: 'Ringkasan penjualan dan metode bayar.' },
-      { key: 'cashier-report', label: 'Laporan Kasir', icon: UserCog, route: '/reports?tab=cashier', description: 'Performa, shift, dan selisih kas per kasir.' },
-      { key: 'profit-report', label: 'Laporan Laba', icon: DollarSign, route: '/reports', description: 'Revenue, HPP, dan laba kotor.' },
       { key: 'stock-report', label: 'Laporan Stok', icon: Database, capability: 'manageInventory', description: 'Nilai modal, status stok, dan pergerakan terakhir.' },
     ],
   },
@@ -155,10 +145,10 @@ export function pathForModule(item: AdminModuleItem): string {
 /**
  * Which sidebar entry the current URL represents.
  *
- * Several modules deliberately share one page (Role/User both open `/users`), so
- * the last explicitly clicked module breaks the tie. It only wins when its own
- * route still matches the URL — arriving at `/reports` from the top nav must not
- * keep "Laporan Kasir" (`/reports?tab=cashier`) highlighted.
+ * Beberapa modul masih bisa menunjuk halaman yang sama, jadi modul terakhir
+ * yang diklik jadi penentu. Itu pun hanya menang kalau route-nya sendiri masih
+ * cocok dengan URL, supaya membuka halaman dari nav atas tidak menyorot entri
+ * yang query-nya berbeda.
  */
 export function resolveActiveModule(
   pathname: string,

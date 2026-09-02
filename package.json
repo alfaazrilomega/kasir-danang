@@ -12,7 +12,15 @@
     "db:check": "node server/migrate.js --check",
     "bootstrap:admin": "node server/bootstrap.js",
     "start": "node server/index.js",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 status",
+    "pm2:restart": "pm2 restart all",
+    "pm2:stop": "pm2 stop all",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node scripts/run_all_checks.cjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -39,10 +47,13 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "playwright": "^1.62.1",
+    "pm2": "^7.0.4",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "typescript": "^5.6.3",
     "vite": "^5.4.9",
-    "vite-plugin-pwa": "^0.20.5"
+    "vite-plugin-pwa": "^0.20.5",
+    "vitest": "^2.1.9"
   }
 }
