@@ -225,7 +225,7 @@ export function Customers() {
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
-          <Button onClick={startNew} className="bg-white !text-ink-900 hover:bg-white/90">
+          <Button onClick={startNew} variant="onBrand">
             <Plus size={16} /> Add Customer
           </Button>
         </div>

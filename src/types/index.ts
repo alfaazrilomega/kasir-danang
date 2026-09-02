@@ -137,6 +137,8 @@ export interface Order {
   adjustment_note: string | null;
   adjusted_at: string | null;
   adjusted_by: string | null;
+  /** Nomor pesanan milik platform: Shopee "No. Pesanan", TikTok "Order Id". */
+  external_order_no: string | null;
 }
 
 export interface SalesChannel {
@@ -214,6 +216,74 @@ export interface LoyaltyTransaction {
   created_at: string;
 }
 
+/** Pembatasan hak akses per role, per toko. Hanya bisa mengurangi akses. */
+export interface RolePermission {
+  id: string;
+  store_id: string;
+  role: string;
+  capability: string;
+  enabled: boolean;
+  updated_at?: string;
+}
+
+export type StockOpnameStatus = 'draft' | 'posted' | 'canceled';
+
+/** Sesi perhitungan stok fisik. */
+export interface StockOpname {
+  id: string;
+  store_id: string;
+  status: StockOpnameStatus;
+  note: string | null;
+  counted_by: string | null;
+  started_at: string;
+  posted_at: string | null;
+  created_at?: string;
+}
+
+export interface StockOpnameItem {
+  id: string;
+  opname_id: string;
+  product_id: string;
+  /** Stok menurut sistem saat sesi dibuat, dibekukan sebagai pembanding. */
+  system_qty: number;
+  counted_qty: number | null;
+  note: string | null;
+}
+
+export type ExpenseCategory =
+  | 'sewa'
+  | 'gaji'
+  | 'listrik_air'
+  | 'internet'
+  | 'transport'
+  | 'pemasaran'
+  | 'perlengkapan'
+  | 'perawatan'
+  | 'pajak_retribusi'
+  | 'lainnya';
+
+export type ExpensePaymentMethod = 'cash' | 'transfer' | 'card' | 'ewallet' | 'other';
+
+/**
+ * Pengeluaran operasional. Terpisah dari cash_movements: cash_movements
+ * mengurus isi laci kasir, expenses mengurus biaya usaha untuk laba rugi.
+ * Kalau dibayar tunai dari laci, keduanya ditulis — tapi laporan laba rugi
+ * hanya membaca tabel ini supaya tidak dobel hitung.
+ */
+export interface Expense {
+  id: string;
+  store_id: string;
+  category: ExpenseCategory;
+  description: string | null;
+  amount: number;
+  expense_date: string;
+  payment_method: ExpensePaymentMethod;
+  /** Terisi hanya bila dibayar tunai dari laci shift tertentu. */
+  shift_id: string | null;
+  created_by: string | null;
+  created_at?: string;
+}
+
 export interface Supplier {
   id: string;
   store_id: string;
@@ -226,6 +296,10 @@ export interface Supplier {
   default_term_days: number;
   /** Persentase DP default saat membuat nota baru. */
   default_dp_percent: number;
+  /** Mata uang default (IDR, USD). */
+  currency: string;
+  /** Kurs konversi ke Rupiah (misal 1 USD = 16000). */
+  exchange_rate: number;
   notes: string | null;
   is_active: boolean;
   created_at?: string;
@@ -252,6 +326,10 @@ export interface Purchase {
   /** Dijaga trigger database dari daftar purchase_payments. */
   paid_amount: number;
   dp_percent: number;
+  /** Mata uang nota (IDR, USD). */
+  currency: string;
+  /** Kurs konversi ke Rupiah (misal 1 USD = 16000). */
+  exchange_rate: number;
   received_at: string | null;
   notes: string | null;
   created_by: string | null;
@@ -264,9 +342,14 @@ export interface PurchaseItem {
   product_id: string | null;
   name: string;
   sku: string | null;
+  barcode?: string | null;
   qty: number;
   received_qty: number;
+  /** Harga modal dalam IDR (setelah konversi kurs). */
   cost_price: number;
+  /** Harga modal asli dalam valuta asing (USD/IDR). */
+  original_cost_price?: number;
+  currency?: string;
   subtotal: number;
   note: string | null;
 }
@@ -291,9 +374,67 @@ export interface CartLine {
   size: string | null;
   qty: number;
   price: number;
+  /** Harga master saat barang dimasukkan, untuk membatalkan penimpaan harga. */
+  base_price: number;
   cost_price: number;
   note: string;
   image_url: string | null;
   sku: string | null;
   track_stock: boolean;
+}
+
+/** Maps internal product SKU to platform-specific external SKU (Shopee, TikTok, etc.). */
+export interface ProductChannelMapping {
+  id: string;
+  store_id: string;
+  product_id: string;
+  channel_code: string;
+  external_sku: string;
+  external_url: string | null;
+  is_synced: boolean;
+  last_synced_at: string | null;
+  created_at?: string;
+}
+
+/** Maps supplier catalog items to internal products with supplier-specific SKU and pricing. */
+export interface SupplierProductMapping {
+  id: string;
+  store_id: string;
+  supplier_id: string;
+  product_id: string;
+  supplier_sku: string;
+  supplier_barcode: string | null;
+  supplier_product_name: string;
+  last_cost_price: number;
+  currency: string;
+  created_at?: string;
+}
+
+/**
+ * Retur pesanan. Acuan utamanya `order_number`, bukan id — sesuai permintaan
+ * client: retur dicari dan dicocokkan lewat nomor pemesanan.
+ */
+export interface OrderReturn {
+  id: string;
+  store_id: string;
+  order_id: string | null;
+  order_number: string;
+  refund_amount: number;
+  reason: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface OrderReturnItem {
+  id: string;
+  return_id: string;
+  product_id: string | null;
+  name: string;
+  sku: string | null;
+  barcode: string | null;
+  qty: number;
+  refund_price: number;
+  /** Barang layak jual dikembalikan ke stok; barang rusak tidak. */
+  restock: boolean;
+  note: string | null;
 }

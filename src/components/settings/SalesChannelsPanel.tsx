@@ -12,7 +12,60 @@ import { db } from '@/lib/db';
 import { getBackendClient } from '@/lib/api';
 import { DEFAULT_CHANNELS, OFFLINE_CHANNEL } from '@/lib/channels';
 import { cn, uuid } from '@/lib/format';
-import type { SalesChannel } from '@/types';
+import type { ProductChannelMapping, SalesChannel } from '@/types';
+
+/**
+ * Daftarkan seluruh produk aktif ke sebuah channel.
+ *
+ * Produk yang sudah punya baris untuk channel ini dilewati, jadi fungsinya aman
+ * dipanggil berulang. Mengembalikan jumlah baris yang benar-benar dibuat.
+ */
+async function sambungkanSemuaProduk(storeId: string, channelCode: string): Promise<number> {
+  const produk = await db.products.where('store_id').equals(storeId).toArray();
+  const aktif = produk.filter((p) => p.is_active);
+  if (!aktif.length) return 0;
+
+  const adaSekarang = await db.product_channel_mappings
+    .where('store_id')
+    .equals(storeId)
+    .toArray();
+  const sudahPunya = new Set(
+    adaSekarang.filter((m) => m.channel_code === channelCode).map((m) => m.product_id),
+  );
+
+  const baru: ProductChannelMapping[] = aktif
+    .filter((p) => !sudahPunya.has(p.id))
+    .map((p) => ({
+      id: uuid(),
+      store_id: storeId,
+      product_id: p.id,
+      channel_code: channelCode,
+      // Titik awal: kode platform disamakan dengan SKU internal, tinggal
+      // disunting kalau marketplace memakai kode yang berbeda.
+      external_sku: p.sku ?? '',
+      external_url: null,
+      is_synced: false,
+      last_synced_at: null,
+    }))
+    .filter((m) => m.external_sku !== '');
+
+  if (!baru.length) return 0;
+
+  if (navigator.onLine) {
+    const CHUNK = 200;
+    for (let i = 0; i < baru.length; i += CHUNK) {
+      const { error } = await getBackendClient()
+        .from('product_channel_mappings')
+        .upsert(baru.slice(i, i + CHUNK));
+      if (error) {
+        toast.error(`Gagal menyambungkan produk: ${error.message}`);
+        return 0;
+      }
+    }
+  }
+  await db.product_channel_mappings.bulkPut(baru);
+  return baru.length;
+}
 
 export function SalesChannelsPanel({ storeId }: { storeId: string }) {
   const [busy, setBusy] = useState(false);
@@ -75,7 +128,19 @@ export function SalesChannelsPanel({ storeId }: { storeId: string }) {
       return;
     }
     await db.sales_channels.put(row);
-    toast.success(`Channel "${name}" ditambahkan.`);
+
+    // Channel baru langsung disambungkan ke SELURUH produk aktif.
+    //
+    // Diminta client: begitu channel dibuat, semua barang sudah terdaftar di
+    // sana, tinggal diisi kode versi platformnya. Kode diisi SKU internal
+    // sebagai titik awal — kalau dibiarkan kosong, pencarian lewat SKU platform
+    // tidak menemukan apa pun sampai tiap baris disunting satu per satu.
+    const terhubung = await sambungkanSemuaProduk(storeId, code);
+    toast.success(
+      terhubung > 0
+        ? `Channel "${name}" ditambahkan dan tersambung ke ${terhubung} produk.`
+        : `Channel "${name}" ditambahkan.`,
+    );
   }
 
   async function patch(row: SalesChannel, changes: Partial<SalesChannel>) {

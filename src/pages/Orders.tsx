@@ -28,7 +28,7 @@ import { getBackendClient } from '@/lib/api';
 import { pullRecentOrders } from '@/lib/sync';
 import { channelFeePercent, channelLabel, resolveChannels } from '@/lib/channels';
 import { hasCapability } from '@/lib/roles';
-import { formatDate, formatDateTime, formatMoney, cn, uuid } from '@/lib/format';
+import { formatDate, formatDateTime, formatMoney, cn, uuid, isUuid } from '@/lib/format';
 import type {
   Customer,
   Order,
@@ -153,11 +153,6 @@ function detectPreset(from: string, to: string): string | null {
   return null;
 }
 
-function escapeCsv(v: string | number | null | undefined): string {
-  const s = v == null ? '' : String(v);
-  return /["\n,]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 export function Orders() {
   const navigate = useNavigate();
   const { profile, store } = useAuth();
@@ -171,7 +166,7 @@ export function Orders() {
   const [maxAmount, setMaxAmount] = useState<string>('');
   const [sortBy, setSortBy] = useState<SortBy>('newest');
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const initial = DATE_PRESETS.find((p) => p.key === '7d')!.range();
+  const initial = DATE_PRESETS.find((p) => p.key === '30d')!.range();
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [selected, setSelected] = useState<Order | null>(null);
@@ -246,8 +241,10 @@ export function Orders() {
         const term = q.toLowerCase();
         const tn = o.table_number?.toLowerCase() ?? '';
         const cName = (o.customer_id ? customerName.get(o.customer_id) ?? '' : '').toLowerCase();
+        const ext = (o.external_order_no ?? '').toLowerCase();
         if (
           !o.order_number.toLowerCase().includes(term) &&
+          !ext.includes(term) &&
           !tn.includes(term) &&
           !cName.includes(term)
         ) {
@@ -344,35 +341,11 @@ export function Orders() {
     setTo(r.to);
   }
 
-  function exportCSV() {
-    const rows: string[] = [];
-    rows.push(
-      ['Order ID', 'Tanggal', 'Tipe', 'Meja', 'Pelanggan', 'Subtotal', 'Diskon', 'Pajak', 'Total', 'Bayar', 'Status', 'Order Status', 'Promo'].join(','),
-    );
-    for (const o of filtered) {
-      rows.push([
-        escapeCsv(o.order_number),
-        escapeCsv(o.created_at),
-        escapeCsv(o.order_type),
-        escapeCsv(o.table_number),
-        escapeCsv(o.customer_id ? customerName.get(o.customer_id) ?? '' : ''),
-        o.subtotal,
-        o.discount,
-        o.tax,
-        o.total,
-        escapeCsv(o.payment_method),
-        escapeCsv(o.payment_status),
-        escapeCsv(o.order_status),
-        escapeCsv(o.promo_code),
-      ].join(','));
-    }
-    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `orders-${from}_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportCSV() {
+    // Kirim daftar yang SUDAH difilter supaya isi CSV sama persis dengan tabel.
+    const { exportOrdersBySKU } = await import('@/lib/exportUtils');
+    const count = await exportOrdersBySKU(filtered, { filenameSuffix: `${from}_${to}` });
+    toast.success(`${count} baris pesanan diekspor.`);
   }
 
   const activePreset = detectPreset(from, to);
@@ -411,20 +384,19 @@ export function Orders() {
             <Search size={14} />
             <input
               className="bg-transparent placeholder:text-white/70 focus:outline-none w-48"
-              placeholder="Cari ID / meja / pelanggan"
+              placeholder="Cari ID / No. Pesanan Platform / meja / pelanggan"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
           <Button
-            variant="secondary"
             onClick={exportCSV}
             disabled={filtered.length === 0}
-            className="bg-white !text-ink-900 hover:bg-white/90"
+            variant="onBrand"
           >
             <Download size={16} /> Export CSV
           </Button>
-          <Button onClick={() => navigate('/menu')} className="bg-white !text-ink-900 hover:bg-white/90">
+          <Button onClick={() => navigate('/menu')} variant="onBrand">
             <Plus size={16} /> Add New Order
           </Button>
         </div>
@@ -653,7 +625,14 @@ export function Orders() {
               <tbody>
                 {filtered.map((o) => (
                   <tr key={o.id} className="border-t border-ink-100 dark:border-ink-800">
-                    <td className="py-3 font-semibold">{o.order_number}</td>
+                    <td className="py-3 font-semibold">
+                      {o.order_number}
+                      {o.external_order_no && (
+                        <div className="font-mono text-[10px] font-normal text-ink-500">
+                          {o.external_order_no}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-3">{formatDateTime(o.created_at)}</td>
                     <td className="py-3 text-xs">
                       {o.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}
@@ -716,6 +695,9 @@ export function Orders() {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tanggal" value={formatDateTime(selected.created_at)} />
               <Field label="Channel" value={channelLabel(selected.sales_channel, channelRows)} />
+              {selected.external_order_no && (
+                <Field label="No. Pesanan Platform" value={selected.external_order_no} />
+              )}
               <Field
                 label="Termin"
                 value={selected.payment_term === 'tempo' ? 'Tempo / Piutang' : 'Bayar langsung'}
@@ -779,7 +761,7 @@ export function Orders() {
                 </div>
                 {orderPayments.length > 0 && (
                   <ul className="mt-2 space-y-1 border-t border-amber-200 pt-2 text-xs dark:border-amber-500/30">
-                    {orderPayments.map((payment) => (
+                    {orderPayments.map((payment: OrderPayment) => (
                       <li key={payment.id} className="flex items-center justify-between gap-2">
                         <span>
                           {formatDateTime(payment.paid_at)} · {payment.method}
@@ -920,7 +902,7 @@ function AdjustPriceModal({
         adjustment_amount: delta,
         adjustment_note: note.trim() || null,
         adjusted_at: new Date().toISOString(),
-        adjusted_by: actorId,
+        adjusted_by: isUuid(actorId) ? actorId : null,
       };
       const { error } = await getBackendClient().from('orders').update(patch).eq('id', current.id);
       if (error) throw error;
@@ -1072,7 +1054,7 @@ function SettleReceivableModal({
         paid_at: new Date(`${paidAt}T12:00:00`).toISOString(),
         reference: reference.trim() || null,
         note: null,
-        created_by: actorId,
+        created_by: isUuid(actorId) ? actorId : null,
         created_at: new Date().toISOString(),
       };
       const { error } = await api.from('order_payments').insert(row);

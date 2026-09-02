@@ -34,6 +34,14 @@ import { cn, formatDate, formatDateTime, formatMoney, uuid } from '@/lib/format'
 import type { CashMovement, Order, Shift } from '@/types';
 import { denomsFor, totalOf, type Counts } from '@/lib/cashCount';
 import { computeBreakdown, printShiftReport } from '@/lib/shiftReport';
+import { recordMovement } from '@/lib/shiftHelpers';
+import {
+  buildCsv,
+  csvFilename,
+  dateTime as csvDateTime,
+  downloadCsv,
+  int as csvInt,
+} from '@/lib/csvFormat';
 
 type StatusFilter = 'all' | 'active' | 'closed';
 
@@ -126,28 +134,21 @@ export function Shifts() {
   }, [shifts, statusFilter, from, to]);
 
   function exportHistoryCSV() {
-    const rows: string[] = [];
-    rows.push(['Buka', 'Tutup', 'Saldo Awal', 'Penjualan', 'Order', 'Saldo Akhir', 'Selisih', 'Status'].join(','));
-    for (const s of filteredHistory) {
+    const headers = ['Buka', 'Tutup', 'Saldo Awal', 'Penjualan', 'Order', 'Saldo Akhir', 'Selisih', 'Status'];
+    const rows = filteredHistory.map((s) => {
       const diff = (s.closing_cash ?? 0) - (s.expected_cash ?? 0);
-      rows.push([
-        s.opened_at,
-        s.closed_at ?? '',
-        s.opening_cash,
-        s.total_sales,
-        s.total_orders,
-        s.closing_cash ?? '',
-        s.closing_cash != null ? diff : '',
-        s.closed_at ? 'closed' : 'active',
-      ].join(','));
-    }
-    const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `shifts-${from}_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+      return [
+        csvDateTime(s.opened_at),
+        csvDateTime(s.closed_at),
+        csvInt(s.opening_cash),
+        csvInt(s.total_sales),
+        csvInt(s.total_orders),
+        s.closing_cash == null ? '' : csvInt(s.closing_cash),
+        s.closing_cash == null ? '' : csvInt(diff),
+        s.closed_at ? 'Ditutup' : 'Aktif',
+      ];
+    });
+    downloadCsv(csvFilename('shift', from + '_' + to), buildCsv(headers, rows));
   }
 
   function printReport(shift: Shift) {
@@ -189,18 +190,18 @@ export function Shifts() {
           )}
         </div>
         {!activeShift ? (
-          <Button onClick={() => setOpenModal('open')} className="bg-white !text-ink-900 hover:bg-white/90">
+          <Button onClick={() => setOpenModal('open')} variant="onBrand">
             <DoorOpen size={16} /> Buka Shift
           </Button>
         ) : (
           <div className="flex flex-wrap gap-2">
-            <Button onClick={() => setOpenModal('in')} variant="secondary" className="bg-white !text-ink-900 hover:bg-white/90">
+            <Button onClick={() => setOpenModal('in')} variant="onBrand">
               <ArrowDownToLine size={16} /> Kas Masuk
             </Button>
-            <Button onClick={() => setOpenModal('out')} variant="secondary" className="bg-white !text-ink-900 hover:bg-white/90">
+            <Button onClick={() => setOpenModal('out')} variant="onBrand">
               <ArrowUpFromLine size={16} /> Kas Keluar
             </Button>
-            <Button onClick={() => printReport(activeShift)} variant="secondary" className="bg-white !text-ink-900 hover:bg-white/90">
+            <Button onClick={() => printReport(activeShift)} variant="onBrand">
               <Printer size={16} /> X-Report
             </Button>
             <Button onClick={() => setOpenModal('close')} className="bg-rose-600 hover:bg-rose-700">
@@ -864,48 +865,3 @@ function Row({
   );
 }
 
-async function recordMovement(args: {
-  storeId: string;
-  shiftId: string;
-  type: CashMovement['type'];
-  amount: number;
-  note: string;
-}) {
-  const api = getBackendClient();
-  const row: CashMovement = {
-    id: uuid(),
-    store_id: args.storeId,
-    shift_id: args.shiftId,
-    type: args.type,
-    amount: args.amount,
-    note: args.note || null,
-    created_at: new Date().toISOString(),
-  };
-  await db.cash_movements.put(row);
-  if (navigator.onLine) {
-    await api.from('cash_movements').insert(row);
-  }
-}
-
-/** Helper used by the POS to log a cash sale to the active shift. */
-export async function logSaleToActiveShift(args: {
-  storeId: string;
-  amount: number;
-  orderId: string;
-}): Promise<string | null> {
-  const active = await db.shifts.where('store_id').equals(args.storeId).filter((s) => !s.closed_at).first();
-  if (!active) return null;
-  await recordMovement({
-    storeId: args.storeId,
-    shiftId: active.id,
-    type: 'sale',
-    amount: args.amount,
-    note: `Order ${args.orderId}`,
-  });
-  await db.shifts.put({
-    ...active,
-    total_sales: Number(active.total_sales ?? 0) + args.amount,
-    total_orders: Number(active.total_orders ?? 0) + 1,
-  });
-  return active.id;
-}

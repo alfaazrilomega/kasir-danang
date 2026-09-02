@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Activity,
   AlertTriangle,
@@ -39,11 +40,15 @@ import {
   ROLE_DESCRIPTIONS,
   ROLE_LABELS,
   capabilitiesForRole,
+  defaultCapabilitiesForRole,
+  setCapabilityOverrides,
   roleLabel,
   type Capability,
 } from '@/lib/roles';
 import { useAuth } from '@/stores/auth';
-import type { UserRole } from '@/types';
+import { db } from '@/lib/db';
+import { uuid } from '@/lib/format';
+import type { RolePermission, UserRole } from '@/types';
 
 type AdminTab = 'users' | 'roles' | 'audit' | 'system';
 type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
@@ -60,6 +65,7 @@ const CAPABILITY_ORDER: Capability[] = [
   'manageShifts',
   'viewSalesReports',
   'viewCustomerPortal',
+  'managePurchasing',
 ];
 
 const ADMIN_TABS: Array<{ id: AdminTab; label: string; icon: LucideIcon }> = [
@@ -92,6 +98,13 @@ const emptyForm: UserForm = {
 
 export function UsersPage() {
   const { profile } = useAuth();
+  const storeId = profile?.store_id ?? '';
+  const rolePerms: RolePermission[] =
+    useLiveQuery(
+      () => db.role_permissions.where('store_id').equals(storeId).toArray(),
+      [storeId],
+    ) ?? [];
+  const [savingPerm, setSavingPerm] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
@@ -106,6 +119,40 @@ export function UsersPage() {
   useEffect(() => {
     void loadAdminData();
   }, []);
+
+  /**
+   * Menyalakan/mematikan capability untuk sebuah role di toko ini.
+   * Hanya bisa MENGURANGI dari default kode: server tetap memakai
+   * TABLE_ROLE_ACCESS sebagai batas atas, jadi menyalakan capability yang
+   * memang bukan milik role tersebut tidak memberi akses apa pun.
+   */
+  async function togglePermission(role: string, capability: string) {
+    if (!storeId) return;
+    const key = `${role}|${capability}`;
+    setSavingPerm(key);
+    try {
+      const api = getBackendClient();
+      const existing = rolePerms.find((r) => r.role === role && r.capability === capability);
+      const nextEnabled = existing ? !existing.enabled : false;
+      const row = {
+        id: existing?.id ?? uuid(),
+        store_id: storeId,
+        role,
+        capability,
+        enabled: nextEnabled,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await api.from('role_permissions').upsert(row);
+      if (error) throw error;
+      await db.role_permissions.put(row);
+      setCapabilityOverrides(await db.role_permissions.where('store_id').equals(storeId).toArray());
+      toast.success(`${capability} ${nextEnabled ? 'diaktifkan' : 'dimatikan'} untuk ${role}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menyimpan hak akses.');
+    } finally {
+      setSavingPerm(null);
+    }
+  }
 
   async function loadAdminData() {
     await Promise.all([loadUsers(), loadSystem()]);
@@ -253,7 +300,7 @@ export function UsersPage() {
             >
               {loading || loadingSystem ? <Spinner /> : <RefreshCcw size={14} />} Refresh
             </Button>
-            <Button onClick={() => startCreate()} className="bg-white !text-ink-900 hover:bg-white/90">
+            <Button onClick={() => startCreate()} variant="onBrand">
               <Plus size={16} /> Tambah User
             </Button>
           </div>
@@ -456,7 +503,11 @@ export function UsersPage() {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold">Role & Permission Matrix</h2>
-              <p className="text-sm text-ink-500">Role mengikuti RBAC yang dipakai routing, sidebar, dan API.</p>
+              <p className="max-w-xl text-sm text-ink-500">
+                Klik centang untuk mematikan akses sebuah role di toko ini. Pengaturan hanya bisa{' '}
+                <strong>mengurangi</strong> akses bawaan — server tetap menolak apa pun di luar hak
+                dasar role tersebut, jadi salah setel tidak bisa menaikkan wewenang.
+              </p>
             </div>
             <Badge tone="info">
               <LockKeyhole size={13} className="mr-1" />
@@ -505,14 +556,41 @@ export function UsersPage() {
                       <tr key={role} className="border-t border-ink-100 dark:border-ink-800">
                         <td className="px-3 py-3 font-semibold">{ROLE_LABELS[role]}</td>
                         {CAPABILITY_ORDER.map((capability) => {
+                          const inDefault = defaultCapabilitiesForRole(role).includes(capability);
                           const allowed = caps.includes(capability);
+                          const key = `${role}|${capability}`;
                           return (
                             <td key={capability} className="px-3 py-3 text-center">
-                              {allowed ? (
-                                <CheckCircle2 size={18} className="mx-auto text-emerald-600" />
-                              ) : (
-                                <XCircle size={18} className="mx-auto text-ink-300 dark:text-ink-700" />
-                              )}
+                              <button
+                                type="button"
+                                disabled={!inDefault || savingPerm === key}
+                                onClick={() => togglePermission(role, capability)}
+                                title={
+                                  !inDefault
+                                    ? 'Tidak tersedia untuk role ini'
+                                    : allowed
+                                      ? 'Klik untuk mematikan'
+                                      : 'Klik untuk mengaktifkan'
+                                }
+                                className={
+                                  inDefault
+                                    ? 'rounded-full p-1 transition hover:bg-ink-100 dark:hover:bg-ink-800'
+                                    : 'cursor-not-allowed rounded-full p-1 opacity-40'
+                                }
+                              >
+                                {allowed ? (
+                                  <CheckCircle2 size={18} className="mx-auto text-emerald-600" />
+                                ) : (
+                                  <XCircle
+                                    size={18}
+                                    className={
+                                      inDefault
+                                        ? 'mx-auto text-rose-500'
+                                        : 'mx-auto text-ink-300 dark:text-ink-700'
+                                    }
+                                  />
+                                )}
+                              </button>
                             </td>
                           );
                         })}

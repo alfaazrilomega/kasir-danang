@@ -28,6 +28,8 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { useBarcodeScanner } from '@/lib/barcode';
+import { buildChannelSkuIndex, normalizeSku } from '@/lib/skuLookup';
+import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney } from '@/lib/format';
 import type { Product } from '@/types';
 import { OrderPanel } from '@/components/cart/OrderPanel';
@@ -60,6 +62,23 @@ export function MenuPage() {
 
   const products =
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const channelMappings =
+    useLiveQuery(
+      () => db.product_channel_mappings.where('store_id').equals(storeId).toArray(),
+      [storeId],
+    ) ?? [];
+  const channelRowsForSku =
+    useLiveQuery(() => db.sales_channels.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+
+  // Indeks in-memory supaya pencarian/scan tidak perlu await ke Dexie tiap ketikan.
+  const skuIndex = useMemo(() => buildChannelSkuIndex(channelMappings), [channelMappings]);
+  const platformSkusByProduct = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [productId, rows] of skuIndex.byProduct) {
+      map.set(productId, rows.map((r) => normalizeSku(r.external_sku)));
+    }
+    return map;
+  }, [skuIndex]);
 
   // Popularity = sum of qty sold from all order_items. Used for sort + "bestseller" badge.
   const orderItems = useLiveQuery(() => db.order_items.toArray(), []) ?? [];
@@ -86,7 +105,8 @@ export function MenuPage() {
         return (
           p.name.toLowerCase().includes(t) ||
           (p.sku ?? '').toLowerCase().includes(t) ||
-          (p.barcode ?? '').toLowerCase().includes(t)
+          (p.barcode ?? '').toLowerCase().includes(t) ||
+          (platformSkusByProduct.get(p.id) ?? []).some((sku) => sku.includes(t.toUpperCase()))
         );
       })
       .filter((p) => matchStock(p, stockFilter))
@@ -190,6 +210,7 @@ export function MenuPage() {
       size,
       qty: 1,
       price: Number(p.base_price) + Number(modifier),
+      base_price: Number(p.base_price) + Number(modifier),
       cost_price: Number(p.cost_price ?? 0),
       note: '',
       image_url: p.image_url,
@@ -201,15 +222,26 @@ export function MenuPage() {
   // Barcode scanner: any time a barcode appears, look up product and add to cart.
   useBarcodeScanner({
     onScan: (code) => {
-      const p = products.find(
-        (x) => x.barcode === code || x.sku === code,
-      );
-      if (!p) {
-        toast.error(`Produk dengan barcode ${code} tidak ditemukan.`);
+      // Kode fisik di barang menang lebih dulu supaya hasil scan deterministik,
+      // baru jatuh ke SKU platform (Shopee/TikTok) kalau tidak ketemu.
+      const direct = products.find((x) => x.barcode === code || x.sku === code);
+      if (direct) {
+        addToCart(direct);
+        toast.success(`${direct.name} ditambahkan.`);
         return;
       }
-      addToCart(p);
-      toast.success(`${p.name} ditambahkan.`);
+
+      const mapping = skuIndex.byAnyCode.get(normalizeSku(code));
+      const mapped = mapping ? products.find((x) => x.id === mapping.product_id) : undefined;
+      if (mapped && mapping) {
+        addToCart(mapped);
+        toast.success(
+          `${mapped.name} ditambahkan (SKU ${channelLabel(mapping.channel_code, channelRowsForSku)}).`,
+        );
+        return;
+      }
+
+      toast.error(`Produk dengan kode ${code} tidak ditemukan.`);
     },
   });
 
@@ -336,7 +368,7 @@ export function MenuPage() {
             <input
               ref={searchRef}
               className="w-full bg-transparent text-sm focus:outline-none"
-              placeholder="Cari menu / SKU / barcode...  (tekan / untuk fokus)"
+              placeholder="Cari menu / SKU / barcode / SKU platform...  (tekan / untuk fokus)"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => {
@@ -417,7 +449,7 @@ export function MenuPage() {
                 <Card
                   key={p.id}
                   className={cn(
-                    'group relative overflow-hidden transition-all',
+                    'group relative flex h-full flex-col overflow-hidden transition-all',
                     empty ? 'opacity-60' : 'hover:-translate-y-0.5 hover:shadow-lg cursor-pointer',
                   )}
                   onClick={() => !empty && addToCart(p)}
@@ -460,23 +492,31 @@ export function MenuPage() {
                       </button>
                     )}
                   </div>
-                  <div className={cn(compact ? 'p-2' : 'p-3')}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className={cn('truncate font-semibold', compact ? 'text-xs' : 'text-sm')}>{p.name}</div>
-                        {!compact && (
-                          <div className="text-xs text-ink-500 font-mono">
-                            {p.sku ?? p.barcode ?? (p.sizes?.length ? 'Cup Size' : '—')}
-                          </div>
+                  <div className={cn('flex flex-1 flex-col', compact ? 'p-2' : 'p-3')}>
+                    <div className="min-w-0">
+                      <div
+                        className={cn(
+                          // Tinggi nama dikunci 2 baris supaya SKU, harga, dan chip
+                          // ukuran tetap sejajar antar kartu dalam satu baris grid.
+                          'font-semibold leading-snug line-clamp-2',
+                          compact ? 'h-[2.15rem] text-xs' : 'h-[2.5rem] text-sm',
                         )}
+                        title={p.name}
+                      >
+                        {p.name}
                       </div>
-                      <div className={cn('font-bold', compact ? 'text-xs' : 'text-sm')}>
+                      {!compact && (
+                        <div className="truncate font-mono text-xs text-ink-500">
+                          {p.sku ?? p.barcode ?? (p.sizes?.length ? 'Cup Size' : '—')}
+                        </div>
+                      )}
+                      <div className={cn('mt-1 font-bold', compact ? 'text-xs' : 'text-sm')}>
                         {formatMoney(Number(p.base_price) + Number(modifier))}
                       </div>
                     </div>
 
                     {features.useSizes && p.sizes?.length ? (
-                      <div className="mt-2 flex gap-1.5">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {p.sizes.map((s) => (
                           <button
                             key={s.label}
@@ -485,8 +525,8 @@ export function MenuPage() {
                               setSelectedSize({ ...selectedSize, [p.id]: s.label });
                             }}
                             className={cn(
-                              'grid place-items-center rounded-full text-xs font-semibold border',
-                              compact ? 'h-6 w-6 text-[10px]' : 'h-7 w-7',
+                              'inline-flex items-center justify-center rounded-full border font-semibold leading-none',
+                              compact ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs',
                               size === s.label
                                 ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950/40'
                                 : 'border-ink-200 dark:border-ink-700 text-ink-600',
@@ -499,17 +539,21 @@ export function MenuPage() {
                     ) : null}
 
                     {!compact && (
-                      <Button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addToCart(p);
-                        }}
-                        className="mt-3 w-full"
-                        size="sm"
-                        disabled={empty}
-                      >
-                        {empty ? 'Stok habis' : 'Add to Cart'}
-                      </Button>
+                      // mt-auto mendorong tombol ke dasar kartu supaya sejajar
+                      // antar kartu walau nama atau chip ukurannya beda tinggi.
+                      <div className="mt-auto pt-3">
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToCart(p);
+                          }}
+                          className="w-full"
+                          size="sm"
+                          disabled={empty}
+                        >
+                          {empty ? 'Stok habis' : 'Add to Cart'}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </Card>

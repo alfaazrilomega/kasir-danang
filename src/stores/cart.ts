@@ -15,6 +15,7 @@ export interface ParkedOrder {
   manualDiscount: number;
   salesChannel?: string;
   paymentTerm?: PaymentTerm;
+  externalOrderNo?: string;
 }
 
 interface CartState {
@@ -30,11 +31,13 @@ interface CartState {
   salesChannel: string;       // offline | shopee | tiktok | ...
   paymentTerm: PaymentTerm;   // cash = lunas saat itu, tempo = jadi piutang
   dueDate: string;            // ISO date, hanya dipakai saat paymentTerm = tempo
+  externalOrderNo: string;    // No. Pesanan Shopee / Order Id TikTok
   parked: ParkedOrder[];
   add: (line: CartLine) => void;
   updateQty: (idx: number, qty: number) => void;
   remove: (idx: number) => void;
   setNote: (idx: number, note: string) => void;
+  setPrice: (idx: number, price: number) => void;
   setOrderType: (t: OrderType) => void;
   setTable: (t: string) => void;
   setPayment: (p: PaymentMethod) => void;
@@ -46,6 +49,7 @@ interface CartState {
   setSalesChannel: (code: string) => void;
   setPaymentTerm: (term: PaymentTerm) => void;
   setDueDate: (date: string) => void;
+  setExternalOrderNo: (value: string) => void;
   clear: () => void;
   park: (label?: string) => string | null;
   resume: (id: string) => boolean;
@@ -86,6 +90,7 @@ export const useCart = create<CartState>((set, get) => ({
   salesChannel: OFFLINE_CHANNEL,
   paymentTerm: 'cash',
   dueDate: '',
+  externalOrderNo: '',
   parked: loadParked(),
   add: (line) =>
     set((s) => {
@@ -113,6 +118,16 @@ export const useCart = create<CartState>((set, get) => ({
       next[idx] = { ...next[idx], note };
       return { lines: next };
     }),
+
+  // Harga jual per baris bisa ditimpa manual. Dipakai untuk pesanan
+  // marketplace, karena potongan tiap platform berbeda dan harga yang benar-
+  // benar dibayar pembeli sering tidak sama dengan harga master produk.
+  setPrice: (idx, price) =>
+    set((s) => {
+      const next = [...s.lines];
+      next[idx] = { ...next[idx], price: Math.max(0, Number(price) || 0) };
+      return { lines: next };
+    }),
   setOrderType: (t) => set({ orderType: t }),
   setTable: (t) => set({ tableNumber: t }),
   setPayment: (p) => set({ payment: p }),
@@ -124,6 +139,7 @@ export const useCart = create<CartState>((set, get) => ({
   setSalesChannel: (code) => set({ salesChannel: code }),
   setPaymentTerm: (term) => set({ paymentTerm: term }),
   setDueDate: (date) => set({ dueDate: date }),
+  setExternalOrderNo: (value) => set({ externalOrderNo: value }),
   clear: () =>
     set({
       lines: [],
@@ -138,6 +154,7 @@ export const useCart = create<CartState>((set, get) => ({
       salesChannel: OFFLINE_CHANNEL,
       paymentTerm: 'cash',
       dueDate: '',
+      externalOrderNo: '',
     }),
   park: (label) => {
     const s = get();
@@ -158,6 +175,7 @@ export const useCart = create<CartState>((set, get) => ({
       manualDiscount: s.manualDiscount,
       salesChannel: s.salesChannel,
       paymentTerm: s.paymentTerm,
+      externalOrderNo: s.externalOrderNo,
     };
     const next = [order, ...s.parked].slice(0, 20);
     saveParked(next);
@@ -175,6 +193,7 @@ export const useCart = create<CartState>((set, get) => ({
       salesChannel: OFFLINE_CHANNEL,
       paymentTerm: 'cash',
       dueDate: '',
+      externalOrderNo: '',
     });
     return id;
   },
@@ -198,6 +217,7 @@ export const useCart = create<CartState>((set, get) => ({
       salesChannel: found.salesChannel ?? OFFLINE_CHANNEL,
       paymentTerm: found.paymentTerm ?? 'cash',
       dueDate: '',
+      externalOrderNo: found.externalOrderNo ?? '',
     });
     return true;
   },

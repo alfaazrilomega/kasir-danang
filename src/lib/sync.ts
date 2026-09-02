@@ -4,11 +4,13 @@
 // - Flushes pending orders from the outbox when connectivity returns, then
 //   applies stock decrement (via RPC) and loyalty points.
 
-import { db, type PendingOrder } from './db';
+import { db, type PendingOrder, type PendingWrite } from './db';
 import { getBackendClient } from './api';
+import { isUuid } from './format';
 import { toast } from 'sonner';
 import type {
   CashMovement,
+  Expense,
   LoyaltyTransaction,
   Product,
   Purchase,
@@ -18,7 +20,14 @@ import type {
   SalesChannel,
   Shift,
   StockMovement,
+  RolePermission,
+  StockOpname,
+  StockOpnameItem,
   Supplier,
+  ProductChannelMapping,
+  SupplierProductMapping,
+  OrderReturn,
+  OrderReturnItem,
 } from '@/types';
 
 let syncing = false;
@@ -38,27 +47,30 @@ export async function pullReference(storeId: string) {
       api.from('sales_channels').select('*').eq('store_id', storeId).order('sort_order'),
     ]);
 
-  if (channelsRes.data) {
+  if (channelsRes.data?.length) {
     await db.sales_channels.where('store_id').equals(storeId).delete();
     await db.sales_channels.bulkPut(channelsRes.data as SalesChannel[]);
   }
-  if (storesRes.data) await db.stores.bulkPut(storesRes.data);
-  if (categoriesRes.data) {
+  if (storesRes.data?.length) await db.stores.bulkPut(storesRes.data);
+  if (categoriesRes.data?.length) {
     await db.categories.where('store_id').equals(storeId).delete();
     await db.categories.bulkPut(categoriesRes.data);
   }
-  if (productsRes.data) {
+  if (productsRes.data?.length) {
     await db.products.where('store_id').equals(storeId).delete();
     await db.products.bulkPut(productsRes.data);
   }
-  if (customersRes.data) {
+  if (customersRes.data?.length) {
     await db.customers.where('store_id').equals(storeId).delete();
     await db.customers.bulkPut(customersRes.data);
   }
-  if (promosRes.data) {
+  if (promosRes.data?.length) {
     await db.promos.where('store_id').equals(storeId).delete();
     await db.promos.bulkPut(promosRes.data);
   }
+
+  // POS butuh indeks SKU platform supaya scan/ketik kode marketplace ketemu.
+  await pullChannelMappings(storeId);
 }
 
 export async function pullInventoryReference(storeId: string) {
@@ -71,15 +83,17 @@ export async function pullInventoryReference(storeId: string) {
     api.from('products').select('*').eq('store_id', storeId),
   ]);
 
-  if (storesRes.data) await db.stores.bulkPut(storesRes.data);
-  if (categoriesRes.data) {
+  if (storesRes.data?.length) await db.stores.bulkPut(storesRes.data);
+  if (categoriesRes.data?.length) {
     await db.categories.where('store_id').equals(storeId).delete();
     await db.categories.bulkPut(categoriesRes.data);
   }
-  if (productsRes.data) {
+  if (productsRes.data?.length) {
     await db.products.where('store_id').equals(storeId).delete();
     await db.products.bulkPut(productsRes.data);
   }
+
+  await Promise.all([pullChannelMappings(storeId), pullSupplierCatalog(storeId)]);
 }
 
 export async function pullCustomerCatalog(storeId: string) {
@@ -93,16 +107,16 @@ export async function pullCustomerCatalog(storeId: string) {
     api.from('promos').select('*').eq('store_id', storeId),
   ]);
 
-  if (storesRes.data) await db.stores.bulkPut(storesRes.data);
-  if (categoriesRes.data) {
+  if (storesRes.data?.length) await db.stores.bulkPut(storesRes.data);
+  if (categoriesRes.data?.length) {
     await db.categories.where('store_id').equals(storeId).delete();
     await db.categories.bulkPut(categoriesRes.data);
   }
-  if (productsRes.data) {
+  if (productsRes.data?.length) {
     await db.products.where('store_id').equals(storeId).delete();
     await db.products.bulkPut(productsRes.data);
   }
-  if (promosRes.data) {
+  if (promosRes.data?.length) {
     await db.promos.where('store_id').equals(storeId).delete();
     await db.promos.bulkPut(promosRes.data);
   }
@@ -118,18 +132,31 @@ export async function pullRecentOrders(storeId: string, limit = 50) {
     .eq('store_id', storeId)
     .order('created_at', { ascending: false })
     .limit(limit);
-  await db.orders.where('store_id').equals(storeId).delete();
-  if (previousOrderIds.length) {
-    await db.order_items.where('order_id').anyOf(previousOrderIds as string[]).delete();
-  }
   if (orders && orders.length) {
-    await db.orders.bulkPut(orders);
+    // Ambil SEMUA data dulu, baru tukar isi cache.
+    //
+    // Sebelumnya urutannya: hapus order lama -> hapus itemnya -> tulis order
+    // baru -> baru ambil itemnya dari server. Di antara langkah itu ada jeda
+    // beberapa detik ketika tabel order sudah terisi tapi order_items masih
+    // kosong. Kalau kasir menekan Export CSV tepat di jeda itu, hasilnya nol
+    // baris padahal daftar pesanannya kelihatan penuh.
     const ids = orders.map((o: { id: string }) => o.id);
-    const { data: items } = await api
+    const { data: items, error: itemError } = await api
       .from('order_items')
       .select('*')
       .in('order_id', ids);
-    if (items) await db.order_items.bulkPut(items);
+    // Gagal mengambil item berarti jangan sentuh cache sama sekali: lebih baik
+    // menampilkan data lama daripada menghapusnya tanpa pengganti.
+    if (itemError) return;
+
+    await db.transaction('rw', db.orders, db.order_items, async () => {
+      await db.orders.where('store_id').equals(storeId).delete();
+      if (previousOrderIds.length) {
+        await db.order_items.where('order_id').anyOf(previousOrderIds as string[]).delete();
+      }
+      await db.orders.bulkPut(orders);
+      if (items?.length) await db.order_items.bulkPut(items);
+    });
   }
 
   // Pelunasan piutang penjualan; kasir tidak punya akses, jadi errornya diabaikan.
@@ -139,7 +166,7 @@ export async function pullRecentOrders(storeId: string, limit = 50) {
     .eq('store_id', storeId)
     .order('paid_at', { ascending: false })
     .limit(1000);
-  if (orderPayments) {
+  if (orderPayments?.length) {
     await db.order_payments.where('store_id').equals(storeId).delete();
     await db.order_payments.bulkPut(orderPayments as OrderPayment[]);
   }
@@ -152,11 +179,11 @@ export async function pullShifts(storeId: string, limit = 30) {
     api.from('shifts').select('*').eq('store_id', storeId).order('opened_at', { ascending: false }).limit(limit),
     api.from('cash_movements').select('*').eq('store_id', storeId).order('created_at', { ascending: false }).limit(500),
   ]);
-  if (shiftsRes.data) {
+  if (shiftsRes.data?.length) {
     await db.shifts.where('store_id').equals(storeId).delete();
     await db.shifts.bulkPut(shiftsRes.data as Shift[]);
   }
-  if (movementsRes.data) {
+  if (movementsRes.data?.length) {
     await db.cash_movements.where('store_id').equals(storeId).delete();
     await db.cash_movements.bulkPut(movementsRes.data as CashMovement[]);
   }
@@ -171,20 +198,180 @@ export async function pullLoyalty(storeId: string, limit = 500) {
     .eq('store_id', storeId)
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (data) {
+  if (data?.length) {
     await db.loyalty_transactions.where('store_id').equals(storeId).delete();
     await db.loyalty_transactions.bulkPut(data as LoyaltyTransaction[]);
   }
+}
+
+/**
+ * Riwayat mutasi stok. Server membatasi limit di 1000, jadi yang ditarik adalah
+ * yang TERBARU; halaman Mutasi Stok memberi tahu kalau jumlahnya menyentuh
+ * batas itu supaya pengguna tidak mengira melihat seluruh riwayat.
+ */
+export async function pullStockMovements(storeId: string, limit = 1000) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('stock_movements')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error || !data?.length) return;
+  await db.transaction('rw', db.stock_movements, async () => {
+    await db.stock_movements.where('store_id').equals(storeId).delete();
+    await db.stock_movements.bulkPut(data as StockMovement[]);
+  });
+}
+
+/** Pengeluaran operasional untuk laporan laba rugi. */
+export async function pullExpenses(storeId: string, limit = 1000) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('expenses')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('expense_date', { ascending: false })
+    .limit(limit);
+  // Alasan guard sama seperti pullChannelMappings: server mengembalikan
+  // {data: []} tanpa error saat Postgres mati, jadi respons kosong tidak
+  // boleh dipakai untuk menghapus cache lokal.
+  if (error || !data?.length) return;
+  // Satu transaksi supaya tidak ada jeda tabel kosong yang terlihat di UI.
+  await db.transaction('rw', db.expenses, async () => {
+    await db.expenses.where('store_id').equals(storeId).delete();
+    await db.expenses.bulkPut(data as Expense[]);
+  });
+}
+
+/**
+ * Pembatasan hak akses per role. Ditarik untuk semua role karena UI perlu tahu
+ * menu apa yang harus disembunyikan. Penegakan sebenarnya tetap di server.
+ */
+export async function pullRolePermissions(storeId: string) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  // store_id bertipe uuid di database. Toko demo memakai id seperti
+  // 'store-default-001', dan mengirimnya hanya menghasilkan 400 (22P02)
+  // berulang di konsol tanpa pernah bisa berhasil.
+  if (!isUuid(storeId)) return;
+  const { data, error } = await api.from('role_permissions').select('*').eq('store_id', storeId);
+  if (error || !data) return;
+  await db.transaction('rw', db.role_permissions, async () => {
+    await db.role_permissions.where('store_id').equals(storeId).delete();
+    if (data.length) await db.role_permissions.bulkPut(data as RolePermission[]);
+  });
+}
+
+/** Sesi opname stok beserta barisnya. */
+export async function pullStockOpnames(storeId: string, limit = 50) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('stock_opnames')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('started_at', { ascending: false })
+    .limit(limit);
+  if (error || !data?.length) return;
+  const ids = (data as StockOpname[]).map((row) => row.id);
+  const { data: items } = await api.from('stock_opname_items').select('*').in('opname_id', ids);
+  await db.transaction('rw', db.stock_opnames, db.stock_opname_items, async () => {
+    await db.stock_opnames.where('store_id').equals(storeId).delete();
+    await db.stock_opnames.bulkPut(data as StockOpname[]);
+    if (items?.length) await db.stock_opname_items.bulkPut(items as StockOpnameItem[]);
+  });
+}
+
+/** Posting opname: server yang menulis mutasi & menyamakan stok (atomik). */
+export async function postStockOpname(opnameId: string, storeId: string) {
+  const api = getBackendClient();
+  const { error } = await api.rpc('post_stock_opname', { p_opname_id: opnameId });
+  if (error) return { error };
+  await Promise.all([pullStockOpnames(storeId), pullInventoryReference(storeId)]);
+  return { error: null };
 }
 
 export async function pullSuppliers(storeId: string) {
   const api = getBackendClient();
   if (!navigator.onLine) return;
   const { data } = await api.from('suppliers').select('*').eq('store_id', storeId).order('name');
-  if (data) {
+  if (data?.length) {
     await db.suppliers.where('store_id').equals(storeId).delete();
     await db.suppliers.bulkPut(data as Supplier[]);
   }
+}
+
+/**
+ * Mapping SKU platform. POS memakainya untuk mencari produk dari SKU
+ * marketplace, jadi ikut ditarik untuk semua role yang boleh membacanya.
+ * Role tanpa akses (customer) hanya menerima error yang sengaja diabaikan.
+ */
+export async function pullChannelMappings(storeId: string) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('product_channel_mappings')
+    .select('*')
+    .eq('store_id', storeId);
+  // Saat Postgres tak terjangkau, server MENGEMBALIKAN {data: []} tanpa error
+  // (lihat selectRows di server/index.js). Jadi respons kosong tidak bisa
+  // dibedakan dari "memang kosong", dan menghapus di sini akan membuang cache
+  // lokal tiap kali database bermasalah. Karena itu replace hanya dilakukan
+  // ketika benar-benar ada data; penghapusan baris ditangani eksplisit oleh
+  // form produk saat menyimpan.
+  if (error || !data?.length) return;
+  await db.transaction('rw', db.product_channel_mappings, async () => {
+    await db.product_channel_mappings.where('store_id').equals(storeId).delete();
+    await db.product_channel_mappings.bulkPut(data as ProductChannelMapping[]);
+  });
+}
+
+/** Katalog barang supplier (kode & harga versi supplier). */
+export async function pullSupplierCatalog(storeId: string) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('supplier_product_mappings')
+    .select('*')
+    .eq('store_id', storeId);
+  // Alasan sama seperti pullChannelMappings di atas.
+  if (error || !data?.length) return;
+  await db.transaction('rw', db.supplier_product_mappings, async () => {
+    await db.supplier_product_mappings.where('store_id').equals(storeId).delete();
+    await db.supplier_product_mappings.bulkPut(data as SupplierProductMapping[]);
+  });
+}
+
+/**
+ * Tarik retur pesanan beserta barisnya.
+ *
+ * Sama seperti pull lain: kalau server tidak menjawab atau hasilnya kosong,
+ * cache lokal dibiarkan. Menghapus lebih dulu lalu gagal mengisi akan membuat
+ * riwayat retur lenyap dari layar padahal datanya masih ada di server.
+ */
+export async function pullOrderReturns(storeId: string) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('order_returns')
+    .select('*')
+    .eq('store_id', storeId)
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error || !data?.length) return;
+  const returns = data as OrderReturn[];
+  const { data: items } = await api
+    .from('order_return_items')
+    .select('*')
+    .in('return_id', returns.map((row) => row.id));
+  await db.transaction('rw', db.order_returns, db.order_return_items, async () => {
+    await db.order_returns.where('store_id').equals(storeId).delete();
+    await db.order_returns.bulkPut(returns);
+    if (items?.length) await db.order_return_items.bulkPut(items as OrderReturnItem[]);
+  });
 }
 
 export async function pullPurchases(storeId: string, limit = 200) {
@@ -206,17 +393,17 @@ export async function pullPurchases(storeId: string, limit = 200) {
       .limit(1000),
   ]);
 
-  await db.purchases.where('store_id').equals(storeId).delete();
-  if (previousIds.length) {
-    await db.purchase_items.where('purchase_id').anyOf(previousIds as string[]).delete();
-  }
   if (purchasesRes.data?.length) {
+    await db.purchases.where('store_id').equals(storeId).delete();
+    if (previousIds.length) {
+      await db.purchase_items.where('purchase_id').anyOf(previousIds as string[]).delete();
+    }
     await db.purchases.bulkPut(purchasesRes.data as Purchase[]);
     const ids = (purchasesRes.data as Purchase[]).map((row) => row.id);
     const { data: items } = await api.from('purchase_items').select('*').in('purchase_id', ids);
-    if (items) await db.purchase_items.bulkPut(items as PurchaseItem[]);
+    if (items?.length) await db.purchase_items.bulkPut(items as PurchaseItem[]);
   }
-  if (paymentsRes.data) {
+  if (paymentsRes.data?.length) {
     await db.purchase_payments.where('store_id').equals(storeId).delete();
     await db.purchase_payments.bulkPut(paymentsRes.data as PurchasePayment[]);
   }
@@ -358,12 +545,131 @@ export async function flushPending(): Promise<{ ok: number; failed: number }> {
   return { ok, failed };
 }
 
+// --- Antrean tulis offline -------------------------------------------------
+// Server sekarang membedakan kesalahan DATA dari kegagalan KONEKSI (lihat
+// server/pgErrors.js). Di klien pembedanya: error dengan `status` berarti
+// server menjawab dan menolak — itu bug data, jangan diantre ulang selamanya.
+// Error tanpa `status` berarti fetch gagal (jaringan) — itu yang diantre.
+
+function isNetworkError(error: { status?: number } | null | undefined): boolean {
+  return Boolean(error) && error!.status === undefined;
+}
+
+/** Masukkan satu operasi tulis ke antrean untuk dikirim ulang saat online. */
+export async function queueWrite(
+  table: string,
+  action: PendingWrite['action'],
+  payload: unknown,
+  match?: PendingWrite['match'],
+): Promise<void> {
+  await db.pending_writes.put({
+    id: crypto.randomUUID(),
+    table,
+    action,
+    payload,
+    match,
+    created_at: new Date().toISOString(),
+    attempts: 0,
+  });
+}
+
+/**
+ * Tulis ke server bila memungkinkan; kalau jaringan gagal, antrekan.
+ * Melempar bila server menolak dengan alasan data — pemanggil harus
+ * menampilkan pesannya, bukan diam-diam menyimpan lokal saja.
+ *
+ * @returns queued=true bila operasi masuk antrean (offline).
+ */
+export async function writeThrough(
+  table: string,
+  action: PendingWrite['action'],
+  payload: unknown,
+  match?: PendingWrite['match'],
+): Promise<{ queued: boolean }> {
+  if (!navigator.onLine) {
+    await queueWrite(table, action, payload, match);
+    return { queued: true };
+  }
+
+  const api = getBackendClient();
+  const builder = api.from(table);
+  let error: { message: string; status?: number } | null = null;
+
+  if (action === 'insert') ({ error } = await builder.insert(payload));
+  else if (action === 'upsert') ({ error } = await builder.upsert(payload));
+  else if (action === 'update') {
+    ({ error } = await builder.update(payload).eq(match!.column, match!.value));
+  } else {
+    ({ error } = await api.from(table).delete().eq(match!.column, match!.value));
+  }
+
+  if (!error) return { queued: false };
+  if (isNetworkError(error)) {
+    await queueWrite(table, action, payload, match);
+    return { queued: true };
+  }
+  throw error;
+}
+
+/** Kirim ulang antrean tulis. Dipanggil saat kembali online. */
+export async function flushWrites(): Promise<{ ok: number; failed: number; dropped: number }> {
+  if (!navigator.onLine) return { ok: 0, failed: 0, dropped: 0 };
+  const api = getBackendClient();
+  const queued = await db.pending_writes.orderBy('created_at').toArray();
+  let ok = 0;
+  let failed = 0;
+  let dropped = 0;
+
+  for (const item of queued) {
+    try {
+      const builder = api.from(item.table);
+      let error: { message: string; status?: number } | null = null;
+      if (item.action === 'insert') ({ error } = await builder.insert(item.payload));
+      else if (item.action === 'upsert') ({ error } = await builder.upsert(item.payload));
+      else if (item.action === 'update') {
+        ({ error } = await builder.update(item.payload).eq(item.match!.column, item.match!.value));
+      } else {
+        ({ error } = await api.from(item.table).delete().eq(item.match!.column, item.match!.value));
+      }
+
+      if (!error) {
+        await db.pending_writes.delete(item.id);
+        ok++;
+        continue;
+      }
+      if (isNetworkError(error)) {
+        failed++;
+        await db.pending_writes.update(item.id, { attempts: (item.attempts ?? 0) + 1 });
+        continue;
+      }
+      // Server menolak karena data: mengantre ulang tidak akan pernah berhasil.
+      dropped++;
+      await db.pending_writes.delete(item.id);
+      toast.error(`Perubahan pada ${item.table} ditolak server: ${error.message}`);
+    } catch (e) {
+      failed++;
+      await db.pending_writes.update(item.id, {
+        attempts: (item.attempts ?? 0) + 1,
+        last_error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  if (ok > 0) toast.success(`${ok} perubahan offline tersinkronisasi.`);
+  return { ok, failed, dropped };
+}
+
+export async function pendingWriteCount(): Promise<number> {
+  return db.pending_writes.count();
+}
+
 export function bindOnlineSync() {
   if (onlineListenerBound) return;
   onlineListenerBound = true;
   window.addEventListener('online', () => {
     toast.message('Kembali online — sinkronisasi…');
     void flushPending();
+    void flushWrites();
   });
 }
 

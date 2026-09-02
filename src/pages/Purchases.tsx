@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Check,
   CircleDollarSign,
+  Download,
   Eye,
   PackageCheck,
   Plus,
@@ -26,7 +27,7 @@ import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
 import { pullInventoryReference, pullPurchases, pullSuppliers, receivePurchase } from '@/lib/sync';
-import { cn, formatDate, formatDateTime, formatMoney, formatNumber, uuid } from '@/lib/format';
+import { cn, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
 import type {
   Purchase,
@@ -74,6 +75,7 @@ interface ItemDraft {
   product_id: string;
   name: string;
   sku: string;
+  barcode: string;
   qty: string;
   cost_price: string;
   note: string;
@@ -87,6 +89,8 @@ interface FormState {
   order_date: string;
   expected_date: string;
   due_date: string;
+  currency: string;
+  exchange_rate: string;
   discount: string;
   tax: string;
   other_cost: string;
@@ -96,7 +100,16 @@ interface FormState {
 }
 
 function blankItem(): ItemDraft {
-  return { key: uuid(), product_id: '', name: '', sku: '', qty: '1', cost_price: '0', note: '' };
+  return {
+    key: uuid(),
+    product_id: '',
+    name: '',
+    sku: '',
+    barcode: '',
+    qty: '1',
+    cost_price: '0',
+    note: '',
+  };
 }
 
 function todayIso() {
@@ -111,6 +124,8 @@ function emptyForm(): FormState {
     order_date: todayIso(),
     expected_date: '',
     due_date: '',
+    currency: 'IDR',
+    exchange_rate: '16000',
     discount: '0',
     tax: '0',
     other_cost: '0',
@@ -195,6 +210,15 @@ export function Purchases() {
       .sort((a, b) => (a.order_date < b.order_date ? 1 : a.order_date > b.order_date ? -1 : 0));
   }, [purchases, statusFilter, supplierFilter, q, supplierById]);
 
+  // Kurs supplier saat ini, untuk menilai sisa utang nota dolar.
+  const kursSupplier = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of suppliers) map.set(s.id, Number(s.exchange_rate || 0));
+    return map;
+  }, [suppliers]);
+  const sisaHariIni = (p: Purchase) =>
+    outstandingTodayOf(p, kursSupplier.get(p.supplier_id ?? '') ?? 0);
+
   const summary = useMemo(() => {
     const live = purchases.filter((p) => p.status !== 'canceled');
     const total = live.reduce((sum, p) => sum + Number(p.total), 0);
@@ -207,7 +231,9 @@ export function Purchases() {
       const days = daysUntilDue(p);
       return outstandingOf(p) > 0 && days !== null && days < 0;
     });
-    return { total, paid, outstanding: total - paid, soon: soon.length, overdue: overdue.length };
+    // Sisa utang memakai nilai hari ini, sama dasarnya dengan halaman Supplier.
+    const outstanding = live.reduce((sum, p) => sum + sisaHariIni(p), 0);
+    return { total, paid, outstanding, soon: soon.length, overdue: overdue.length };
   }, [purchases]);
 
   const detail = detailId ? purchases.find((p) => p.id === detailId) ?? null : null;
@@ -227,6 +253,8 @@ export function Purchases() {
       order_date: purchase.order_date,
       expected_date: purchase.expected_date ?? '',
       due_date: purchase.due_date ?? '',
+      currency: purchase.currency || 'IDR',
+      exchange_rate: String(purchase.exchange_rate || 16000),
       discount: String(purchase.discount ?? 0),
       tax: String(purchase.tax ?? 0),
       other_cost: String(purchase.other_cost ?? 0),
@@ -238,8 +266,13 @@ export function Purchases() {
             product_id: row.product_id ?? '',
             name: row.name,
             sku: row.sku ?? '',
+            barcode: row.barcode ?? '',
             qty: String(row.qty),
-            cost_price: String(row.cost_price),
+            cost_price: String(
+              purchase.currency === 'USD'
+                ? row.original_cost_price || (Number(purchase.exchange_rate) > 0 ? row.cost_price / Number(purchase.exchange_rate) : row.cost_price)
+                : row.cost_price,
+            ),
             note: row.note ?? '',
           }))
         : [blankItem()],
@@ -247,7 +280,7 @@ export function Purchases() {
     setFormOpen(true);
   }
 
-  /** Pilih supplier -> pakai termin & DP default supplier itu. */
+  /** Pilih supplier -> pakai termin, DP default, currency, dan kurs supplier itu. */
   function pickSupplier(supplierId: string) {
     const supplier = supplierById.get(supplierId);
     if (!supplier) {
@@ -264,28 +297,78 @@ export function Purchases() {
       supplier_id: supplierId,
       due_date: prev.due_date || due,
       dp_percent: Number(prev.dp_percent) > 0 ? prev.dp_percent : String(supplier.default_dp_percent),
+      currency: supplier.currency || prev.currency || 'IDR',
+      exchange_rate: String(supplier.exchange_rate || prev.exchange_rate || 16000),
     }));
   }
 
   function pickProduct(key: string, productId: string) {
     const product = products.find((p) => p.id === productId);
-    setForm((prev) => ({
-      ...prev,
-      items: prev.items.map((item) =>
-        item.key !== key
-          ? item
-          : {
+    setForm((prev) => {
+      const isUsd = prev.currency === 'USD';
+      const rate = Number(prev.exchange_rate || 16000);
+      const price = product
+        ? isUsd && rate > 0
+          ? (product.cost_price / rate).toFixed(2)
+          : String(product.cost_price ?? 0)
+        : '0';
+
+      return {
+        ...prev,
+        items: prev.items.map((item) =>
+          item.key !== key
+            ? item
+            : {
+                ...item,
+                product_id: productId,
+                name: product?.name ?? item.name,
+                sku: product?.sku ?? item.sku,
+                barcode: product?.barcode ?? item.barcode,
+                cost_price: price,
+              },
+        ),
+      };
+    });
+  }
+
+  function matchProductByCode(key: string, code: string, field: 'sku' | 'barcode') {
+    const trimmed = code.trim().toLowerCase();
+    const found = products.find(
+      (p) =>
+        (field === 'barcode' && p.barcode?.toLowerCase() === trimmed) ||
+        (field === 'sku' && p.sku?.toLowerCase() === trimmed),
+    );
+
+    setForm((prev) => {
+      const isUsd = prev.currency === 'USD';
+      const rate = Number(prev.exchange_rate || 16000);
+
+      return {
+        ...prev,
+        items: prev.items.map((item) => {
+          if (item.key !== key) return item;
+          if (found) {
+            const price = isUsd && rate > 0 ? (found.cost_price / rate).toFixed(2) : String(found.cost_price);
+            return {
               ...item,
-              product_id: productId,
-              name: product?.name ?? item.name,
-              sku: product?.sku ?? item.sku,
-              cost_price: product ? String(product.cost_price ?? 0) : item.cost_price,
-            },
-      ),
-    }));
+              [field]: code,
+              product_id: found.id,
+              name: found.name,
+              sku: found.sku ?? item.sku,
+              barcode: found.barcode ?? item.barcode,
+              cost_price: price,
+            };
+          }
+          return { ...item, [field]: code };
+        }),
+      };
+    });
   }
 
   const formTotals = useMemo(() => {
+    const isUsd = form.currency === 'USD';
+    const rate = Number(form.exchange_rate || 16000);
+
     const subtotal = form.items.reduce(
       (sum, item) => sum + Number(item.qty || 0) * Number(item.cost_price || 0),
       0,
@@ -293,7 +376,11 @@ export function Purchases() {
     const total =
       subtotal - Number(form.discount || 0) + Number(form.tax || 0) + Number(form.other_cost || 0);
     const dpAmount = (total * Number(form.dp_percent || 0)) / 100;
-    return { subtotal, total, dpAmount, rest: total - dpAmount };
+
+    const totalIdr = isUsd ? total * rate : total;
+    const subtotalIdr = isUsd ? subtotal * rate : subtotal;
+
+    return { subtotal, total, dpAmount, rest: total - dpAmount, totalIdr, subtotalIdr };
   }, [form]);
 
   async function save() {
@@ -312,6 +399,13 @@ export function Purchases() {
       return;
     }
 
+    const isUsd = form.currency === 'USD';
+    const rate = Number(form.exchange_rate || 16000);
+    if (isUsd && rate <= 0) {
+      toast.error('Kurs USD harus lebih dari 0.');
+      return;
+    }
+
     setBusy(true);
     try {
       const api = getBackendClient();
@@ -324,6 +418,13 @@ export function Purchases() {
       const total =
         subtotal - Number(form.discount || 0) + Number(form.tax || 0) + Number(form.other_cost || 0);
 
+      // Angka total dalam IDR untuk pembukuan
+      const totalInIdr = isUsd ? total * rate : total;
+      const subtotalInIdr = isUsd ? subtotal * rate : subtotal;
+      const discountInIdr = isUsd ? Number(form.discount || 0) * rate : Number(form.discount || 0);
+      const taxInIdr = isUsd ? Number(form.tax || 0) * rate : Number(form.tax || 0);
+      const otherCostInIdr = isUsd ? Number(form.other_cost || 0) * rate : Number(form.other_cost || 0);
+
       const row: Purchase = {
         id,
         store_id: storeId,
@@ -333,11 +434,13 @@ export function Purchases() {
         order_date: form.order_date,
         expected_date: form.expected_date || null,
         due_date: form.due_date || null,
-        subtotal,
-        discount: Number(form.discount || 0),
-        tax: Number(form.tax || 0),
-        other_cost: Number(form.other_cost || 0),
-        total,
+        subtotal: subtotalInIdr,
+        discount: discountInIdr,
+        tax: taxInIdr,
+        other_cost: otherCostInIdr,
+        total: totalInIdr,
+        currency: form.currency || 'IDR',
+        exchange_rate: isUsd ? rate : 1,
         // paid_amount dijaga trigger di database; kirim nilai lama supaya tidak mundur.
         paid_amount: existing?.paid_amount ?? 0,
         dp_percent: Number(form.dp_percent || 0),
@@ -359,18 +462,26 @@ export function Purchases() {
           .in('id', previous.map((item) => item.id));
         if (delError) throw delError;
       }
-      const itemRows: PurchaseItem[] = validItems.map((item) => ({
-        id: uuid(),
-        purchase_id: id,
-        product_id: item.product_id || null,
-        name: item.name.trim(),
-        sku: item.sku.trim() || null,
-        qty: Number(item.qty || 0),
-        received_qty: existing?.received_at ? Number(item.qty || 0) : 0,
-        cost_price: Number(item.cost_price || 0),
-        subtotal: Number(item.qty || 0) * Number(item.cost_price || 0),
-        note: item.note.trim() || null,
-      }));
+      const itemRows: PurchaseItem[] = validItems.map((item) => {
+        const itemPrice = Number(item.cost_price || 0);
+        const itemPriceIdr = isUsd ? itemPrice * rate : itemPrice;
+
+        return {
+          id: uuid(),
+          purchase_id: id,
+          product_id: item.product_id || null,
+          name: item.name.trim(),
+          sku: item.sku.trim() || null,
+          barcode: item.barcode.trim() || null,
+          qty: Number(item.qty || 0),
+          received_qty: existing?.received_at ? Number(item.qty || 0) : 0,
+          cost_price: itemPriceIdr,
+          original_cost_price: itemPrice,
+          currency: form.currency || 'IDR',
+          subtotal: Number(item.qty || 0) * itemPriceIdr,
+          note: item.note.trim() || null,
+        };
+      });
       const { error: itemError } = await api.from('purchase_items').insert(itemRows);
       if (itemError) throw itemError;
 
@@ -448,11 +559,21 @@ export function Purchases() {
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={() => navigate('/suppliers')}
-            className="bg-white/10 text-white hover:bg-white/20"
+            variant="onBrandSoft"
           >
             <Truck size={16} /> Supplier
           </Button>
-          <Button onClick={startNew} className="bg-white !text-ink-900 hover:bg-white/90">
+          <Button
+            onClick={async () => {
+              const { exportPurchasesBySKU } = await import('@/lib/exportUtils');
+              const n = await exportPurchasesBySKU();
+              toast.success(`${n} baris data PO diekspor berdasarkan SKU.`);
+            }}
+            variant="onBrandSoft"
+          >
+            <Download size={16} /> Export CSV
+          </Button>
+          <Button onClick={startNew} variant="onBrand">
             <Plus size={16} /> Nota Baru
           </Button>
         </div>
@@ -554,6 +675,8 @@ export function Purchases() {
               <tbody>
                 {filtered.map((purchase) => {
                   const rest = outstandingOf(purchase);
+                  const restUsd = outstandingUsdOf(purchase);
+                  const restToday = sisaHariIni(purchase);
                   const days = daysUntilDue(purchase);
                   const paidPct = purchase.total
                     ? Math.min(100, (Number(purchase.paid_amount) / Number(purchase.total)) * 100)
@@ -627,7 +750,16 @@ export function Purchases() {
                           rest > 0 ? 'text-amber-600' : 'text-emerald-600',
                         )}
                       >
-                        {formatMoney(rest, currency)}
+                        {restUsd > 0 ? (
+                          <>
+                            <div>{formatMoney(restUsd, 'USD')}</div>
+                            <div className="text-[11px] font-normal text-ink-500 dark:text-ink-400">
+                              {formatMoney(restToday, currency)}
+                            </div>
+                          </>
+                        ) : (
+                          formatMoney(rest, currency)
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <Badge tone={STATUS_TONES[purchase.status]}>
@@ -698,6 +830,34 @@ export function Purchases() {
             />
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-ink-700 dark:text-ink-200">
+                Mata Uang Transaksi
+              </label>
+              <select
+                className="input"
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              >
+                <option value="IDR">Rupiah (IDR)</option>
+                <option value="USD">Dolar AS (USD)</option>
+              </select>
+            </div>
+            {form.currency === 'USD' ? (
+              <Input
+                label="Kurs Transaksi (1 USD = Rp)"
+                type="number"
+                min={1}
+                value={form.exchange_rate}
+                onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })}
+                hint="Dikonversi otomatis ke HPP stok rupiah."
+              />
+            ) : (
+              <div className="hidden sm:block" />
+            )}
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-3">
             <Input
               label="Tanggal nota"
@@ -721,7 +881,12 @@ export function Purchases() {
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-semibold">Item pembelian</span>
+              <div>
+                <span className="text-sm font-semibold">Item pembelian</span>
+                <span className="ml-2 text-xs text-ink-500">
+                  (Ketik SKU atau scan Barcode untuk deteksi produk otomatis)
+                </span>
+              </div>
               <Button
                 size="sm"
                 variant="secondary"
@@ -736,16 +901,16 @@ export function Purchases() {
                   key={item.key}
                   className="rounded-xl border border-ink-100 p-3 dark:border-ink-800"
                 >
-                  <div className="grid gap-2 sm:grid-cols-[1.5fr_1fr_0.7fr_1fr_auto]">
+                  <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_0.8fr_0.8fr_0.5fr_0.8fr_auto]">
                     <select
                       className="input"
                       value={item.product_id}
                       onChange={(e) => pickProduct(item.key, e.target.value)}
                     >
-                      <option value="">— Item manual —</option>
+                      <option value="">— Pilih produk / manual —</option>
                       {products.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.name}
+                          {p.name} {p.sku ? `(${p.sku})` : ''}
                         </option>
                       ))}
                     </select>
@@ -761,6 +926,18 @@ export function Purchases() {
                           ),
                         })
                       }
+                    />
+                    <input
+                      className="input"
+                      placeholder="SKU"
+                      value={item.sku}
+                      onChange={(e) => matchProductByCode(item.key, e.target.value, 'sku')}
+                    />
+                    <input
+                      className="input"
+                      placeholder="Barcode"
+                      value={item.barcode}
+                      onChange={(e) => matchProductByCode(item.key, e.target.value, 'barcode')}
                     />
                     <input
                       className="input"
@@ -781,7 +958,8 @@ export function Purchases() {
                       className="input"
                       type="number"
                       min={0}
-                      placeholder="Harga beli"
+                      step="0.01"
+                      placeholder={`Harga (${form.currency})`}
                       value={item.cost_price}
                       onChange={(e) =>
                         setForm({
@@ -808,16 +986,40 @@ export function Purchases() {
                       <X size={16} />
                     </button>
                   </div>
-                  <div className="mt-1.5 text-right text-xs text-ink-500">
-                    Subtotal:{' '}
-                    <span className="font-semibold text-ink-700 dark:text-ink-200">
-                      {formatMoney(Number(item.qty || 0) * Number(item.cost_price || 0), currency)}
-                    </span>
-                    {!item.product_id && (
-                      <span className="ml-2 text-amber-600">
-                        Item manual tidak menambah stok saat barang diterima.
+                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-500">
+                    <div>
+                      {form.currency === 'USD' && (
+                        <span className="font-semibold text-brand-600 dark:text-brand-400">
+                          HPP Stok: Rp{' '}
+                          {formatNumber(
+                            Math.round(Number(item.cost_price || 0) * Number(form.exchange_rate || 16000)),
+                          )}
+                          /item
+                        </span>
+                      )}
+                      {!item.product_id && (
+                        <span className="ml-2 text-amber-600">
+                          Item manual tidak menambah stok saat barang diterima.
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      Subtotal:{' '}
+                      <span className="font-semibold text-ink-700 dark:text-ink-200">
+                        {form.currency === 'USD'
+                          ? `$${(Number(item.qty || 0) * Number(item.cost_price || 0)).toFixed(2)} (Rp ${formatNumber(
+                              Math.round(
+                                Number(item.qty || 0) *
+                                  Number(item.cost_price || 0) *
+                                  Number(form.exchange_rate || 16000),
+                              ),
+                            )})`
+                          : formatMoney(
+                              Number(item.qty || 0) * Number(item.cost_price || 0),
+                              currency,
+                            )}
                       </span>
-                    )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1271,7 +1473,7 @@ function PaymentModal({
         paid_at: new Date(`${paidAt}T12:00:00`).toISOString(),
         reference: reference.trim() || null,
         note: note.trim() || null,
-        created_by: profileId,
+        created_by: isUuid(profileId) ? profileId : null,
         created_at: new Date().toISOString(),
       };
       const { error } = await getBackendClient().from('purchase_payments').insert(row);
@@ -1340,15 +1542,25 @@ function PaymentModal({
           </div>
 
           <Input
-            label="Nominal"
+            label={`Nominal (${currency || 'IDR'})`}
             type="number"
             min={0}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             hint={
-              dpTarget > 0
-                ? `Target DP ${formatNumber(purchase.dp_percent)}% = ${formatMoney(dpTarget, currency)}`
-                : undefined
+              // Pembayaran dicatat dalam rupiah, sama seperti seluruh nilai nota.
+              // Untuk nota USD padanan dolarnya ikut ditampilkan supaya bisa
+              // dicocokkan dengan invoice supplier.
+              [
+                dpTarget > 0
+                  ? `Target DP ${formatNumber(purchase.dp_percent)}% = ${formatMoney(dpTarget, currency)}`
+                  : '',
+                purchase.currency === 'USD' && Number(amount || 0) > 0
+                  ? `≈ ${formatMoney(Number(amount || 0) / noteRate(purchase), 'USD')} (kurs ${formatNumber(noteRate(purchase))})`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ') || undefined
             }
           />
           <div className="flex flex-wrap gap-1.5">
@@ -1400,9 +1612,39 @@ function outstandingOf(purchase: Purchase): number {
   return Math.max(0, Number(purchase.total) - Number(purchase.paid_amount));
 }
 
+/** Sisa utang nota ini dalam dolar. Nol untuk nota rupiah. */
+function outstandingUsdOf(purchase: Purchase): number {
+  const kurs = Number(purchase.exchange_rate || 0);
+  if (purchase.currency !== 'USD' || kurs <= 0) return 0;
+  return outstandingOf(purchase) / kurs;
+}
+
+/**
+ * Sisa utang dalam rupiah yang DITAMPILKAN: berapa yang harus disiapkan
+ * kalau dibayar hari ini.
+ *
+ * Nota rupiah memakai nilai notanya sendiri. Nota dolar menyisakan kewajiban
+ * dolar, jadi dinilai pada kurs supplier saat ini — sama seperti kartu di
+ * halaman Supplier, supaya kedua halaman tidak menyebut angka berbeda untuk
+ * utang yang sama.
+ */
+function outstandingTodayOf(purchase: Purchase, kursSupplier: number): number {
+  const usd = outstandingUsdOf(purchase);
+  if (usd > 0 && kursSupplier > 0) return usd * kursSupplier;
+  return outstandingOf(purchase);
+}
+
 function daysUntilDue(purchase: Purchase): number | null {
   if (!purchase.due_date) return null;
   const due = new Date(`${purchase.due_date}T23:59:59`).getTime();
   const now = Date.now();
   return Math.ceil((due - now) / 86400000);
+}
+
+
+/** Kurs yang tercatat di nota. Nota lama menyimpan kursnya sendiri, jadi
+ *  mengubah kurs supplier tidak menggeser nilai nota yang sudah jadi. */
+function noteRate(purchase: { exchange_rate?: number | string | null }): number {
+  const rate = Number(purchase.exchange_rate || 0);
+  return rate > 0 ? rate : 1;
 }

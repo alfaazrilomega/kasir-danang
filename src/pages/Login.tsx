@@ -71,6 +71,58 @@ export function Login() {
           <Button type="submit" className="mt-5 w-full" disabled={busy}>
             {busy ? <Spinner /> : null} Masuk
           </Button>
+
+          <div className="mt-6 border-t border-ink-100 pt-4 dark:border-ink-800">
+            <span className="block text-xs font-semibold uppercase tracking-wider text-ink-500 mb-2">
+              Akun Demo Cepat (Klik untuk Pilih Role):
+            </span>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@example.com');
+                  setPassword('change-me-strong-password');
+                }}
+                className="rounded-xl border border-ink-200 bg-ink-50 p-2 text-left hover:border-brand-500 hover:bg-brand-50/50 dark:border-ink-700 dark:bg-ink-800 dark:hover:bg-brand-950/30"
+              >
+                <div className="font-bold text-ink-900 dark:text-ink-100">👑 Admin</div>
+                <div className="text-[10px] text-ink-500">admin@example.com</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('gudang@example.com');
+                  setPassword('gudang12345');
+                }}
+                className="rounded-xl border border-ink-200 bg-ink-50 p-2 text-left hover:border-brand-500 hover:bg-brand-50/50 dark:border-ink-700 dark:bg-ink-800 dark:hover:bg-brand-950/30"
+              >
+                <div className="font-bold text-ink-900 dark:text-ink-100">📦 Gudang</div>
+                <div className="text-[10px] text-ink-500">gudang@example.com</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('kasir@example.com');
+                  setPassword('kasir12345');
+                }}
+                className="rounded-xl border border-ink-200 bg-ink-50 p-2 text-left hover:border-brand-500 hover:bg-brand-50/50 dark:border-ink-700 dark:bg-ink-800 dark:hover:bg-brand-950/30"
+              >
+                <div className="font-bold text-ink-900 dark:text-ink-100">🛒 Kasir</div>
+                <div className="text-[10px] text-ink-500">kasir@example.com</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('customer@example.com');
+                  setPassword('customer12345');
+                }}
+                className="rounded-xl border border-ink-200 bg-ink-50 p-2 text-left hover:border-brand-500 hover:bg-brand-50/50 dark:border-ink-700 dark:bg-ink-800 dark:hover:bg-brand-950/30"
+              >
+                <div className="font-bold text-ink-900 dark:text-ink-100">👤 Customer</div>
+                <div className="text-[10px] text-ink-500">customer@example.com</div>
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </div>
