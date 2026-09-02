@@ -15,3 +15,7 @@ dist-ssr
 # Isinya 8 MB dan ditulis ulang tiap kali suite dijalankan.
 audit_screenshots
 .antigravity
+.vercel
+
+.vercel
+.env*

@@ -1,5 +1,7 @@
 export type UserRole = 'admin' | 'manager' | 'warehouse' | 'cashier' | 'customer';
-export type PaymentMethod = 'cash' | 'card' | 'ewallet' | 'qris';
+// 'other' dipakai penjualan hasil impor massal: berkasnya tidak menyimpan
+// metode bayar, dan menebak 'cash' akan merusak rekap metode pembayaran.
+export type PaymentMethod = 'cash' | 'card' | 'ewallet' | 'qris' | 'other';
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
 /** Tunai/langsung bayar vs tempo (piutang yang dicairkan belakangan). */
 export type PaymentTerm = 'cash' | 'tempo';

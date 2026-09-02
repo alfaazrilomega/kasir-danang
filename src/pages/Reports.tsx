@@ -55,12 +55,14 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   card: 'Kartu',
   ewallet: 'E-wallet',
   qris: 'QRIS',
+  other: 'Lainnya',
 };
 const PAYMENT_COLORS: Record<PaymentMethod, string> = {
   cash: '#10b981',
   card: '#0ea5e9',
   ewallet: '#f59e0b',
   qris: '#7c4dff',
+  other: '#94a3b8',
 };
 
 const TABS = ['daily', 'shift', 'cashier', 'channel', 'pnl', 'best'] as const;
@@ -1640,7 +1642,7 @@ function buildCashierRows({
       margin: 0,
       aov: 0,
       qty: 0,
-      byMethod: { cash: 0, card: 0, ewallet: 0, qris: 0 },
+      byMethod: { cash: 0, card: 0, ewallet: 0, qris: 0, other: 0 },
       shifts: 0,
       openShift: false,
       variance: 0,

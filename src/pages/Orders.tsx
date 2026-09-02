@@ -13,6 +13,7 @@ import {
   Printer,
   Search,
   SlidersHorizontal,
+  Upload,
   Users,
   X,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
 import { pullRecentOrders } from '@/lib/sync';
+import { SalesImportModal } from '@/components/data/SalesImportModal';
 import { channelFeePercent, channelLabel, resolveChannels } from '@/lib/channels';
 import { hasCapability } from '@/lib/roles';
 import { formatDate, formatDateTime, formatMoney, cn, uuid, isUuid } from '@/lib/format';
@@ -59,6 +61,8 @@ const PAY_TABS: { value: PaymentFilter; label: string }[] = [
   { value: 'qris', label: 'QRIS' },
   { value: 'ewallet', label: 'E-wallet' },
   { value: 'card', label: 'Card' },
+  // Penjualan hasil impor massal: metode bayarnya tidak tercatat di berkas.
+  { value: 'other', label: 'Lainnya' },
 ];
 
 const TYPE_TABS: { value: OrderTypeFilter; label: string }[] = [
@@ -157,6 +161,7 @@ export function Orders() {
   const navigate = useNavigate();
   const { profile, store } = useAuth();
   const storeId = profile?.store_id ?? '';
+  const [importOpen, setImportOpen] = useState(false);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [pay, setPay] = useState<PaymentFilter>('all');
@@ -287,6 +292,7 @@ export function Orders() {
       qris: { count: 0, total: 0 },
       ewallet: { count: 0, total: 0 },
       card: { count: 0, total: 0 },
+      other: { count: 0, total: 0 },
     };
     for (const o of filtered) {
       if (o.order_status === 'canceled') continue;
@@ -395,6 +401,11 @@ export function Orders() {
             variant="onBrand"
           >
             <Download size={16} /> Export CSV
+          </Button>
+          {/* Diletakkan di sebelah Add New Order sesuai permintaan client:
+              "import masal pada bagian add new order". */}
+          <Button onClick={() => setImportOpen(true)} variant="onBrandSoft">
+            <Upload size={16} /> Impor Penjualan
           </Button>
           <Button onClick={() => navigate('/menu')} variant="onBrand">
             <Plus size={16} /> Add New Order
@@ -688,6 +699,14 @@ export function Orders() {
           </div>
         )}
       </Card>
+
+      <SalesImportModal
+        open={importOpen}
+        storeId={storeId}
+        currency={store?.currency}
+        onClose={() => setImportOpen(false)}
+        onDone={() => pullRecentOrders(storeId, 500)}
+      />
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.order_number ?? ''} size="md">
         {selected && (

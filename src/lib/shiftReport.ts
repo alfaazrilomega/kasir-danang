@@ -19,6 +19,8 @@ export interface PaymentBreakdown {
   qris: { count: number; total: number };
   ewallet: { count: number; total: number };
   card: { count: number; total: number };
+  /** Metode tidak diketahui, mis. penjualan hasil impor massal. */
+  other: { count: number; total: number };
 }
 
 export function emptyBreakdown(): PaymentBreakdown {
@@ -27,6 +29,7 @@ export function emptyBreakdown(): PaymentBreakdown {
     qris: { count: 0, total: 0 },
     ewallet: { count: 0, total: 0 },
     card: { count: 0, total: 0 },
+    other: { count: 0, total: 0 },
   };
 }
 

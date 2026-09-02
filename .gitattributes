@@ -1,0 +1,4 @@
+# Berkas migrasi diverifikasi lewat checksum SHA-256 isinya. Kalau Git boleh
+# mengganti akhir baris saat checkout, checksum ikut berubah dan migrasi
+# menolak jalan padahal SQL-nya tidak disentuh siapa pun.
+*.sql -text
