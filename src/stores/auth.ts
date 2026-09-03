@@ -95,17 +95,27 @@ export const useAuth = create<AuthState>((set, get) => ({
       await db.stores.put(localStore);
     }
 
-    if (profile?.store_id) {
+    // Toko yang benar ditentukan oleh SESI, bukan oleh salinan lokal.
+    //
+    // Akun demo tidak punya baris di tabel profiles, jadi `profile` di atas
+    // null. Dulu cabang ini ikut gagal dan toko jatuh ke 'store-default-001'
+    // bawaan offline. Akibatnya seed menulis produk dengan store_id palsu itu,
+    // sementara POS menyaring memakai store_id dari sesi — katalog tampak
+    // kosong padahal datanya ada.
+    const storeIdSesi = sessionStoreId || profile?.store_id || null;
+    if (storeIdSesi) {
       try {
         const { data: remoteStore } = await api
           .from('stores')
           .select('*')
-          .eq('id', profile.store_id)
+          .eq('id', storeIdSesi)
           .maybeSingle();
-        store = (remoteStore as Store) ?? localStore;
-        if (store) await db.stores.put(store);
+        store = (remoteStore as Store) ?? { ...localStore, id: storeIdSesi };
+        await db.stores.put(store);
       } catch {
-        store = localStore;
+        // Offline: pakai salinan lokal, tapi tetap dengan id dari sesi supaya
+        // data yang ditulis nanti tidak nyasar ke toko yang salah.
+        store = { ...localStore, id: storeIdSesi };
       }
     } else {
       store = localStore;

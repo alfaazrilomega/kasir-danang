@@ -8,6 +8,7 @@ import {
   CreditCard,
   Minus,
   Pause,
+  Pencil,
   PlayCircle,
   Plus,
   QrCode,
@@ -364,9 +365,44 @@ Lanjutkan simpan?`,
     <>
       <Card className="fixed top-24 right-4 left-4 md:left-auto md:right-6 z-20 md:w-[400px] flex h-fit flex-col max-h-[calc(100vh-7rem)] shadow-2xl shadow-black/20">
         <div className="flex items-center justify-between p-4 border-b border-ink-100 dark:border-ink-800">
-          <div>
+          {/* Order ID diedit DI TEMPAT ia ditampilkan. Sebelumnya kolomnya ada
+              jauh di bawah, di bawah Channel Penjualan, sehingga kasir melihat
+              nomor di sini tapi tidak menemukan cara mengubahnya. */}
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold">Order Details</div>
-            <div className="text-xs text-ink-500">Order ID {finalOrderNumber}</div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <span className="shrink-0 text-xs text-ink-500">Order ID</span>
+              <Pencil className="h-3 w-3 shrink-0 text-ink-400" aria-hidden />
+              <input
+                value={manualOrderNo}
+                onChange={(e) => setManualOrderNo(e.target.value)}
+                placeholder={orderNumber}
+                title="Klik untuk mengetik nomor sendiri. Kosongkan untuk memakai nomor otomatis."
+                className={cn(
+                  'min-w-0 flex-1 rounded border border-dashed border-ink-300 bg-transparent px-1 py-0.5 text-xs',
+                  'hover:border-brand-400 focus:border-solid focus:border-brand-500 focus:bg-white focus:outline-none',
+                  'dark:border-ink-600 dark:hover:border-brand-400 dark:focus:bg-ink-900',
+                  manualOrderNo.trim()
+                    ? 'font-semibold text-ink-900 dark:text-ink-100'
+                    : 'text-ink-500 placeholder:text-ink-500',
+                )}
+              />
+              {manualOrderNo.trim() !== '' && (
+                <button
+                  type="button"
+                  onClick={() => setManualOrderNo('')}
+                  className="shrink-0 rounded px-1 text-[10px] text-brand-600 hover:underline dark:text-brand-300"
+                  title="Kembali ke nomor otomatis"
+                >
+                  otomatis
+                </button>
+              )}
+            </div>
+            {duplicateOrderNumber && (
+              <div className="mt-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-300">
+                Nomor ini sudah dipakai pesanan lain.
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {parked.length > 0 && (
@@ -614,39 +650,6 @@ Lanjutkan simpan?`,
                   {channel.name}
                 </button>
               ))}
-            </div>
-
-            {/* Order ID boleh diketik sendiri. Kalau dikosongkan, nomor otomatis
-                yang dipakai — jadi kasir tidak perlu mengisi apa pun untuk
-                penjualan biasa. */}
-            <div className="mt-2">
-              <label className="mb-1 block text-[11px] font-semibold text-ink-600 dark:text-ink-300">
-                Order ID
-              </label>
-              <div className="flex gap-1.5">
-                <input
-                  className="input flex-1"
-                  value={manualOrderNo}
-                  onChange={(e) => setManualOrderNo(e.target.value)}
-                  placeholder={orderNumber}
-                />
-                {manualOrderNo.trim() !== '' && (
-                  <Button type="button" variant="secondary" onClick={() => setManualOrderNo('')}>
-                    Otomatis
-                  </Button>
-                )}
-              </div>
-              <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-400">
-                {manualOrderNo.trim()
-                  ? 'Nomor manual dipakai; penomoran otomatis dilewati.'
-                  : `Dikosongkan berarti pakai nomor otomatis: ${orderNumber}`}
-              </p>
-              {duplicateOrderNumber && (
-                <p className="mt-1 text-[11px] font-medium text-rose-600 dark:text-rose-300">
-                  Order ID ini sudah dipakai. Nomor pesanan harus unik supaya retur
-                  bisa memanggilnya kembali.
-                </p>
-              )}
             </div>
 
             {isMarketplace(salesChannel) && (
