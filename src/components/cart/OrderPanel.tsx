@@ -476,7 +476,11 @@ Lanjutkan simpan?`,
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-thin">
+        {/* Seluruh isi panel ikut digulir. Sebelumnya hanya daftar barang
+            yang bisa digulir, sehingga pada layar 1366x768 tombol Place
+            Order terpotong dan tidak bisa ditekan sama sekali. */}
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+          <div className="p-4 space-y-3">
           {lines.length === 0 && (
             <p className="text-center text-sm text-ink-500 py-12">Pilih menu atau tembak barcode untuk memulai.</p>
           )}
@@ -734,7 +738,10 @@ Lanjutkan simpan?`,
             )}
           </div>
 
-          <div className="flex gap-2">
+          </div>
+        </div>
+
+        <div className="flex shrink-0 gap-2 border-t border-ink-100 p-4 dark:border-ink-800">
             <Button
               id="btn-park-order"
               variant="secondary"
@@ -759,7 +766,6 @@ Lanjutkan simpan?`,
             </Button>
             <Button id="btn-place-order" className="flex-1" onClick={placeOrder} disabled={busy} title="Place order (F9)">Place Order</Button>
           </div>
-        </div>
       </Card>
 
       <PromoModal open={promoOpen} onClose={() => setPromoOpen(false)} onSelect={setPromo} />
