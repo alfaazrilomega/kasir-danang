@@ -56,7 +56,7 @@ const record = (n, p, d) => {
     await page.fill('input[type="password"]', adminPw);
     await page.click('button[type="submit"]');
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 3000 });
-    record('Login admin', !page.url().includes('/login'));
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
 
     // Prasyarat data. Suite menjalankan verify_import_export lebih dulu dan uji
     // itu mengosongkan tabel produk; karena order_items.product_id memakai

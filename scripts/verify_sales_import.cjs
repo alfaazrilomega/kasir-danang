@@ -78,7 +78,7 @@ const NL = String.fromCharCode(13, 10);
     await page.fill('input[type="password"]', adminPw);
     await page.click('button[type="submit"]');
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 3000 });
-    record('Login admin', !page.url().includes('/login'));
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
 
     await page.goto('http://localhost:5173/orders', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 2500 });

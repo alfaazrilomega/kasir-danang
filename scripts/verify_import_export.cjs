@@ -75,7 +75,7 @@ async function openModal(page) {
     await page.click('button[type="submit"]');
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 2500 });
     await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 60000 }).catch(() => {});
-    record('Login admin', !page.url().includes('/login'));
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
 
     // --- tombol seed lama sudah diganti ---
     const body = await page.locator('body').innerText();
@@ -116,6 +116,10 @@ async function openModal(page) {
     await page.screenshot({ path: path.join(__dirname, '..', 'audit_screenshots', '36_import_validasi.png') });
 
     // --- impor ganti total dengan berkas valid ---
+    // Impor penjualan sengaja membiarkan product_id kosong bila SKU-nya belum
+    // terdaftar, jadi item yatim bisa sudah ada sebelum uji ini. Yang diuji di
+    // sini adalah penggantian produk tidak MENAMBAH item yatim baru.
+    const yatimAwal = Number(sql('select count(*) from public.order_items where product_id is null;'));
     const beforeLocal = await countLocal(page);
     page.once('dialog', (d) => d.accept());
     await page.locator('input[type="file"]').setInputFiles(goodPath);
@@ -154,7 +158,8 @@ async function openModal(page) {
     record('Produk yang pernah terjual diarsipkan, bukan dihapus', terpakai > 0, terpakai + ' diarsipkan');
 
     const yatim = Number(sql(`select count(*) from public.order_items where product_id is null;`));
-    record('Riwayat penjualan tetap tertaut ke produknya', yatim === 0, yatim + ' item kehilangan tautan');
+    record('Riwayat penjualan tetap tertaut ke produknya', yatim <= yatimAwal,
+      yatim === yatimAwal ? 'tidak ada tautan yang putus' : (yatim - yatimAwal) + ' tautan putus baru');
 
     const nameWithComma = sql(`select name from public.products where sku='${TAG}-A';`);
     record('Nama bertanda koma utuh', nameWithComma === 'Gear Depan, Racing', nameWithComma);

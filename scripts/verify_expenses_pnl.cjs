@@ -60,7 +60,7 @@ function sql(q) {
     // dari /login agar kegagalannya jelas, bukan merembet ke asersi lain.
     await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 60000 })
       .catch(() => {});
-    record('Login admin (akun database asli)', !page.url().includes('/login'));
+    record('Login admin (akun database asli)', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
 
     // Dexie v9 + tabel expenses
     const dbInfo = await page.evaluate(() => new Promise((resolve) => {

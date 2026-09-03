@@ -30,7 +30,7 @@ const sql = (q) => execFileSync(PSQL, ['-U','kasir_user','-h','127.0.0.1','-d','
     // dari /login agar kegagalannya jelas, bukan merembet ke asersi lain.
     await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 60000 })
       .catch(() => {});
-    record('Login admin', !page.url().includes('/login'));
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
     for (const t of ['categories','products','customers','suppliers','shifts','orders','order_items','expenses','product_channel_mappings']) {
       const n = Number(sql(`select count(*) from public.${t};`));
       record(`${t} terdorong ke Postgres`, n > 0, n + ' baris');

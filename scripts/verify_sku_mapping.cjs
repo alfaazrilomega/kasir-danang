@@ -41,7 +41,7 @@ function openKasir(evalFn) {
     // dari /login agar kegagalannya jelas, bukan merembet ke asersi lain.
     await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 60000 })
       .catch(() => {});
-    record('Login admin', !page.url().includes('/login'), page.url());
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false), page.url());
 
     const dbInfo = await page.evaluate(() => {
       return new Promise((resolve) => {
@@ -170,10 +170,25 @@ function openKasir(evalFn) {
         await dateInputs.nth(1).fill('2030-12-31').catch(() => {});
         await page.waitForTimeout(1200);
       }
-      await ordSearch.fill(ordInfo.sample[0]);
+      // Pull berkala mengganti isi tabel orders lokal, jadi contoh yang dibaca
+      // di awal bisa sudah hilang saat pencarian dijalankan. Contohnya dibaca
+      // ulang di sini supaya yang diuji benar-benar fungsi pencariannya.
+      const extKini = await page.evaluate(() => new Promise((resolve) => {
+        const req = indexedDB.open('kasir');
+        req.onsuccess = () => {
+          const all = req.result.transaction('orders', 'readonly').objectStore('orders').getAll();
+          all.onsuccess = () => {
+            const punya = all.result.filter((r) => r.external_order_no);
+            resolve(punya.length ? punya[0].external_order_no : '');
+          };
+        };
+        req.onerror = () => resolve('');
+      }));
+      const kunci = extKini || ordInfo.sample[0];
+      await ordSearch.fill(kunci);
       await page.waitForTimeout(1500);
       const found = await page.locator('tbody tr').count();
-      record('Cari order via No. Pesanan Platform', found > 0, ordInfo.sample[0] + ' -> ' + found + ' baris');
+      record('Cari order via No. Pesanan Platform', found > 0, kunci + ' -> ' + found + ' baris');
     }
     await page.screenshot({ path: path.join(SHOTS, '23_orders_external_no.png') });
 

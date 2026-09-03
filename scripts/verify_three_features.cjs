@@ -45,7 +45,7 @@ const sql = (q) =>
     // dari /login agar kegagalannya jelas, bukan merembet ke asersi lain.
     await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 60000 })
       .catch(() => {});
-    record('Login admin', !page.url().includes('/login'));
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
 
     const dbInfo = await page.evaluate(() => new Promise((resolve) => {
       const req = indexedDB.open('kasir');

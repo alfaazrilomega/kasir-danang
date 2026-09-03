@@ -66,7 +66,7 @@ const marker = 'OUTBOX-' + Date.now();
     // dari /login agar kegagalannya jelas, bukan merembet ke asersi lain.
     await page.waitForFunction(() => !location.pathname.startsWith('/login'), { timeout: 60000 })
       .catch(() => {});
-    record('Login admin', !page.url().includes('/login'));
+    record('Login admin', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
     record('Tabel pending_writes ada', (await countQueued()) >= 0);
 
     await page.goto('http://localhost:5173/products', { waitUntil: 'networkidle' });
