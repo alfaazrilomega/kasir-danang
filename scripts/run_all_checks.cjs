@@ -8,7 +8,7 @@ const SUITES = [
   'verify_opname_logic', 'verify_security_logic', 'verify_stock_mutation',
   'verify_dark_mode', 'verify_import_export', 'verify_supplier_catalog',
   'verify_currency_logic', 'verify_returns', 'verify_sales_import',
-  'verify_marketplace_import',
+  'verify_marketplace_import', 'verify_pos_online',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

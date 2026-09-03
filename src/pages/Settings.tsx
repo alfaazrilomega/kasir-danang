@@ -52,7 +52,8 @@ import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
 import { ACCENTS } from '@/lib/accents';
 import { hasCapability } from '@/lib/roles';
 import {
-  INDUSTRIES,
+  DEFAULT_INDUSTRY,
+  SELECTABLE_INDUSTRIES,
   getIndustry,
   resolveFeatures,
   type IndustryFeatures,
@@ -86,7 +87,7 @@ function snapshot(store: Store | null): FormState {
     receiptFooter: store?.receipt_footer ?? '',
     pointsPerAmount: Number(store?.points_per_amount ?? 0),
     lowStock: Number(store?.low_stock_threshold ?? 5),
-    industry: (store?.industry as IndustryId) ?? 'fnb',
+    industry: (store?.industry as IndustryId) ?? DEFAULT_INDUSTRY,
     features: resolveFeatures(store?.industry, store?.features as never),
     logoUrl: store?.logo_url ?? null,
   };
@@ -438,10 +439,10 @@ export function Settings() {
             id="business"
             icon={SettingsIcon}
             title="Jenis Usaha & Fitur POS"
-            description="Pilih jenis usaha untuk preset fitur, atau atur sendiri tiap toggle di bawah."
+            description="Jenis usaha menentukan fitur bawaan POS. Tiap saklar di bawah tetap bisa diatur sendiri."
           >
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {INDUSTRIES.map((opt) => {
+              {SELECTABLE_INDUSTRIES.map((opt) => {
                 const Icon = opt.Icon;
                 const active = form.industry === opt.id;
                 return (

@@ -4,13 +4,14 @@
 
 import {
   Coffee,
+  Globe,
   Croissant,
   Scissors,
   Store as StoreIcon,
   type LucideIcon,
 } from 'lucide-react';
 
-export type IndustryId = 'fnb' | 'retail' | 'bakery' | 'service';
+export type IndustryId = 'online' | 'fnb' | 'retail' | 'bakery' | 'service';
 
 export interface IndustryFeatures {
   /** Show dine-in / take-away toggle on order panel. */
@@ -58,6 +59,33 @@ const FNB_SIZES = [
 ];
 
 export const INDUSTRIES: IndustryDef[] = [
+  {
+    id: 'online',
+    label: 'Toko Online',
+    tagline: 'Jualan lewat marketplace dan toko fisik.',
+    description:
+      'Untuk toko yang menjual barang lewat Shopee, TikTok Shop, Tokopedia, dan penjualan langsung. Tidak ada Dine In, Take Away, nomor meja, maupun ukuran S/M/L — varian barang dibedakan lewat SKU-nya sendiri.',
+    Icon: Globe,
+    features: {
+      useOrderType: false,
+      useTable: false,
+      useSizes: false,
+      defaultTrackStock: true,
+    },
+    defaultTaxRate: 0,
+    seedCategories: [
+      { name: 'Gear & Rantai', icon: 'cookie' },
+      { name: 'Pelumas', icon: 'cup-soda' },
+      { name: 'Apparel', icon: 'leaf' },
+    ],
+    seedProducts: [
+      { name: 'Gear Set Honda CRF150', category: 'Gear & Rantai', base_price: 1100000, cost_price: 780000, stock_qty: 8, min_stock: 2, track_stock: true },
+      { name: 'Gear Belakang Yamaha Fizr', category: 'Gear & Rantai', base_price: 195000, cost_price: 130000, stock_qty: 20, min_stock: 5, track_stock: true },
+      { name: 'Rantai 415-130 L', category: 'Gear & Rantai', base_price: 125000, cost_price: 82000, stock_qty: 25, min_stock: 5, track_stock: true },
+      { name: 'Oli Rantai 250ml', category: 'Pelumas', base_price: 65000, cost_price: 41000, stock_qty: 30, min_stock: 6, track_stock: true },
+      { name: 'Kaos Racing Team', category: 'Apparel', base_price: 165000, cost_price: 95000, stock_qty: 15, min_stock: 3, track_stock: true },
+    ],
+  },
   {
     id: 'fnb',
     label: 'F&B / Cafe / Restoran',
@@ -185,7 +213,20 @@ export const INDUSTRIES: IndustryDef[] = [
   },
 ];
 
-export const DEFAULT_INDUSTRY: IndustryId = 'fnb';
+export const DEFAULT_INDUSTRY: IndustryId = 'online';
+
+/**
+ * Jenis usaha yang boleh dipilih di Pengaturan.
+ *
+ * Aplikasi ini dipakai satu toko online sparepart, jadi pilihan F&B, Bakery,
+ * dan Jasa hanya menawarkan bentuk kerja yang tidak akan dipakai — dan yang
+ * paling sering salah dipilih, karena Dine In dan nomor meja ikut menyala.
+ * Nilainya tetap dikenali kode supaya toko lama tidak rusak; hanya pilihannya
+ * yang disembunyikan.
+ */
+export const SELECTABLE_INDUSTRIES: IndustryDef[] = INDUSTRIES.filter(
+  (i) => i.id === 'online',
+);
 
 export function getIndustry(id: string | null | undefined): IndustryDef {
   return INDUSTRIES.find((i) => i.id === id) ?? INDUSTRIES[0];

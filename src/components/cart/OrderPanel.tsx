@@ -84,6 +84,8 @@ export function OrderPanel() {
   const [orderNumber, setOrderNumber] = useState(() => getNextNum(salesChannel));
   // Order ID yang diketik kasir. Kosong berarti pakai nomor otomatis.
   const [manualOrderNo, setManualOrderNo] = useState('');
+  /** Alasan selisih antara total pesanan dan dana yang benar-benar diterima. */
+  const [adjustNote, setAdjustNote] = useState('');
   const finalOrderNumber = manualOrderNo.trim() || orderNumber;
 
   // Nomor pesanan wajib unik: Retur Barang memanggil pesanan lewat nomor ini,
@@ -109,6 +111,15 @@ export function OrderPanel() {
   const estimatedNet = isTempo ? totals.total * (1 - feePercent / 100) : totals.total;
 
   const change = payment === 'cash' && !isTempo ? Math.max(0, receivedAmount - totals.total) : 0;
+
+  // Untuk metode selain tunai, angka yang diketik bukan uang kembalian
+  // melainkan total yang BENAR-BENAR diterima setelah potongan biaya admin
+  // marketplace. Sebelumnya kolom ini terkunci untuk non-tunai, jadi selisih
+  // itu baru bisa dicatat belakangan lewat Riwayat Transaksi — pekerjaan
+  // tambahan untuk sesuatu yang sudah diketahui saat transaksinya dibuat.
+  const settlementDiisi = !isTempo && payment !== 'cash' && receivedAmount > 0;
+  const settlementSelisih = settlementDiisi ? receivedAmount - totals.total : 0;
+  const totalAkhir = settlementDiisi ? receivedAmount : totals.total;
   const cashShort =
     payment === 'cash' && !isTempo && receivedAmount > 0 && receivedAmount < totals.total;
 
@@ -184,7 +195,7 @@ Lanjutkan simpan?`,
       subtotal: totals.subtotal,
       tax: totals.tax,
       discount: totals.discount,
-      total: totals.total,
+      total: totalAkhir,
       payment_method: payment,
       payment_status: (isTempo ? 'unpaid' : 'paid') as 'paid' | 'unpaid',
       order_status: 'done' as const,
@@ -193,20 +204,23 @@ Lanjutkan simpan?`,
       notes: null,
       created_at: nowIso,
       promo_code: promo?.code ?? null,
-      received_amount: isTempo ? 0 : payment === 'cash' ? receivedAmount : totals.total,
+      received_amount: isTempo ? 0 : receivedAmount || totals.total,
       change_amount: payment === 'cash' && !isTempo ? change : 0,
       points_earned: totals.pointsEarned,
       shift_id: shiftId,
       sales_channel: salesChannel,
       payment_term: paymentTerm,
       due_date: isTempo ? dueDate : null,
-      paid_amount: isTempo ? 0 : totals.total,
+      paid_amount: isTempo ? 0 : totalAkhir,
       settled_at: isTempo ? null : nowIso,
-      original_total: null,
-      adjustment_amount: 0,
-      adjustment_note: null,
-      adjusted_at: null,
-      adjusted_by: null,
+      // Selisih dana yang masuk dicatat memakai kolom penyesuaian yang sama
+      // dengan fitur "Sesuaikan Harga" di Riwayat Transaksi, supaya satu
+      // kejadian tidak punya dua bentuk penyimpanan yang berbeda.
+      original_total: settlementSelisih !== 0 ? totals.total : null,
+      adjustment_amount: settlementSelisih,
+      adjustment_note: settlementSelisih !== 0 ? adjustNote.trim() || null : null,
+      adjusted_at: settlementSelisih !== 0 ? nowIso : null,
+      adjusted_by: settlementSelisih !== 0 && isUuid(profile.id) ? profile.id : null,
       external_order_no: isMarketplace(salesChannel)
         ? externalOrderNo.trim() || null
         : null,
@@ -249,6 +263,7 @@ Lanjutkan simpan?`,
       clear();
       setOrderNumber(getNextNum());
       setManualOrderNo('');
+      setAdjustNote('');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan order.');
     } finally {
@@ -368,44 +383,8 @@ Lanjutkan simpan?`,
     <>
       <Card className="fixed top-24 right-4 left-4 md:left-auto md:right-6 z-20 md:w-[400px] flex h-fit flex-col max-h-[calc(100vh-7rem)] shadow-2xl shadow-black/20">
         <div className="flex items-center justify-between p-4 border-b border-ink-100 dark:border-ink-800">
-          {/* Order ID diedit DI TEMPAT ia ditampilkan. Sebelumnya kolomnya ada
-              jauh di bawah, di bawah Channel Penjualan, sehingga kasir melihat
-              nomor di sini tapi tidak menemukan cara mengubahnya. */}
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold">Order Details</div>
-            <div className="mt-0.5 flex items-center gap-1">
-              <span className="shrink-0 text-xs text-ink-500">Order ID</span>
-              <Pencil className="h-3 w-3 shrink-0 text-ink-400" aria-hidden />
-              <input
-                value={manualOrderNo}
-                onChange={(e) => setManualOrderNo(e.target.value)}
-                placeholder={orderNumber}
-                title="Klik untuk mengetik nomor sendiri. Kosongkan untuk memakai nomor otomatis."
-                className={cn(
-                  'min-w-0 flex-1 rounded border border-dashed border-ink-300 bg-transparent px-1 py-0.5 text-xs',
-                  'hover:border-brand-400 focus:border-solid focus:border-brand-500 focus:bg-white focus:outline-none',
-                  'dark:border-ink-600 dark:hover:border-brand-400 dark:focus:bg-ink-900',
-                  manualOrderNo.trim()
-                    ? 'font-semibold text-ink-900 dark:text-ink-100'
-                    : 'text-ink-500 placeholder:text-ink-500',
-                )}
-              />
-              {manualOrderNo.trim() !== '' && (
-                <button
-                  type="button"
-                  onClick={() => setManualOrderNo('')}
-                  className="shrink-0 rounded px-1 text-[10px] text-brand-600 hover:underline dark:text-brand-300"
-                  title="Kembali ke nomor otomatis"
-                >
-                  otomatis
-                </button>
-              )}
-            </div>
-            {duplicateOrderNumber && (
-              <div className="mt-0.5 text-[10px] font-medium text-rose-600 dark:text-rose-300">
-                Nomor ini sudah dipakai pesanan lain.
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {parked.length > 0 && (
@@ -425,6 +404,50 @@ Lanjutkan simpan?`,
               <ChevronDown size={16} />
             </button>
           </div>
+        </div>
+
+        {/* Order ID menempati baris yang dulu dipakai Dine In / Take Away dan
+            nomor meja. Tokonya jualan online: yang perlu dilihat kasir di sini
+            adalah nomor pesanannya, bukan tempat duduk. Kolomnya juga harus
+            berada di tempat nomornya ditampilkan — sebelumnya nomor terlihat di
+            atas sementara kolom isiannya jauh di bawah, dan kasir tidak
+            menemukan cara mengubahnya. */}
+        <div className="border-b border-ink-100 p-4 dark:border-ink-800">
+          <label
+            htmlFor="input-order-id"
+            className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-500 dark:text-ink-400"
+          >
+            <Pencil className="h-3 w-3" aria-hidden /> Order ID
+          </label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="input-order-id"
+              value={manualOrderNo}
+              onChange={(e) => setManualOrderNo(e.target.value)}
+              placeholder={orderNumber}
+              className="!py-2 flex-1"
+            />
+            {manualOrderNo.trim() !== '' && (
+              <button
+                type="button"
+                onClick={() => setManualOrderNo('')}
+                className="shrink-0 rounded-lg border border-ink-200 px-2.5 py-2 text-xs text-ink-600 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800"
+                title="Kembali ke nomor otomatis"
+              >
+                Otomatis
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-ink-500 dark:text-ink-400">
+            {manualOrderNo.trim()
+              ? 'Nomor manual dipakai; penomoran otomatis dilewati.'
+              : `Dikosongkan berarti pakai nomor otomatis: ${orderNumber}`}
+          </p>
+          {duplicateOrderNumber && (
+            <p className="mt-1 text-[11px] font-medium text-rose-600 dark:text-rose-300">
+              Nomor ini sudah dipakai pesanan lain.
+            </p>
+          )}
         </div>
 
         {(features.useOrderType || features.useTable) && (
@@ -599,18 +622,45 @@ Lanjutkan simpan?`,
             </div>
             <div>
               <label className="block text-[11px] text-ink-500 mb-0.5">
-                {payment === 'cash' ? 'Uang diterima' : 'Pembayaran'}
+                {payment === 'cash' ? 'Uang diterima' : 'Total riil diterima'}
               </label>
               <input
                 type="number"
-                value={payment === 'cash' ? (receivedAmount || '') : totals.total}
+                value={receivedAmount || ''}
                 onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
                 placeholder={formatMoney(totals.total, store?.currency)}
+                title={
+                  payment === 'cash'
+                    ? 'Uang yang diserahkan pembeli.'
+                    : 'Isi bila dana yang masuk berbeda dari total, misalnya sudah dipotong biaya admin marketplace. Kosongkan bila sama.'
+                }
                 className="input !py-1.5"
-                disabled={payment !== 'cash'}
+                disabled={isTempo}
               />
             </div>
           </div>
+
+          {settlementSelisih !== 0 && (
+            <div className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+              <div className="flex items-center justify-between text-xs text-amber-900 dark:text-amber-100">
+                <span>Selisih terhadap total</span>
+                <span className="font-semibold">
+                  {settlementSelisih > 0 ? '+' : '−'}
+                  {formatMoney(Math.abs(settlementSelisih), store?.currency)}
+                </span>
+              </div>
+              <input
+                value={adjustNote}
+                onChange={(e) => setAdjustNote(e.target.value)}
+                placeholder="Alasan, cth. potongan admin & ongkir Shopee"
+                className="input !py-1.5 text-xs"
+              />
+              <p className="text-[11px] text-amber-900/80 dark:text-amber-100/80">
+                Barang dan harga satuan tidak diubah — hanya total pesanan, supaya laporan
+                penjualan memakai angka yang benar-benar diterima. Total awal tetap tersimpan.
+              </p>
+            </div>
+          )}
 
           {payment === 'cash' && totals.total > 0 && (
             <QuickTender
