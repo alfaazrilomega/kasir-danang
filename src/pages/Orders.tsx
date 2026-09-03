@@ -650,7 +650,11 @@ export function Orders() {
                       {o.table_number && <span className="text-ink-500"> · {o.table_number}</span>}
                     </td>
                     <td className="py-3 text-xs">
-                      {o.customer_id ? customerName.get(o.customer_id) ?? '—' : <span className="text-ink-400">walk-in</span>}
+                      {o.customer_id
+                        ? customerName.get(o.customer_id) ?? '—'
+                        : o.customer_name
+                          ? o.customer_name
+                          : <span className="text-ink-400">walk-in</span>}
                     </td>
                     <td className="py-3 font-mono">{formatMoney(o.total, store?.currency)}</td>
                     <td className="py-3 capitalize">{o.payment_method}</td>
@@ -725,6 +729,12 @@ export function Orders() {
               <Field label="Status" value={selected.payment_status} />
               {selected.table_number && <Field label="Meja" value={selected.table_number} />}
               {customer && <Field label="Pelanggan" value={`${customer.name}${customer.phone ? ` · ${customer.phone}` : ''}`} />}
+              {/* Pesanan hasil impor marketplace tidak punya baris pelanggan,
+                  hanya nama penerima. Tanpa baris ini nama itu tersimpan tapi
+                  tidak pernah terlihat. */}
+              {!customer && selected.customer_name && (
+                <Field label="Pelanggan" value={selected.customer_name} />
+              )}
             </div>
             <div className="border-t border-ink-100 dark:border-ink-800 pt-3">
               <div className="text-xs text-ink-500 uppercase mb-2">Items</div>

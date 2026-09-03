@@ -28,6 +28,7 @@
     "dexie": "^4.0.8",
     "dexie-react-hooks": "^1.1.7",
     "express": "^4.19.2",
+    "fflate": "^0.8.3",
     "lucide-react": "^0.453.0",
     "nodemailer": "^9.0.0",
     "pg": "^8.12.0",

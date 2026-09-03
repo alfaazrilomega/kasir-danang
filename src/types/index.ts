@@ -141,6 +141,11 @@ export interface Order {
   adjusted_by: string | null;
   /** Nomor pesanan milik platform: Shopee "No. Pesanan", TikTok "Order Id". */
   external_order_no: string | null;
+  /**
+   * Nama pelanggan yang diketik langsung, tanpa baris di tabel pelanggan.
+   * Dipakai impor rekap marketplace dan penjualan cepat di kasir.
+   */
+  customer_name: string | null;
 }
 
 export interface SalesChannel {

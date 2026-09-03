@@ -1,9 +1,15 @@
 // Impor penjualan massal.
 //
 // Client memasukkan penjualan lama (mis. Juli–Agustus) yang datanya berasal dari
-// nomor pesanan marketplace. Kolomnya dibuat SAMA PERSIS dengan hasil ekspor
-// Riwayat Transaksi, jadi client cukup mengekspor sekali untuk melihat
-// bentuknya, mengisi, lalu mengunggah balik — tidak perlu belajar format baru.
+// nomor pesanan marketplace. Ada tiga bentuk berkas yang diterima:
+//
+//   1. Susunan kita sendiri, sama persis dengan hasil ekspor Riwayat Transaksi.
+//   2. Ekspor mentah TikTok Shop (.xlsx).
+//   3. Ekspor mentah Shopee (.xlsx).
+//
+// Dua yang terakhir dibaca apa adanya, tanpa client perlu menyusun ulang
+// kolomnya. Menyuruh mereka merapikan ratusan baris tiap bulan adalah pekerjaan
+// yang justru ingin dihilangkan oleh fitur ini.
 //
 // Satu pesanan boleh punya banyak baris: nomor pesanan diulang di tiap baris,
 // dan baris bernomor sama digabung menjadi satu pesanan.
@@ -14,11 +20,10 @@
 
 import { db } from './db';
 import { getBackendClient } from './api';
-import { parseCsv } from './dataTransfer';
 import { uuid } from './format';
 import type { Order, OrderItem, PaymentMethod, Product } from '@/types';
 
-/** Kolom yang dikenali, mengikuti judul kolom ekspor Riwayat Transaksi. */
+/** Kolom susunan kita sendiri, mengikuti judul kolom ekspor Riwayat Transaksi. */
 export const SALES_COLUMNS = [
   'No. Pesanan',
   'No. Pesanan Platform',
@@ -32,9 +37,124 @@ export const SALES_COLUMNS = [
   'Subtotal',
   'Status Bayar',
   'Status Order',
+  'Nama Pelanggan',
 ] as const;
 
 const WAJIB = ['No. Pesanan', 'Tanggal', 'Qty', 'Harga Satuan'];
+
+export type SalesLayout = 'kasir' | 'tiktok' | 'shopee';
+
+/**
+ * Peta kolom satu susunan berkas.
+ *
+ * Tiap medan berisi daftar nama kolom yang boleh dipakai, berurutan dari yang
+ * paling tepat. Bentuk daftar dipilih karena marketplace kadang punya dua kolom
+ * yang sama-sama masuk akal (Shopee: SKU varian dan SKU induk).
+ */
+interface LayoutMap {
+  layout: SalesLayout;
+  /** Ditampilkan ke pengguna supaya tebakan sistem bisa diperiksa mata. */
+  label: string;
+  channelCode: string | null;
+  /**
+   * Berkas menaruh satu baris keterangan kolom tepat di bawah judulnya.
+   * TikTok mengisi keterangan itu di SEMUA kolom, termasuk kolom nomor
+   * pesanan, jadi baris itu tidak bisa dikenali dari sel yang kosong.
+   */
+  hasDescriptionRow?: boolean;
+  orderNumber: string[];
+  externalOrderNo: string[];
+  date: string[];
+  paidTime: string[];
+  channel: string[];
+  sku: string[];
+  barcode: string[];
+  name: string[];
+  qty: string[];
+  /** Harga satuan langsung. */
+  unitPrice: string[];
+  /** Total satu baris; harga satuan dihitung dengan membaginya ke qty. */
+  lineTotal: string[];
+  paymentMethod: string[];
+  orderStatus: string[];
+  customerName: string[];
+}
+
+const LAYOUTS: LayoutMap[] = [
+  {
+    layout: 'kasir',
+    label: 'susunan Aplikasi Kasir',
+    channelCode: null,
+    orderNumber: ['No. Pesanan'],
+    externalOrderNo: ['No. Pesanan Platform'],
+    date: ['Tanggal'],
+    paidTime: [],
+    channel: ['Channel'],
+    sku: ['SKU'],
+    barcode: ['Barcode'],
+    name: ['Nama Produk'],
+    qty: ['Qty'],
+    unitPrice: ['Harga Satuan'],
+    lineTotal: [],
+    paymentMethod: [],
+    orderStatus: ['Status Order'],
+    customerName: ['Nama Pelanggan'],
+  },
+  {
+    layout: 'tiktok',
+    label: 'ekspor TikTok Shop',
+    channelCode: 'tiktok',
+    hasDescriptionRow: true,
+    orderNumber: ['Order ID'],
+    externalOrderNo: ['Order ID'],
+    date: ['Created Time'],
+    paidTime: ['Paid Time'],
+    channel: [],
+    sku: ['Seller SKU', 'SKU ID'],
+    barcode: [],
+    name: ['Product Name'],
+    qty: ['Quantity'],
+    unitPrice: [],
+    // Harga yang benar-benar dibayar pembeli, sesudah diskon. "SKU Unit
+    // Original Price" adalah harga tayang dan hampir selalu lebih tinggi.
+    lineTotal: ['SKU Subtotal After Discount'],
+    paymentMethod: ['Payment Method'],
+    orderStatus: ['Order Status'],
+    customerName: ['Recipient', 'Buyer Username'],
+  },
+  {
+    layout: 'shopee',
+    label: 'ekspor Shopee',
+    channelCode: 'shopee',
+    orderNumber: ['No. Pesanan'],
+    externalOrderNo: ['No. Pesanan'],
+    date: ['Waktu Pesanan Dibuat'],
+    paidTime: ['Waktu Pembayaran Dilakukan'],
+    channel: [],
+    sku: ['Nomor Referensi SKU', 'SKU Induk'],
+    barcode: [],
+    name: ['Nama Produk'],
+    qty: ['Jumlah'],
+    unitPrice: ['Harga Setelah Diskon'],
+    lineTotal: ['Subtotal Pesanan'],
+    paymentMethod: ['Metode Pembayaran'],
+    orderStatus: ['Status Pesanan'],
+    customerName: ['Nama Penerima', 'Username (Pembeli)'],
+  },
+];
+
+/**
+ * Tebak susunan berkas dari judul kolomnya.
+ *
+ * Penanda dipilih yang khas: "Seller SKU" hanya ada di TikTok, dan
+ * "Nomor Referensi SKU" hanya ada di Shopee.
+ */
+export function detectLayout(header: string[]): LayoutMap {
+  const ada = (name: string) => header.some((h) => h.trim() === name);
+  if (ada('Order ID') && (ada('Seller SKU') || ada('SKU ID'))) return LAYOUTS[1];
+  if (ada('No. Pesanan') && (ada('Nomor Referensi SKU') || ada('SKU Induk'))) return LAYOUTS[2];
+  return LAYOUTS[0];
+}
 
 export interface SalesIssue {
   row: number;
@@ -54,6 +174,8 @@ export interface ParsedSalesLine {
   price: number;
   paymentStatus: 'paid' | 'unpaid';
   orderStatus: 'done' | 'canceled';
+  paymentMethod: PaymentMethod;
+  customerName: string | null;
   productId: string | null;
   costPrice: number;
 }
@@ -65,6 +187,10 @@ export interface SalesImportPlan {
   duplicates: string[];
   issues: SalesIssue[];
   totalRows: number;
+  layout: SalesLayout;
+  layoutLabel: string;
+  /** Baris yang SKU-nya tidak ketemu di katalog. */
+  unmatched: number;
 }
 
 export interface SalesImportResult {
@@ -91,20 +217,39 @@ function parseNumber(value: string): number | null {
 }
 
 /**
- * Terima "dd/mm/yyyy", "dd/mm/yyyy HH:mm", dan ISO.
- * Format pertama yang dipakai ekspor kita.
+ * Terima "dd/mm/yyyy HH:mm:ss" (TikTok), "yyyy-mm-dd HH:mm" (Shopee), ISO, dan
+ * angka seri Excel.
+ *
+ * Angka seri ikut ditangani karena sel tanggal di .xlsx kadang tersimpan
+ * sebagai angka, bukan teks, tergantung cara berkasnya dibuat.
  */
 function parseDate(value: string): string | null {
   const raw = String(value ?? '').trim();
   if (!raw) return null;
 
-  const id = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2}))?/.exec(raw);
+  const id = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(raw);
   if (id) {
-    const [, d, m, y, hh, mm] = id;
-    const dt = new Date(Number(y), Number(m) - 1, Number(d), Number(hh ?? 0), Number(mm ?? 0));
+    const [, d, m, y, hh, mm, ss] = id;
+    const dt = new Date(
+      Number(y), Number(m) - 1, Number(d),
+      Number(hh ?? 0), Number(mm ?? 0), Number(ss ?? 0),
+    );
     return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
   }
-  const dt = new Date(raw);
+
+  // Angka seri Excel: hari sejak 30 Desember 1899. Dibatasi ke rentang yang
+  // masuk akal supaya angka biasa tidak salah dikira tanggal.
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const serial = Number(raw);
+    if (serial > 40000 && serial < 60000) {
+      const ms = Math.round((serial - 25569) * 86400000);
+      const dt = new Date(ms);
+      return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
+    }
+    return null;
+  }
+
+  const dt = new Date(raw.replace(' ', 'T'));
   return Number.isNaN(dt.getTime()) ? null : dt.toISOString();
 }
 
@@ -116,7 +261,25 @@ function normalizeStatusBayar(value: string): 'paid' | 'unpaid' {
 
 function normalizeStatusOrder(value: string): 'done' | 'canceled' {
   const v = String(value ?? '').trim().toLowerCase();
-  return ['dibatalkan', 'canceled', 'cancelled', 'batal'].includes(v) ? 'canceled' : 'done';
+  return ['dibatalkan', 'canceled', 'cancelled', 'batal', 'dibatalkan penjual'].includes(v)
+    ? 'canceled'
+    : 'done';
+}
+
+/**
+ * Petakan metode bayar marketplace ke metode yang dikenal aplikasi.
+ *
+ * Hanya yang benar-benar pasti yang dipetakan. Sisanya jadi 'other' — mengaku
+ * tahu cara uang masuk padahal cuma menebak akan merusak rekap metode bayar.
+ */
+function mapPaymentMethod(value: string): PaymentMethod {
+  const v = String(value ?? '').trim().toLowerCase();
+  if (!v) return 'other';
+  if (v.includes('cod') || v.includes('bayar di tempat') || v.includes('tunai') || v === 'cash') {
+    return 'cash';
+  }
+  if (v.includes('qris')) return 'qris';
+  return 'other';
 }
 
 /** Ubah label channel ("Shopee Official") jadi kodenya ("shopee"). */
@@ -127,30 +290,59 @@ function resolveChannelCode(label: string, byName: Map<string, string>): string 
   return byName.get(lower) ?? lower.replace(/\s+/g, '-');
 }
 
+export interface PlanOptions {
+  /** Memaksa channel tujuan, untuk kasus Shopee toko 1 vs toko 2. */
+  channelCode?: string;
+}
+
 /**
- * Baca berkas dan susun rencana impor, tanpa menulis apa pun.
+ * Baca isi berkas dan susun rencana impor, tanpa menulis apa pun.
  *
  * Baris bermasalah dilaporkan beserta nomor barisnya dan TIDAK ikut masuk,
  * supaya satu sel yang salah tidak menggagalkan seluruh berkas.
  */
-export async function planSalesImport(text: string, storeId: string): Promise<SalesImportPlan> {
-  const rows = parseCsv(text);
+export async function planSalesImport(
+  rows: string[][],
+  storeId: string,
+  options: PlanOptions = {},
+): Promise<SalesImportPlan> {
   const issues: SalesIssue[] = [];
-  if (rows.length < 2) {
-    return { orders: [], duplicates: [], issues: [{ row: 0, message: 'Berkas kosong.' }], totalRows: 0 };
-  }
+  const kosong = (pesan: string): SalesImportPlan => ({
+    orders: [],
+    duplicates: [],
+    issues: [{ row: 0, message: pesan }],
+    totalRows: 0,
+    layout: 'kasir',
+    layoutLabel: LAYOUTS[0].label,
+    unmatched: 0,
+  });
+
+  if (rows.length < 2) return kosong('Berkas kosong.');
 
   const header = rows[0].map((h) => h.trim());
-  const kurang = WAJIB.filter((k) => !header.includes(k));
-  if (kurang.length) {
-    return {
-      orders: [],
-      duplicates: [],
-      issues: [{ row: 1, message: `Kolom wajib tidak ada: ${kurang.join(', ')}.` }],
-      totalRows: 0,
-    };
+  const map = detectLayout(header);
+
+  if (map.layout === 'kasir') {
+    const kurang = WAJIB.filter((k) => !header.includes(k));
+    if (kurang.length) {
+      return {
+        ...kosong(`Kolom wajib tidak ada: ${kurang.join(', ')}.`),
+        issues: [{ row: 1, message: `Kolom wajib tidak ada: ${kurang.join(', ')}.` }],
+      };
+    }
   }
-  const idx = (name: string) => header.indexOf(name);
+
+  /** Ambil isi sel untuk medan tertentu, mencoba tiap nama kolom berurutan. */
+  const cellOf = (row: string[], names: string[]): string => {
+    for (const name of names) {
+      const at = header.indexOf(name);
+      if (at >= 0) {
+        const v = (row[at] ?? '').trim();
+        if (v) return v;
+      }
+    }
+    return '';
+  };
 
   const products = await db.products.where('store_id').equals(storeId).toArray();
   const bySku = new Map<string, Product>();
@@ -167,47 +359,81 @@ export async function planSalesImport(text: string, storeId: string): Promise<Sa
 
   const existing = await db.orders.where('store_id').equals(storeId).toArray();
   const nomorAda = new Set(existing.map((o) => (o.order_number ?? '').trim().toUpperCase()));
+  const platformAda = new Set(
+    existing.map((o) => (o.external_order_no ?? '').trim().toUpperCase()).filter(Boolean),
+  );
 
   const grouped = new Map<string, ParsedSalesLine[]>();
   const duplicates = new Set<string>();
   let totalRows = 0;
+  let unmatched = 0;
 
   for (let i = 1; i < rows.length; i++) {
     const nomorBaris = i + 1; // baris 1 adalah judul kolom
-    const cell = (name: string) => (idx(name) >= 0 ? (rows[i][idx(name)] ?? '').trim() : '');
-    const orderNumber = cell('No. Pesanan');
+    const row = rows[i];
+    const cell = (names: string[]) => cellOf(row, names);
+
+    // Baris keterangan kolom bukan data. TikTok mengisinya di semua kolom
+    // ("Platform unique order ID." di kolom nomor pesanan), jadi tidak bisa
+    // dikenali dari sel kosong. Dikenali dari posisinya, tepat di bawah judul,
+    // ditambah syarat qty-nya bukan angka — supaya baris data asli tidak ikut
+    // terbuang kalau kelak bentuk berkasnya berubah.
+    if (map.hasDescriptionRow && i === 1) {
+      const qtyKeterangan = Number(String(cell(map.qty)).replace(/[^0-9.-]/g, ''));
+      if (!Number.isFinite(qtyKeterangan) || qtyKeterangan <= 0) continue;
+    }
+
+    const orderNumber = cell(map.orderNumber);
     if (!orderNumber) {
-      issues.push({ row: nomorBaris, message: 'No. Pesanan kosong, baris dilewati.' });
+      // Baris kosong di akhir berkas juga bukan masalah yang perlu dilaporkan.
+      if (!cell(map.qty)) continue;
+      issues.push({ row: nomorBaris, message: 'Nomor pesanan kosong, baris dilewati.' });
       continue;
     }
     totalRows++;
 
-    if (nomorAda.has(orderNumber.toUpperCase())) {
+    const externalOrderNo = cell(map.externalOrderNo) || null;
+    if (
+      nomorAda.has(orderNumber.toUpperCase()) ||
+      (externalOrderNo && platformAda.has(externalOrderNo.toUpperCase()))
+    ) {
       duplicates.add(orderNumber);
       continue;
     }
 
-    const createdAt = parseDate(cell('Tanggal'));
+    const createdAt = parseDate(cell(map.date));
     if (!createdAt) {
-      issues.push({ row: nomorBaris, message: `Tanggal "${cell('Tanggal')}" tidak dikenali.` });
+      issues.push({ row: nomorBaris, message: `Tanggal "${cell(map.date)}" tidak dikenali.` });
       continue;
     }
 
-    const qty = parseNumber(cell('Qty'));
+    const qty = parseNumber(cell(map.qty));
     if (qty === null || qty <= 0) {
-      issues.push({ row: nomorBaris, message: `Qty "${cell('Qty')}" bukan angka lebih dari nol.` });
+      issues.push({ row: nomorBaris, message: `Qty "${cell(map.qty)}" bukan angka lebih dari nol.` });
       continue;
     }
 
-    const price = parseNumber(cell('Harga Satuan'));
+    // Harga satuan bisa datang langsung, atau dihitung dari total baris.
+    const rawUnit = cell(map.unitPrice);
+    const rawTotal = cell(map.lineTotal);
+    let price: number | null = null;
+    if (rawUnit) {
+      price = parseNumber(rawUnit);
+    } else if (rawTotal) {
+      const total = parseNumber(rawTotal);
+      price = total === null ? null : total / qty;
+    }
     if (price === null || price < 0) {
-      issues.push({ row: nomorBaris, message: `Harga Satuan "${cell('Harga Satuan')}" bukan angka.` });
+      issues.push({
+        row: nomorBaris,
+        message: `Harga "${rawUnit || rawTotal}" bukan angka.`,
+      });
       continue;
     }
 
-    const sku = cell('SKU');
-    const barcode = cell('Barcode');
-    const nama = cell('Nama Produk');
+    const sku = cell(map.sku);
+    const barcode = cell(map.barcode);
+    const nama = cell(map.name);
     const produk =
       (sku && bySku.get(sku.toUpperCase())) ||
       (barcode && byBarcode.get(barcode)) ||
@@ -221,25 +447,39 @@ export async function planSalesImport(text: string, storeId: string): Promise<Sa
     if (!produk) {
       // Bukan penghalang: penjualan lama boleh memuat barang yang sudah tidak
       // ada di katalog. Baris tetap masuk, hanya tidak tertaut ke produk.
+      unmatched++;
       issues.push({
         row: nomorBaris,
         message: `Produk "${sku || nama}" tidak ada di katalog — baris tetap dicatat tanpa tautan produk.`,
       });
     }
 
+    // Status bayar marketplace dibaca dari ada tidaknya waktu pembayaran,
+    // bukan ditebak dari status pesanan.
+    const paymentStatus = map.paidTime.length
+      ? cell(map.paidTime)
+        ? 'paid'
+        : 'unpaid'
+      : normalizeStatusBayar(cellOf(row, ['Status Bayar']));
+
     const line: ParsedSalesLine = {
       row: nomorBaris,
       orderNumber,
-      externalOrderNo: cell('No. Pesanan Platform') || null,
+      externalOrderNo,
       createdAt,
-      channel: resolveChannelCode(cell('Channel'), channelByName),
+      channel:
+        options.channelCode ||
+        map.channelCode ||
+        resolveChannelCode(cell(map.channel), channelByName),
       sku,
       barcode,
       name: nama || produk?.name || sku,
       qty,
       price,
-      paymentStatus: normalizeStatusBayar(cell('Status Bayar')),
-      orderStatus: normalizeStatusOrder(cell('Status Order')),
+      paymentStatus,
+      orderStatus: normalizeStatusOrder(cell(map.orderStatus)),
+      paymentMethod: map.paymentMethod.length ? mapPaymentMethod(cell(map.paymentMethod)) : 'other',
+      customerName: cell(map.customerName) || null,
       productId: produk?.id ?? null,
       costPrice: Number(produk?.cost_price ?? 0),
     };
@@ -255,7 +495,47 @@ export async function planSalesImport(text: string, storeId: string): Promise<Sa
     total: lines.reduce((sum, l) => sum + l.qty * l.price, 0),
   }));
 
-  return { orders, duplicates: [...duplicates], issues, totalRows };
+  return {
+    orders,
+    duplicates: [...duplicates],
+    issues,
+    totalRows,
+    layout: map.layout,
+    layoutLabel: map.label,
+    unmatched,
+  };
+}
+
+/**
+ * Berkas contoh: judul kolom dan dua baris isian.
+ *
+ * Baris keduanya sengaja memakai nomor pesanan yang sama dengan baris pertama,
+ * karena begitulah cara menulis satu pesanan berisi dua barang — hal yang
+ * paling sering ditanyakan dan tidak terlihat kalau contohnya hanya satu baris.
+ */
+export function buildSalesTemplateRows(): string[][] {
+  return [
+    [...SALES_COLUMNS],
+    // Nomornya sengaja dibuat jelas-jelas contoh. Memakai nomor pesanan yang
+    // menyerupai aslinya membuat baris contoh ini bentrok dengan pesanan
+    // sungguhan dan ditolak sebagai duplikat saat template diunggah balik.
+    [
+      '#CONTOH-001', 'CONTOH-PLATFORM-001', '02/09/2026 19:34', 'Shopee',
+      'GB-415-41F-BLACK', '', 'Gear Belakang Yamaha Fizr', '1', '195000', '195000',
+      'Lunas', 'Selesai', 'Budi Santoso',
+    ],
+    [
+      '#CONTOH-001', 'CONTOH-PLATFORM-001', '02/09/2026 19:34', 'Shopee',
+      'RANTAI-415-130', '', 'Rantai 415-130 L', '1', '125000', '125000',
+      'Lunas', 'Selesai', 'Budi Santoso',
+    ],
+  ];
+}
+
+/** Bentuk CSV dari template, dengan penanda pemisah untuk Excel Indonesia. */
+export function buildSalesTemplate(): string {
+  const baris = buildSalesTemplateRows().map((r) => r.join(';'));
+  return `sep=;\r\n${baris.join('\r\n')}\r\n`;
 }
 
 /**
@@ -285,15 +565,14 @@ export async function runSalesImport(
       id: orderId,
       store_id: storeId,
       customer_id: null,
+      customer_name: pertama.customerName,
       cashier_id: null,
       order_number: grup.orderNumber,
       subtotal,
       tax: 0,
       discount: 0,
       total: subtotal,
-      // Penjualan lama tidak menyimpan metode bayarnya; dicatat 'other' supaya
-      // tidak mengaku-ngaku tunai dan mengacaukan rekap metode pembayaran.
-      payment_method: 'other' as PaymentMethod,
+      payment_method: pertama.paymentMethod,
       payment_status: pertama.paymentStatus,
       order_status: pertama.orderStatus,
       order_type: 'take_away',

@@ -536,6 +536,7 @@ export async function generate1000Data(
         id: orderId,
         store_id: targetStoreId,
         customer_id: cust?.id ?? null,
+        customer_name: null,
         cashier_id: actor,
         shift_id: seedUuid(`shift-${pad(Math.min(30, 31 - day), 3)}`),
         order_number: orderNumber,

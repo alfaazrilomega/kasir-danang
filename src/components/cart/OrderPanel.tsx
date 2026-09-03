@@ -174,6 +174,9 @@ Lanjutkan simpan?`,
       id: orderId,
       store_id: profile.store_id,
       customer_id: customerId,
+      // Nama pelanggan lepas belum diisi dari POS; kolomnya dipakai
+      // impor rekap marketplace.
+      customer_name: null,
       // Akun demo punya id non-UUID ('usr-cashier-001') yang tidak ada di
       // tabel profiles, jadi dikirim null agar order tetap tersimpan di server.
       cashier_id: isUuid(profile.id) ? profile.id : null,
