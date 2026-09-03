@@ -20,6 +20,37 @@ const sql = (q) =>
 const FROM = '2020-01-01';
 const TO = '2030-12-31';
 
+/** Cap isi database yang dipakai laporan ini. */
+const sidikJari = () =>
+  sql(
+    `select (select count(*) from public.orders)::text || '/' ||
+            (select count(*) from public.order_items)::text || '/' ||
+            (select count(*) from public.expenses)::text;`,
+  );
+
+const tidur = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Tunggu sampai isi database berhenti berubah.
+ *
+ * Aplikasi mendorong data contoh ke server TANPA menunggunya selesai
+ * (`void pushSeedToServer()` di src/stores/auth.ts) supaya layar login tidak
+ * tertahan belasan detik. Akibatnya baris masih berdatangan saat uji berjalan,
+ * sedangkan angka layar dan angka SQL dibaca pada dua saat yang berbeda — itu
+ * saja sudah cukup membuat keduanya berbeda tanpa ada yang salah.
+ */
+async function tungguTenang(batasMs = 90000) {
+  const mulai = Date.now();
+  let sebelum = sidikJari();
+  while (Date.now() - mulai < batasMs) {
+    await tidur(2500);
+    const sekarang = sidikJari();
+    if (sekarang === sebelum) return sekarang;
+    sebelum = sekarang;
+  }
+  return sebelum;
+}
+
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
@@ -32,6 +63,8 @@ const TO = '2030-12-31';
   page.on('pageerror', (e) => console.log('  [pageerror] ' + e.message));
 
   try {
+    await tungguTenang();
+
     await page.goto('http://localhost:5173/login', { waitUntil: 'networkidle' });
     await page.fill('input[type="email"]', 'admin@example.com');
     await page.fill('input[type="password"]', adminPw);
@@ -52,7 +85,7 @@ const TO = '2030-12-31';
     await page.getByRole('button', { name: /Laba Rugi/i }).first().click();
     await page.waitForTimeout(2500);
 
-    const ui = await page.evaluate(() => {
+    const bacaUI = () => page.evaluate(() => {
       const rows = Array.from(document.querySelectorAll('dl > div'));
       const grab = (label) => {
         const el = rows.find((r) => r.textContent.trim().startsWith(label));
@@ -74,19 +107,44 @@ const TO = '2030-12-31';
     const magnitude = (v) => Math.abs(num(v));
 
     // --- hitungan independen dari Postgres ---
-    const revenueSql = Number(sql(
-      `select coalesce(sum(total - tax),0)::bigint from public.orders
-        where order_status <> 'canceled'
-          and created_at::date between '${FROM}' and '${TO}';`));
-    const cogsSql = Number(sql(
-      `select coalesce(sum(coalesce(i.cost_price,0) * i.qty),0)::bigint
-         from public.order_items i
-         join public.orders o on o.id = i.order_id
-        where o.order_status <> 'canceled'
-          and o.created_at::date between '${FROM}' and '${TO}';`));
-    const opexSql = Number(sql(
-      `select coalesce(sum(amount),0)::bigint from public.expenses
-        where expense_date between '${FROM}' and '${TO}';`));
+    const bacaSql = () => ({
+      revenueSql: Number(sql(
+        `select coalesce(sum(total - tax),0)::bigint from public.orders
+          where order_status <> 'canceled'
+            and created_at::date between '${FROM}' and '${TO}';`)),
+      cogsSql: Number(sql(
+        `select coalesce(sum(coalesce(i.cost_price,0) * i.qty),0)::bigint
+           from public.order_items i
+           join public.orders o on o.id = i.order_id
+          where o.order_status <> 'canceled'
+            and o.created_at::date between '${FROM}' and '${TO}';`)),
+      opexSql: Number(sql(
+        `select coalesce(sum(amount),0)::bigint from public.expenses
+          where expense_date between '${FROM}' and '${TO}';`)),
+    });
+
+    // Angka layar dan angka SQL harus berasal dari isi database yang sama.
+    // Kalau berubah di antara dua pembacaan, keduanya dibaca ulang sekali —
+    // membandingkan dua keadaan berbeda hanya menghasilkan alarm palsu.
+    let sidikSebelum = sidikJari();
+    let ui = await bacaUI();
+    let { revenueSql, cogsSql, opexSql } = bacaSql();
+
+    if (sidikJari() !== sidikSebelum) {
+      console.log('  Isi database berubah saat dibaca; menunggu tenang lalu mengulang.');
+      await tungguTenang();
+      await page.reload({ waitUntil: 'networkidle' });
+      await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 1500 });
+      await dates.nth(0).fill(FROM);
+      await dates.nth(1).fill(TO);
+      await page.waitForTimeout(2500);
+      await page.getByRole('button', { name: /Laba Rugi/i }).first().click();
+      await page.waitForTimeout(2500);
+      sidikSebelum = sidikJari();
+      ui = await bacaUI();
+      ({ revenueSql, cogsSql, opexSql } = bacaSql());
+      record('Isi database tenang saat dibandingkan', sidikJari() === sidikSebelum);
+    }
 
     console.log(`  SQL  pendapatan=${revenueSql} hpp=${cogsSql} opex=${opexSql}`);
     console.log(`  UI   pendapatan=${magnitude(ui.revenue)} hpp=${magnitude(ui.cogs)} opex=${magnitude(ui.opex)}`);
