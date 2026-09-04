@@ -10,6 +10,7 @@ export const EXPENSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'perlengkapan', label: 'Perlengkapan Toko' },
   { value: 'perawatan', label: 'Perawatan & Perbaikan' },
   { value: 'pajak_retribusi', label: 'Pajak & Retribusi' },
+  { value: 'biaya_admin', label: 'Biaya Admin Pembayaran' },
   { value: 'lainnya', label: 'Lainnya' },
 ];
 

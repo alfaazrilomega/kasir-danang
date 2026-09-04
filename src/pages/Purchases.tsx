@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Check,
   CircleDollarSign,
+  Copy,
   Download,
   Eye,
   PackageCheck,
@@ -30,6 +31,7 @@ import { pullInventoryReference, pullPurchases, pullSuppliers, receivePurchase }
 import { cn, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
 import type {
+  Expense,
   Purchase,
   PurchaseItem,
   PurchasePayment,
@@ -135,6 +137,15 @@ function emptyForm(): FormState {
   };
 }
 
+/** Kunci draft nota yang belum disimpan, dipisah per toko. */
+const kunciDraft = (storeId: string) => `kasir:draft-nota:${storeId}`;
+
+/** Formulir dianggap berisi kalau sudah ada yang benar-benar diketik. */
+function adaIsi(f: FormState): boolean {
+  if (f.invoice_number.trim() || f.supplier_id || f.notes.trim()) return true;
+  return f.items.some((i) => i.name.trim() || i.product_id || Number(i.cost_price || 0) > 0);
+}
+
 export function Purchases() {
   const navigate = useNavigate();
   const { profile, store } = useAuth();
@@ -147,6 +158,23 @@ export function Purchases() {
   const [supplierFilter, setSupplierFilter] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+  /**
+   * Nota yang sedang diketik tapi belum disimpan.
+   *
+   * Sebelumnya isi formulir hilang begitu pengguna berpindah menu — dan nota
+   * pembelian itu panjang, berisi banyak baris barang. Kehilangan semuanya
+   * hanya karena salah klik membuat orang enggan memakai halaman ini.
+   */
+  const [draftTersimpan, setDraftTersimpan] = useState<FormState | null>(null);
+
+  function buangDraft() {
+    try {
+      localStorage.removeItem(kunciDraft(storeId));
+    } catch {
+      // Penyimpanan browser bisa ditolak; draft memang bukan sumber kebenaran.
+    }
+    setDraftTersimpan(null);
+  }
   const [busy, setBusy] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [payFor, setPayFor] = useState<Purchase | null>(null);
@@ -280,6 +308,78 @@ export function Purchases() {
     setFormOpen(true);
   }
 
+  /**
+   * Nomor nota salinan yang belum terpakai: PO-2026-001 -> PO-2026-001-2, -3.
+   *
+   * Akhiran angka pada nomor asalnya sengaja TIDAK dipotong. Nomor nota memang
+   * lazim berakhir angka (PO-2026-001), dan memotongnya membuat salinan
+   * PO-2026-001 bernomor "PO-2026-2" — nomor milik pesanan yang sama sekali
+   * lain.
+   */
+  function nomorSalinan(asal: string): string {
+    const terpakai = new Set(purchases.map((p) => p.invoice_number));
+    for (let i = 2; i < 100; i++) {
+      const calon = `${asal}-${i}`;
+      if (!terpakai.has(calon)) return calon;
+    }
+    return `${asal}-${Date.now().toString().slice(-4)}`;
+  }
+
+  /**
+   * Salin nota jadi nota BARU.
+   *
+   * Client memesan barang yang sama berulang kali ke supplier yang sama, dan
+   * mengetik ulang seluruh isinya tiap kali hanya menambah peluang salah ketik.
+   *
+   * Yang ikut disalin cuma isi pesanannya. Riwayatnya tidak: nomor nota baru,
+   * status kembali draft, tanggal hari ini, dan pembayaran maupun penerimaan
+   * barang jelas tidak ikut. Kursnya memakai kurs supplier hari ini karena ini
+   * pemesanan baru, bukan pengulangan pesanan lama.
+   */
+  function startDuplicate(purchase: Purchase) {
+    const rows = itemsByPurchase.get(purchase.id) ?? [];
+    const supplier = suppliers.find((s) => s.id === purchase.supplier_id);
+    const kurs = Number(supplier?.exchange_rate || purchase.exchange_rate || 16000);
+    const hariIni = new Date().toISOString().slice(0, 10);
+
+    setForm({
+      ...emptyForm(),
+      supplier_id: purchase.supplier_id ?? '',
+      invoice_number: nomorSalinan(purchase.invoice_number),
+      status: 'draft',
+      order_date: hariIni,
+      currency: purchase.currency || 'IDR',
+      exchange_rate: String(kurs),
+      discount: String(purchase.discount ?? 0),
+      tax: String(purchase.tax ?? 0),
+      other_cost: String(purchase.other_cost ?? 0),
+      dp_percent: String(purchase.dp_percent ?? 0),
+      notes: purchase.notes ?? '',
+      items: rows.length
+        ? rows.map((row, i) => ({
+            key: `salin-${i}-${uuid()}`,
+            product_id: row.product_id ?? '',
+            name: row.name,
+            sku: row.sku ?? '',
+            barcode: row.barcode ?? '',
+            qty: String(row.qty),
+            cost_price: String(
+              purchase.currency === 'USD'
+                ? row.original_cost_price ||
+                  (Number(purchase.exchange_rate) > 0
+                    ? row.cost_price / Number(purchase.exchange_rate)
+                    : row.cost_price)
+                : row.cost_price,
+            ),
+            note: row.note ?? '',
+          }))
+        : [blankItem()],
+    });
+    setDetailId(null);
+    setFormOpen(true);
+    toast.info('Nota disalin. Periksa tanggal, harga, dan kursnya sebelum disimpan.');
+  }
+
   /** Pilih supplier -> pakai termin, DP default, currency, dan kurs supplier itu. */
   function pickSupplier(supplierId: string) {
     const supplier = supplierById.get(supplierId);
@@ -292,14 +392,24 @@ export function Purchases() {
           .toISOString()
           .slice(0, 10)
       : '';
-    setForm((prev) => ({
-      ...prev,
-      supplier_id: supplierId,
-      due_date: prev.due_date || due,
-      dp_percent: Number(prev.dp_percent) > 0 ? prev.dp_percent : String(supplier.default_dp_percent),
-      currency: supplier.currency || prev.currency || 'IDR',
-      exchange_rate: String(supplier.exchange_rate || prev.exchange_rate || 16000),
-    }));
+    setForm((prev) => {
+      // Kurs supplier hanya diambil untuk nota BARU. Pada nota yang sudah ada,
+      // memilih ulang supplier yang sama pernah menarik kurs hari ini dan
+      // menimpa kurs historis notanya — nota $100 yang dibukukan Rp 1.600.000
+      // berubah jadi Rp 1.800.000 hanya karena kursnya bergerak.
+      const notaBaru = !prev.id;
+      return {
+        ...prev,
+        supplier_id: supplierId,
+        due_date: prev.due_date || due,
+        dp_percent:
+          Number(prev.dp_percent) > 0 ? prev.dp_percent : String(supplier.default_dp_percent),
+        currency: notaBaru ? supplier.currency || prev.currency || 'IDR' : prev.currency,
+        exchange_rate: notaBaru
+          ? String(supplier.exchange_rate || prev.exchange_rate || 16000)
+          : prev.exchange_rate,
+      };
+    });
   }
 
   function pickProduct(key: string, productId: string) {
@@ -365,6 +475,39 @@ export function Purchases() {
     });
   }
 
+  // Nota yang barangnya sudah diterima atau sudah dibayar nilainya sudah
+  // terjadi. Kurs dan mata uangnya dikunci di layar, dan ditolak juga oleh
+  // database (migrasi 018) supaya tidak bisa ditembus lewat jalur lain.
+  const notaBerjalan = form.id ? purchases.find((p) => p.id === form.id) : null;
+  const kursTerkunci = Boolean(
+    notaBerjalan && (notaBerjalan.received_at || Number(notaBerjalan.paid_amount ?? 0) > 0),
+  );
+
+  // Baca draft yang tertinggal saat halaman dibuka.
+  useEffect(() => {
+    if (!storeId) return;
+    try {
+      const isi = localStorage.getItem(kunciDraft(storeId));
+      if (!isi) return;
+      const tersimpan = JSON.parse(isi) as FormState;
+      if (adaIsi(tersimpan)) setDraftTersimpan(tersimpan);
+    } catch {
+      // Draft rusak atau penyimpanan tidak bisa dibaca: abaikan saja.
+    }
+  }, [storeId]);
+
+  // Simpan terus selama nota BARU sedang diketik. Nota yang sudah ada tidak
+  // ikut disimpan: isinya sudah aman di database, dan menyimpan salinannya
+  // hanya berisiko menimpa balik dengan versi lama.
+  useEffect(() => {
+    if (!storeId || !formOpen || form.id || !adaIsi(form)) return;
+    try {
+      localStorage.setItem(kunciDraft(storeId), JSON.stringify(form));
+    } catch {
+      // Kuota penuh atau mode privat: draft dilewati, bukan alasan gagal.
+    }
+  }, [form, formOpen, storeId]);
+
   const formTotals = useMemo(() => {
     const isUsd = form.currency === 'USD';
     const rate = Number(form.exchange_rate || 16000);
@@ -377,10 +520,20 @@ export function Purchases() {
       subtotal - Number(form.discount || 0) + Number(form.tax || 0) + Number(form.other_cost || 0);
     const dpAmount = (total * Number(form.dp_percent || 0)) / 100;
 
-    const totalIdr = isUsd ? total * rate : total;
-    const subtotalIdr = isUsd ? subtotal * rate : subtotal;
+    const rest = total - dpAmount;
+    const keIdr = (n: number) => (isUsd ? n * rate : n);
 
-    return { subtotal, total, dpAmount, rest: total - dpAmount, totalIdr, subtotalIdr };
+    return {
+      subtotal,
+      total,
+      dpAmount,
+      rest,
+      isUsd,
+      totalIdr: keIdr(total),
+      subtotalIdr: keIdr(subtotal),
+      dpAmountIdr: keIdr(dpAmount),
+      restIdr: keIdr(rest),
+    };
   }, [form]);
 
   async function save() {
@@ -487,6 +640,7 @@ export function Purchases() {
 
       await pullPurchases(storeId);
       toast.success(form.id ? 'Nota pembelian diperbarui.' : 'Nota pembelian dibuat.');
+      buangDraft();
       setFormOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan nota.');
@@ -578,6 +732,39 @@ export function Purchases() {
           </Button>
         </div>
       </div>
+
+      {/* Draft yang tertinggal ditawarkan, bukan dibuka paksa: pengguna yang
+          menentukan apakah masih dibutuhkan. */}
+      {draftTersimpan && !formOpen && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="text-sm text-amber-900 dark:text-amber-100">
+            <div className="font-semibold">Ada nota yang belum sempat disimpan</div>
+            <div className="text-xs">
+              {draftTersimpan.invoice_number.trim() || '(nomor nota belum diisi)'} ·{' '}
+              {draftTersimpan.items.filter((i) => i.name.trim() || i.product_id).length} baris barang
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                buangDraft();
+                toast.info('Draft nota dibuang.');
+              }}
+            >
+              Buang
+            </Button>
+            <Button
+              onClick={() => {
+                setForm(draftTersimpan);
+                setFormOpen(true);
+              }}
+            >
+              Lanjutkan
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -838,6 +1025,7 @@ export function Purchases() {
               <select
                 className="input"
                 value={form.currency}
+                disabled={kursTerkunci}
                 onChange={(e) => setForm({ ...form, currency: e.target.value })}
               >
                 <option value="IDR">Rupiah (IDR)</option>
@@ -850,8 +1038,13 @@ export function Purchases() {
                 type="number"
                 min={1}
                 value={form.exchange_rate}
+                disabled={kursTerkunci}
                 onChange={(e) => setForm({ ...form, exchange_rate: e.target.value })}
-                hint="Dikonversi otomatis ke HPP stok rupiah."
+                hint={
+                  kursTerkunci
+                    ? 'Terkunci: barang sudah diterima atau sudah ada pembayaran, jadi nilai notanya sudah terjadi.'
+                    : 'Dikonversi otomatis ke HPP stok rupiah.'
+                }
               />
             ) : (
               <div className="hidden sm:block" />
@@ -1060,22 +1253,43 @@ export function Purchases() {
           </div>
 
           <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-4 dark:border-brand-500/20 dark:bg-brand-950/25">
+            {/* Nota dalam USD selalu ditampilkan berikut nilai rupiahnya. Yang
+                dibayar supplier memang dolar, tapi yang masuk pembukuan rupiah
+                — menyembunyikan salah satunya memaksa orang menghitung sendiri
+                di kepala tiap kali membuka nota. */}
             <div className="grid gap-2 sm:grid-cols-2">
-              <SummaryLine label="Subtotal item" value={formatMoney(formTotals.subtotal, currency)} />
+              <SummaryLine
+                label="Subtotal item"
+                value={formatMoney(formTotals.subtotal, currency)}
+                secondary={
+                  formTotals.isUsd ? formatMoney(formTotals.subtotalIdr, 'IDR') : undefined
+                }
+              />
               <SummaryLine
                 label="Total nota"
                 value={formatMoney(formTotals.total, currency)}
+                secondary={formTotals.isUsd ? formatMoney(formTotals.totalIdr, 'IDR') : undefined}
                 strong
               />
               <SummaryLine
                 label={`DP ${formatNumber(Number(form.dp_percent || 0))}%`}
                 value={formatMoney(formTotals.dpAmount, currency)}
+                secondary={
+                  formTotals.isUsd ? formatMoney(formTotals.dpAmountIdr, 'IDR') : undefined
+                }
               />
               <SummaryLine
                 label="Sisa pelunasan"
                 value={formatMoney(formTotals.rest, currency)}
+                secondary={formTotals.isUsd ? formatMoney(formTotals.restIdr, 'IDR') : undefined}
               />
             </div>
+            {formTotals.isUsd && (
+              <p className="mt-2 text-[11px] text-ink-500 dark:text-ink-400">
+                Nilai rupiah dihitung pada kurs nota ini,{' '}
+                {formatMoney(Number(form.exchange_rate || 0), 'IDR')} per USD.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1136,6 +1350,7 @@ export function Purchases() {
               setDetailId(null);
               startEdit(detail);
             }}
+            onDuplicate={() => startDuplicate(detail)}
             onReceive={() => receive(detail)}
             onStatus={(status) => changeStatus(detail, status)}
             onDelete={() => removePurchase(detail)}
@@ -1156,12 +1371,32 @@ export function Purchases() {
   );
 }
 
-function SummaryLine({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function SummaryLine({
+  label,
+  value,
+  secondary,
+  strong,
+}: {
+  label: string;
+  value: string;
+  /** Nilai yang sama dalam rupiah, untuk nota berkurs. */
+  secondary?: string;
+  strong?: boolean;
+}) {
   return (
-    <div className="flex items-center justify-between text-sm">
+    <div className="flex items-start justify-between text-sm">
       <span className="text-ink-500">{label}</span>
-      <span className={cn('tabular-nums', strong ? 'text-base font-bold' : 'font-semibold')}>
-        {value}
+      <span className="text-right">
+        <span
+          className={cn('block tabular-nums', strong ? 'text-base font-bold' : 'font-semibold')}
+        >
+          {value}
+        </span>
+        {secondary && (
+          <span className="block text-xs tabular-nums text-ink-500 dark:text-ink-400">
+            {secondary}
+          </span>
+        )}
       </span>
     </div>
   );
@@ -1177,6 +1412,7 @@ function PurchaseDetail({
   busy,
   onPay,
   onEdit,
+  onDuplicate,
   onReceive,
   onStatus,
   onDelete,
@@ -1190,6 +1426,7 @@ function PurchaseDetail({
   busy: boolean;
   onPay: () => void;
   onEdit: () => void;
+  onDuplicate: () => void;
   onReceive: () => void;
   onStatus: (status: PurchaseStatus) => void;
   onDelete: () => void;
@@ -1366,6 +1603,9 @@ function PurchaseDetail({
         <Button variant="secondary" onClick={onEdit}>
           Edit nota
         </Button>
+        <Button variant="secondary" onClick={onDuplicate}>
+          <Copy size={14} /> Duplikat nota
+        </Button>
         {!purchase.received_at && purchase.status !== 'canceled' && (
           <Button variant="secondary" onClick={onReceive} disabled={busy}>
             <PackageCheck size={14} /> Terima barang
@@ -1433,6 +1673,8 @@ function PaymentModal({
   const [paidAt, setPaidAt] = useState(todayIso());
   const [reference, setReference] = useState('');
   const [note, setNote] = useState('');
+  /** Biaya jasa pihak ketiga untuk mengirim uangnya, bukan harga barang. */
+  const [adminFee, setAdminFee] = useState('0');
   const [busy, setBusy] = useState(false);
 
   const rest = purchase ? outstandingOf(purchase) : 0;
@@ -1448,6 +1690,7 @@ function PaymentModal({
     setPaidAt(todayIso());
     setReference('');
     setNote('');
+    setAdminFee('0');
   }, [purchase, hasDp, dpTarget, rest]);
 
   async function submit() {
@@ -1478,6 +1721,35 @@ function PaymentModal({
       };
       const { error } = await getBackendClient().from('purchase_payments').insert(row);
       if (error) throw error;
+
+      // Biaya jasa pengiriman uang dicatat sebagai pengeluaran usaha, BUKAN
+      // ditambahkan ke nota. Menambahkannya ke nota akan menaikkan harga modal
+      // barang yang harganya tidak berubah — HPP jadi salah dan laba kotor ikut
+      // salah. Biaya ini muncul karena memindahkan uang, bukan karena barang,
+      // jadi tempatnya di pengeluaran operasional.
+      const fee = Number(adminFee || 0);
+      if (fee > 0) {
+        const biaya: Expense = {
+          id: uuid(),
+          store_id: storeId,
+          category: 'biaya_admin',
+          description: `Biaya admin pembayaran nota ${purchase.invoice_number}`,
+          amount: fee,
+          expense_date: paidAt,
+          payment_method: method,
+          shift_id: null,
+          created_by: isUuid(profileId) ? profileId : null,
+          created_at: new Date().toISOString(),
+        };
+        const { error: feeError } = await getBackendClient().from('expenses').insert(biaya);
+        if (feeError) {
+          // Pembayarannya sendiri sudah tersimpan; jangan buat seolah gagal.
+          toast.error(`Pembayaran tersimpan, tapi biaya admin gagal dicatat: ${feeError.message}`);
+        } else {
+          await db.expenses.put(biaya);
+        }
+      }
+
       // paid_amount dihitung trigger di server, jadi tarik ulang supaya angka layar akurat.
       await pullPurchases(storeId);
       toast.success(
@@ -1592,6 +1864,24 @@ function PaymentModal({
               placeholder="No. transfer / bukti"
             />
           </div>
+          <Input
+            id="input-biaya-admin"
+            label="Biaya admin pengiriman uang (opsional)"
+            type="number"
+            min={0}
+            value={adminFee}
+            onChange={(e) => setAdminFee(e.target.value)}
+            placeholder="0"
+            hint="Biaya jasa pihak ketiga untuk mengirim uang ke supplier. Dicatat sebagai pengeluaran 'Biaya Admin Pembayaran', tidak menambah nilai nota — barangnya tidak jadi lebih mahal."
+          />
+          {Number(adminFee || 0) > 0 && (
+            <div className="rounded-xl border border-ink-200 px-3 py-2 text-xs text-ink-600 dark:border-ink-700 dark:text-ink-300">
+              Yang dibayar ke supplier {formatMoney(Number(amount || 0), currency)}, ditambah{' '}
+              {formatMoney(Number(adminFee || 0), currency)} biaya admin yang masuk pengeluaran
+              usaha. Total uang keluar {formatMoney(Number(amount || 0) + Number(adminFee || 0), currency)}.
+            </div>
+          )}
+
           <TextArea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
 
           <div className="flex justify-end gap-2 border-t border-ink-100 pt-3 dark:border-ink-800">

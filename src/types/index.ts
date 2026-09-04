@@ -267,6 +267,8 @@ export type ExpenseCategory =
   | 'perlengkapan'
   | 'perawatan'
   | 'pajak_retribusi'
+  /** Biaya jasa pihak ketiga saat mengirim uang ke supplier. */
+  | 'biaya_admin'
   | 'lainnya';
 
 export type ExpensePaymentMethod = 'cash' | 'transfer' | 'card' | 'ewallet' | 'other';
