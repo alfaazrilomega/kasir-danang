@@ -12,6 +12,7 @@ const SUITES = [
   'verify_purchase_revisions',
   'verify_product_sets',
   'verify_opname_import',
+  'verify_client_additions',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

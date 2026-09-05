@@ -66,6 +66,11 @@ const sql = (q) =>
     record('Halaman Stock Opname render', await page.getByText('Stock Opname').first().isVisible());
 
     await page.getByRole('button', { name: /Mulai Sesi Baru/i }).click();
+    await page.waitForTimeout(1000);
+    // Fase D menambah dialog tanggal opname sebelum sesi benar-benar dibuat
+    // (hitung fisik sering dikerjakan di gudang lebih dulu, diketik belakangan).
+    // Tanpa menekan "Mulai" di sini, tidak ada sesi yang terbentuk sama sekali.
+    await page.locator('div.fixed.inset-0').last().getByRole('button', { name: /^Mulai$/i }).click();
     await page.waitForTimeout(4000);
     const opnameRows = await page.locator('tbody tr').count();
     record('Sesi opname membekukan daftar produk', opnameRows > 0, opnameRows + ' produk');

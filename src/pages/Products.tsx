@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   BoxIcon,
+  Copy,
   Download,
   ImagePlus,
   Layers,
@@ -242,6 +243,49 @@ export function Products() {
       })),
     });
     setOpen(true);
+  }
+
+  /**
+   * Salin produk jadi produk BARU.
+   *
+   * Client sering punya barang yang sama persis tapi berbeda SKU — misalnya
+   * varian warna atau kode dari supplier berbeda. Mengetik ulang nama, harga,
+   * kategori, dan foto dari nol tiap kali hanya menambah peluang salah ketik.
+   *
+   * SKU dan barcode sengaja DIKOSONGKAN, bukan disalin: keduanya unik per
+   * produk, dan salinan yang membawa SKU asal akan ditolak saat disimpan.
+   * Pemetaan channel juga tidak ikut — satu SKU platform hanya boleh menunjuk
+   * ke satu produk, jadi menyalinnya berarti dua produk berebut SKU yang sama.
+   * Stok diawali dari nol karena salinan ini barang yang belum pernah dihitung
+   * fisik, bukan barang yang stoknya sudah diketahui.
+   */
+  function startDuplicate(p: Product) {
+    const isiSet = isiByParent.get(p.id) ?? [];
+    setForm({
+      name: `${p.name} (Salinan)`,
+      category_id: p.category_id,
+      sku: '',
+      barcode: '',
+      base_price: Number(p.base_price),
+      cost_price: Number(p.cost_price ?? 0),
+      image_url: p.image_url ?? '',
+      description: p.description ?? '',
+      is_active: p.is_active,
+      track_stock: p.track_stock ?? false,
+      stock_qty: 0,
+      min_stock: Number(p.min_stock ?? 0),
+      sizes: p.sizes ?? [],
+      channelMappings: [],
+      // Kalau produk asalnya sebuah set, susunan isinya ikut tersalin — itu
+      // bagian yang paling lama diketik ulang. Kalau bukan set, biarkan kosong.
+      setComponents: isiSet.map((c, i) => ({
+        key: `salin-${i}-${uuid()}`,
+        component_product_id: c.component_product_id,
+        qty: String(c.qty ?? 1),
+      })),
+    });
+    setOpen(true);
+    toast.info('Produk disalin. Isi SKU baru sebelum menyimpan — stok diawali dari 0.');
   }
 
   /**
@@ -586,10 +630,13 @@ export function Products() {
                       </td>
                       <td className="py-3">
                         <div className="flex justify-end gap-1">
-                          <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800">
+                          <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Edit">
                             <Pencil size={14} />
                           </button>
-                          <button onClick={() => remove(p)} className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10">
+                          <button onClick={() => startDuplicate(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Duplikat">
+                            <Copy size={14} />
+                          </button>
+                          <button onClick={() => remove(p)} className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Hapus">
                             <Trash2 size={14} />
                           </button>
                         </div>

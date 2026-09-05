@@ -82,8 +82,103 @@ export function buildReceiptHTML({ store, order, items, customerName }: ReceiptI
 </body></html>`;
 }
 
-export function printReceipt(input: ReceiptInput) {
-  const html = buildReceiptHTML(input);
+/**
+ * Faktur satu halaman penuh, untuk dicetak ke printer biasa (A4) atau
+ * disimpan sebagai PDF.
+ *
+ * Struk thermal di atas ditulis untuk kertas 80mm: `@page { size: 80mm auto }`
+ * memaksa lebar halaman, tapi kalau tujuan cetaknya printer/PDF biasa, aturan
+ * itu berbenturan dengan ukuran kertas sungguhan (A4) yang dipilih di kotak
+ * dialog cetak. Hasilnya struk kecil nangkring di pojok kiri atas halaman
+ * besar yang kosong — persis yang dikeluhkan client saat mencetak faktur
+ * untuk pesanan toko/grosir. Templat ini dibuat terpisah, bukan menambah
+ * ukuran font templat thermal, karena kerapatan tata letaknya memang berbeda:
+ * thermal mengejar hemat kertas gulung, faktur ini mengejar mudah dibaca satu
+ * halaman penuh dengan tabel barang yang jelas.
+ */
+export function buildInvoiceHTML({ store, order, items, customerName }: ReceiptInput): string {
+  const money = (n: number) => formatMoney(n, store.currency);
+  const rows = items
+    .map(
+      (it) => `
+        <tr>
+          <td>${escapeHtml(it.name)}${it.size ? ` <span class="muted">(${escapeHtml(it.size)})</span>` : ''}${it.note ? `<div class="note">Catatan: ${escapeHtml(it.note)}</div>` : ''}</td>
+          <td class="c">${it.qty}</td>
+          <td class="r">${money(it.price)}</td>
+          <td class="r">${money(it.price * it.qty)}</td>
+        </tr>`,
+    )
+    .join('');
+
+  const logoTag = store.logo_url
+    ? `<img class="logo" src="${escapeHtml(store.logo_url)}" alt="" />`
+    : '';
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(order.order_number)}</title>
+<style>
+  @page { size: A4; margin: 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'DM Sans', Arial, sans-serif; color: #111; margin: 0; font-size: 13px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 3px solid #111; padding-bottom: 14px; margin-bottom: 18px; }
+  .store { display: flex; gap: 12px; align-items: center; }
+  .logo { height: 52px; width: 52px; object-fit: cover; border-radius: 8px; }
+  .store h1 { font-size: 20px; margin: 0; }
+  .store .addr { color: #555; font-size: 12px; margin-top: 2px; max-width: 320px; }
+  .meta { text-align: right; font-size: 12px; }
+  .meta .no { font-size: 16px; font-weight: 700; }
+  .meta .status { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .5px; }
+  .status.paid { background: #dcfce7; color: #166534; }
+  .status.unpaid { background: #fee2e2; color: #991b1b; }
+  .row2 { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 16px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: #555; border-bottom: 2px solid #111; padding: 8px 4px; }
+  td { padding: 10px 4px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
+  .c { text-align: center; }
+  .r { text-align: right; white-space: nowrap; }
+  .muted { color: #777; font-size: 12px; }
+  .note { color: #777; font-size: 11px; margin-top: 2px; }
+  .totals { width: 320px; margin-left: auto; margin-top: 14px; font-size: 13px; }
+  .totals .line { display: flex; justify-content: space-between; padding: 4px 0; }
+  .totals .grand { border-top: 2px solid #111; margin-top: 6px; padding-top: 8px; font-size: 17px; font-weight: 700; }
+  .footer { margin-top: 40px; text-align: center; color: #555; font-size: 12px; border-top: 1px solid #e5e5e5; padding-top: 14px; }
+</style>
+</head><body>
+  <div class="head">
+    <div class="store">
+      ${logoTag}
+      <div>
+        <h1>${escapeHtml(store.name)}</h1>
+        ${store.address ? `<div class="addr">${escapeHtml(store.address)}</div>` : ''}
+      </div>
+    </div>
+    <div class="meta">
+      <div class="no">${escapeHtml(order.order_number)}</div>
+      <div>${formatDateTime(order.created_at)}</div>
+      <span class="status ${order.payment_status === 'paid' ? 'paid' : 'unpaid'}">${order.payment_status === 'paid' ? 'LUNAS' : 'BELUM LUNAS'}</span>
+    </div>
+  </div>
+  <div class="row2">
+    <div>${customerName ? `<strong>Pelanggan:</strong> ${escapeHtml(customerName)}` : ''}</div>
+    <div><strong>Tipe:</strong> ${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · Meja ${escapeHtml(order.table_number)}` : ''}</div>
+  </div>
+  <table>
+    <thead><tr><th>Barang</th><th class="c">Qty</th><th class="r">Harga</th><th class="r">Subtotal</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="totals">
+    <div class="line"><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
+    ${order.discount > 0 ? `<div class="line"><span>Diskon${order.promo_code ? ` (${escapeHtml(order.promo_code)})` : ''}</span><span>-${money(order.discount)}</span></div>` : ''}
+    <div class="line"><span>Pajak</span><span>${money(order.tax)}</span></div>
+    <div class="line grand"><span>TOTAL</span><span>${money(order.total)}</span></div>
+    <div class="line"><span>Bayar (${order.payment_method.toUpperCase()})</span><span>${money(order.received_amount ?? order.total)}</span></div>
+    ${order.change_amount && order.change_amount > 0 ? `<div class="line"><span>Kembali</span><span>${money(order.change_amount)}</span></div>` : ''}
+  </div>
+  <div class="footer">${store.receipt_footer ? escapeHtml(store.receipt_footer) : 'Terima kasih atas kunjungan Anda!'}</div>
+<script>window.addEventListener('load', () => { setTimeout(() => window.print(), 100); });</script>
+</body></html>`;
+}
+
+function printHtml(html: string, title: string) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.right = '0';
@@ -91,15 +186,24 @@ export function printReceipt(input: ReceiptInput) {
   iframe.style.width = '0';
   iframe.style.height = '0';
   iframe.style.border = '0';
+  iframe.title = title;
   document.body.appendChild(iframe);
   const idoc = iframe.contentDocument!;
   idoc.open();
   idoc.write(html);
   idoc.close();
-  // Cleanup after print dialog closes
   iframe.contentWindow?.addEventListener('afterprint', () => {
     setTimeout(() => document.body.removeChild(iframe), 500);
   });
+}
+
+/** Cetak faktur A4, untuk printer biasa atau disimpan sebagai PDF satu halaman penuh. */
+export function printInvoice(input: ReceiptInput) {
+  printHtml(buildInvoiceHTML(input), input.order.order_number);
+}
+
+export function printReceipt(input: ReceiptInput) {
+  printHtml(buildReceiptHTML(input), input.order.order_number);
 }
 
 export function buildReceiptText({ store, order, items, customerName }: ReceiptInput): string {

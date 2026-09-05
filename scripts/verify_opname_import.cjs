@@ -99,7 +99,13 @@ const [thn, bln, tgl] = tanggalLalu.split('-');
       for (let i = 2; i < baris.length && i < 5; i++) {
         const kolom = baris[i].split(';');
         if (i === 2) {
-          kolom[idxHitung] = String(Number(kolom[idxStok]) - 3); // selisih kurang
+          // Math.max(0, ...): stok sistem produk ini terus berkurang lewat
+          // suite lain yang jalan lebih dulu (jual, retur, dst). Mengurangi 3
+          // tanpa penjagaan bisa menghasilkan hitungan fisik negatif ketika
+          // stok sistemnya sudah kecil, dan itu memang benar ditolak
+          // aplikasi — tapi berarti uji ini gagal karena angka ujinya sendiri
+          // yang keliru, bukan karena fiturnya rusak.
+          kolom[idxHitung] = String(Math.max(0, Number(kolom[idxStok]) - 3)); // selisih kurang
         } else if (i === 3) {
           sku2 = kolom[idxSku];
           stokSistem2 = Number(kolom[idxStok]);

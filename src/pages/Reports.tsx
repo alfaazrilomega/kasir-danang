@@ -120,6 +120,35 @@ export function Reports() {
 
   const orders =
     useLiveQuery(() => db.orders.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  /**
+   * Saring seluruh laporan ke satu channel saja.
+   *
+   * Client menjelaskan lewat contoh nyata: laporan Harian tanggal 1-30 hanya
+   * menampilkan total gabungan semua channel per hari, sementara yang mereka
+   * butuhkan untuk rapat adalah bisa melihat "tanggal 1-30 khusus TikTok Shop"
+   * — bukan cuma total per channel untuk seluruh rentang tanggal (yang sudah
+   * ada di tab Channel & Piutang). Saringan ini bukan cuma untuk tab Harian:
+   * dipasang di sumber datanya (`cur`/`prev`/`canceledInRange`) supaya SEMUA
+   * tab — Harian, Per Shift, Per Kasir, Laba Rugi, Best Sellers — ikut
+   * memperlihatkan angka channel itu saja, konsisten satu sama lain.
+   */
+  const [channelFilter, setChannelFilter] = useState('all');
+  const channelRows =
+    useLiveQuery(() => db.sales_channels.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const scopedOrders = useMemo(
+    () =>
+      channelFilter === 'all'
+        ? orders
+        : orders.filter((o) => (o.sales_channel ?? 'offline') === channelFilter),
+    [orders, channelFilter],
+  );
+  // Daftar pilihan dropdown diambil dari channel yang benar-benar dipakai di
+  // seluruh riwayat pesanan, bukan dari master channel — channel yang sudah
+  // dihapus tapi masih punya pesanan lama tetap harus bisa disaring.
+  const channelCodesInData = useMemo(
+    () => [...new Set(orders.map((o) => o.sales_channel ?? 'offline'))].sort(),
+    [orders],
+  );
   const items = useLiveQuery(() => db.order_items.toArray(), []) ?? [];
   const products =
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
@@ -143,19 +172,19 @@ export function Reports() {
 
   const cur = useMemo(
     () =>
-      orders.filter((o) => {
+      scopedOrders.filter((o) => {
         const ts = new Date(o.created_at).getTime();
         return ts >= ranges.fStart && ts <= ranges.tEnd && o.order_status !== 'canceled';
       }),
-    [orders, ranges],
+    [scopedOrders, ranges],
   );
   const prev = useMemo(
     () =>
-      orders.filter((o) => {
+      scopedOrders.filter((o) => {
         const ts = new Date(o.created_at).getTime();
         return ts >= ranges.prevStart && ts <= ranges.prevEnd && o.order_status !== 'canceled';
       }),
-    [orders, ranges],
+    [scopedOrders, ranges],
   );
 
   // Retur dipetakan ke periode lewat tanggal returnya, bukan tanggal pesanan
@@ -328,11 +357,11 @@ export function Reports() {
 
   const canceledInRange = useMemo(
     () =>
-      orders.filter((o) => {
+      scopedOrders.filter((o) => {
         const ts = new Date(o.created_at).getTime();
         return ts >= ranges.fStart && ts <= ranges.tEnd && o.order_status === 'canceled';
       }),
-    [orders, ranges],
+    [scopedOrders, ranges],
   );
 
   const cashierRows = useMemo(
@@ -347,9 +376,6 @@ export function Reports() {
       }),
     [cur, canceledInRange, items, productById, shiftsInRange, users],
   );
-  const channelRows =
-    useLiveQuery(() => db.sales_channels.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
-
   // Rekap per channel + piutang yang belum cair pada rentang ini.
   const channelReport = useMemo(() => {
     const map = new Map<
@@ -532,7 +558,16 @@ export function Reports() {
         ]);
       }
     }
-    downloadCsv(csvFilename('laporan-' + tab, from + '_' + to), buildCsv(headers, rows));
+    // Nama berkas menyebut channel yang sedang disaring, supaya berkas yang
+    // dibawa ke rapat jelas isinya cuma satu channel, bukan gabungan semua.
+    const namaChannel =
+      channelFilter === 'all'
+        ? ''
+        : '_' + channelLabel(channelFilter, channelRows).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    downloadCsv(
+      csvFilename('laporan-' + tab + namaChannel, from + '_' + to),
+      buildCsv(headers, rows),
+    );
   }
 
   const trendHint = 'vs periode sebelumnya';
@@ -562,6 +597,21 @@ export function Reports() {
                 className="bg-transparent focus:outline-none"
               />
             </div>
+            {/* Saring seluruh laporan ke satu channel: "tanggal 1-30 khusus
+                TikTok Shop", bukan cuma total gabungan semua channel per hari. */}
+            <select
+              value={channelFilter}
+              onChange={(e) => setChannelFilter(e.target.value)}
+              className="rounded-full bg-white px-3 py-1.5 text-sm text-ink-900 focus:outline-none"
+              title="Saring seluruh laporan ke satu channel"
+            >
+              <option value="all">Semua channel</option>
+              {channelCodesInData.map((code) => (
+                <option key={code} value={code}>
+                  {channelLabel(code, channelRows)}
+                </option>
+              ))}
+            </select>
             <Button onClick={exportCSV} variant="onBrand">
               <Download size={16} /> Export CSV
             </Button>

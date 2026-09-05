@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   Download,
+  FileText,
   Loader2,
   Mail,
   MessageCircle,
@@ -17,6 +18,7 @@ import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import {
   buildReceiptText,
   mailtoLink,
+  printInvoice,
   printReceipt,
   whatsappLink,
 } from '@/lib/receipt';
@@ -241,7 +243,13 @@ export function ReceiptModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        {/* Dua pilihan cetak, bukan satu: struk thermal 80mm memaksa lebar
+            halaman lewat @page, dan itu berbenturan dengan kertas A4 kalau
+            tujuan cetaknya printer biasa atau simpan PDF — hasilnya struk
+            kecil nangkring di pojok halaman kosong. Faktur A4 punya templat
+            sendiri yang memang dirancang mengisi satu halaman penuh, dipakai
+            saat toko/pembeli grosir minta faktur yang bisa dibaca jelas. */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Button
             variant="secondary"
             onClick={() =>
@@ -249,7 +257,16 @@ export function ReceiptModal({
             }
             title="Cetak ke printer thermal 80mm"
           >
-            <Printer size={14} /> Cetak
+            <Printer size={14} /> Thermal
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              printInvoice({ store, order, items, customerName: customer?.name })
+            }
+            title="Cetak faktur satu halaman penuh (A4), atau simpan sebagai PDF"
+          >
+            <FileText size={14} /> Faktur A4
           </Button>
           <Button variant="secondary" onClick={copyText} title="Salin teks struk">
             <Copy size={14} /> Salin

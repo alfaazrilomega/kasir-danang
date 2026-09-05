@@ -5,6 +5,7 @@ import {
   Calendar,
   Download,
   Eye,
+  FileText,
   Filter,
   Landmark,
   MessageCircle,
@@ -41,7 +42,7 @@ import type {
   PaymentMethod,
 } from '@/types';
 import { useNavigate } from '@/lib/router';
-import { buildReceiptText, printReceipt, whatsappLink } from '@/lib/receipt';
+import { buildReceiptText, printInvoice, printReceipt, whatsappLink } from '@/lib/receipt';
 
 type StatusFilter = 'all' | 'done' | 'pending' | 'canceled';
 type PaymentFilter = 'all' | PaymentMethod;
@@ -302,7 +303,15 @@ export function Orders() {
     return m;
   }, [filtered]);
 
-  function reprint(o: Order) {
+  /**
+   * Cetak ulang.
+   *
+   * `format: 'invoice'` dipakai untuk pesanan toko/grosir yang minta faktur
+   * satu halaman penuh (A4) — struk thermal memaksa lebar 80mm lewat @page,
+   * dan itu berbenturan dengan kertas A4 saat dicetak ke printer biasa atau
+   * disimpan sebagai PDF, membuat struknya kecil nangkring di pojok halaman.
+   */
+  function reprint(o: Order, format: 'thermal' | 'invoice' = 'thermal') {
     if (!store) return;
     db.order_items
       .where('order_id')
@@ -310,7 +319,8 @@ export function Orders() {
       .toArray()
       .then((its) => {
         if (!its.length) return;
-        printReceipt({ store, order: o, items: its });
+        if (format === 'invoice') printInvoice({ store, order: o, items: its });
+        else printReceipt({ store, order: o, items: its });
       });
   }
 
@@ -676,9 +686,16 @@ export function Orders() {
                         <button
                           onClick={() => reprint(o)}
                           className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
-                          title="Cetak ulang struk"
+                          title="Cetak ulang struk thermal"
                         >
                           <Printer size={14} />
+                        </button>
+                        <button
+                          onClick={() => reprint(o, 'invoice')}
+                          className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                          title="Cetak faktur A4 (untuk pesanan toko/grosir)"
+                        >
+                          <FileText size={14} />
                         </button>
                         <button
                           onClick={() => shareWA(o)}
@@ -838,8 +855,11 @@ export function Orders() {
               <Button variant="secondary" onClick={() => shareWA(selected)}>
                 <MessageCircle size={14} /> WhatsApp
               </Button>
-              <Button onClick={() => reprint(selected)}>
-                <Printer size={14} /> Cetak ulang
+              <Button variant="secondary" onClick={() => reprint(selected)}>
+                <Printer size={14} /> Cetak Thermal
+              </Button>
+              <Button onClick={() => reprint(selected, 'invoice')}>
+                <FileText size={14} /> Cetak Faktur A4
               </Button>
             </div>
           </div>

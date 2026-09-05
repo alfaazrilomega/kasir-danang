@@ -123,18 +123,35 @@ export async function exportOrdersBySKU(
   return rows.length;
 }
 
-/** Export stock movements grouped by SKU. */
+/**
+ * Export stock movements grouped by SKU.
+ *
+ * Kolom Channel dan No. Pesanan Platform ditambahkan supaya berkas ini bisa
+ * dipakai mencocokkan kartu stok fisik gudang dengan sistem: baris penjualan
+ * ditelusuri balik ke pesanannya lewat ref_order_id, untuk tahu barang keluar
+ * lewat channel mana dan nomor pesanan berapa. Baris jenis lain (restock,
+ * adjust) tidak berasal dari pesanan, jadi kedua kolom itu dikosongkan.
+ */
 export async function exportStockMovementsBySKU(movementList?: StockMovement[]) {
   // Beri daftar terfilter untuk mengekspor persis yang tampil di layar.
   const movements = movementList ?? (await db.stock_movements.toArray());
   const products = await db.products.toArray();
   const prodMap = Object.fromEntries(products.map(p => [p.id, p]));
 
-  const headers = ['SKU', 'Barcode', 'Nama Produk', 'Jenis', 'Perubahan Stok', 'Alasan', 'Tanggal'];
+  const orderIds = [...new Set(movements.map((m) => m.ref_order_id).filter((id): id is string => !!id))];
+  const orders = orderIds.length ? await db.orders.bulkGet(orderIds) : [];
+  const orderMap = new Map(orders.filter((o): o is Order => !!o).map((o) => [o.id, o]));
+  const channelRows = await db.sales_channels.toArray();
+
+  const headers = [
+    'SKU', 'Barcode', 'Nama Produk', 'Jenis', 'Perubahan Stok', 'Alasan', 'Tanggal',
+    'Channel', 'No. Pesanan Platform',
+  ];
   const rows = movements
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .map(m => {
       const prod = prodMap[m.product_id || ''];
+      const order = m.ref_order_id ? orderMap.get(m.ref_order_id) : null;
       return [
         text(prod?.sku),
         text(prod?.barcode),
@@ -143,6 +160,8 @@ export async function exportStockMovementsBySKU(movementList?: StockMovement[]) 
         int(m.qty_delta),
         text(m.reason),
         fmtDateTime(m.created_at),
+        order ? text(channelLabel(order.sales_channel, channelRows)) : '',
+        order ? text(order.external_order_no) : '',
       ];
     });
 
