@@ -11,6 +11,7 @@ const SUITES = [
   'verify_marketplace_import', 'verify_pos_online', 'verify_purchase_rate_lock',
   'verify_purchase_revisions',
   'verify_product_sets',
+  'verify_opname_import',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

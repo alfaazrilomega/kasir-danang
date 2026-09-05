@@ -14,7 +14,7 @@ const sql = (q) => execFileSync(PSQL, ['-U','kasir_user','-h','127.0.0.1','-d','
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   trackApi(page);
   const results = [];
   const record = (n, p, d) => { results.push({ n, p }); console.log((p?'PASS  ':'FAIL  ')+n+(d?' — '+d:'')); };
@@ -110,6 +110,27 @@ const sql = (q) => execFileSync(PSQL, ['-U','kasir_user','-h','127.0.0.1','-d','
     }));
     record('Jumlah penyesuaian cocok dengan data yang ditarik',
       adjRows === adjLocal, `UI ${adjRows} vs lokal ${adjLocal}`);
+
+    // Butir client 3.2: histori mutasi yang sedang disaring bisa diunduh,
+    // bekal pelacakan barang di luar sistem.
+    const unduhan = await Promise.all([
+      page.waitForEvent('download', { timeout: 30000 }),
+      page.getByRole('button', { name: /Export CSV/i }).click(),
+    ]).then((r) => r[0]).catch(() => null);
+    record('Export CSV pada filter Penyesuaian menghasilkan berkas', !!unduhan);
+    if (unduhan) {
+      const p = path.join(__dirname, '..', 'audit_screenshots', 'tmp_mutasi_export.csv');
+      await unduhan.saveAs(p);
+      const teks = fs.readFileSync(p, 'utf8').replace(/^﻿/, '');
+      const baris = teks.trim().split(/\r?\n/);
+      record('Berkas ekspor mengikuti hasil filter, bukan seluruh histori',
+        baris.length - 2 === adjRows, `${baris.length - 2} baris vs ${adjRows} tampil`);
+      record('Berkas ekspor hanya berisi jenis Penyesuaian', !/Penjualan/.test(teks));
+      fs.unlinkSync(p);
+    } else {
+      record('Berkas ekspor mengikuti hasil filter, bukan seluruh histori', false);
+      record('Berkas ekspor hanya berisi jenis Penyesuaian', false);
+    }
 
     // filter pencarian
     await page.locator('select').first().selectOption('all');

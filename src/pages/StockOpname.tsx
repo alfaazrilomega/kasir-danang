@@ -20,18 +20,27 @@ import {
   Save,
   Search,
   Send,
+  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
 import { pullInventoryReference, pullStockOpnames, postStockOpname } from '@/lib/sync';
 import { cn, formatNumber, isUuid, uuid, errorMessage } from '@/lib/format';
+import { StockOpnameImportModal } from '@/components/data/StockOpnameImportModal';
+import type { OpnameImportPlan } from '@/lib/stockOpnameImport';
 import type { StockOpname, StockOpnameItem } from '@/types';
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function StockOpnamePage() {
   const { profile } = useAuth();
@@ -41,6 +50,17 @@ export function StockOpnamePage() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const [onlyDiff, setOnlyDiff] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  /**
+   * Tanggal sesi baru dibuat, sengaja bisa diatur.
+   *
+   * Hitung fisik sering dikerjakan di gudang pada satu hari lalu baru
+   * diketik/diunggah ke sistem beberapa hari kemudian. Tanpa ini sesinya
+   * selalu tercatat pada tanggal upload, bukan tanggal hitungnya benar-benar
+   * dilakukan — riwayat opname jadi tidak sesuai kenyataan lapangan.
+   */
+  const [sessionDateOpen, setSessionDateOpen] = useState(false);
+  const [sessionDate, setSessionDate] = useState(todayIso);
 
   useEffect(() => {
     if (!storeId) return;
@@ -124,7 +144,7 @@ export function StockOpnamePage() {
     return { total: items.length, counted, plus, minus };
   }, [items, counts]);
 
-  async function createSession() {
+  async function createSession(tanggal: string) {
     if (!storeId) return;
     const tracked = products.filter((p) => p.track_stock);
     if (!tracked.length) {
@@ -134,13 +154,16 @@ export function StockOpnamePage() {
     setBusy(true);
     try {
       const api = getBackendClient();
+      // Jam 12 siang dipakai supaya tanggal yang dipilih tidak bergeser ke
+      // hari sebelumnya akibat konversi zona waktu saat disimpan sebagai UTC.
+      const mulai = tanggal === todayIso() ? new Date() : new Date(`${tanggal}T12:00:00`);
       const opname: StockOpname = {
         id: uuid(),
         store_id: storeId,
         status: 'draft',
         note: null,
         counted_by: isUuid(profile?.id) ? profile!.id : null,
-        started_at: new Date().toISOString(),
+        started_at: mulai.toISOString(),
         posted_at: null,
         created_at: new Date().toISOString(),
       };
@@ -317,11 +340,76 @@ export function StockOpnamePage() {
           <Button onClick={() => void exportSesi()} disabled={!active} variant="onBrandSoft">
             <Download size={16} /> Export CSV
           </Button>
-          <Button onClick={createSession} disabled={busy} variant="onBrand">
+          <Button
+            onClick={() => setImportOpen(true)}
+            disabled={!active || locked}
+            variant="onBrandSoft"
+            title={
+              !active
+                ? 'Mulai sesi opname dulu'
+                : locked
+                  ? 'Sesi ini sudah diposting/dibatalkan'
+                  : undefined
+            }
+          >
+            <Upload size={16} /> Impor Hasil Hitung
+          </Button>
+          <Button onClick={() => setSessionDateOpen(true)} disabled={busy} variant="onBrand">
             <Play size={16} /> Mulai Sesi Baru
           </Button>
         </div>
       </div>
+
+      <Modal
+        open={sessionDateOpen}
+        onClose={() => setSessionDateOpen(false)}
+        title="Mulai Sesi Opname"
+        size="sm"
+      >
+        <div className="space-y-3">
+          <Input
+            label="Tanggal opname"
+            type="date"
+            max={todayIso()}
+            value={sessionDate}
+            onChange={(e) => setSessionDate(e.target.value)}
+            hint="Isi tanggal saat hitung fisik benar-benar dilakukan di gudang, bukan tanggal hari ini kalau berbeda."
+          />
+          <div className="flex justify-end gap-2 border-t border-ink-100 pt-3 dark:border-ink-800">
+            <Button variant="secondary" onClick={() => setSessionDateOpen(false)}>
+              Batal
+            </Button>
+            <Button
+              onClick={async () => {
+                await createSession(sessionDate);
+                setSessionDateOpen(false);
+                setSessionDate(todayIso());
+              }}
+              disabled={busy}
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />} Mulai
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {active && (
+        <StockOpnameImportModal
+          open={importOpen}
+          sessionItems={items}
+          products={products}
+          onClose={() => setImportOpen(false)}
+          onApply={(plan: OpnameImportPlan) => {
+            // Digabung ke atas `counts` yang sedang diketik, bukan menimpa
+            // seluruhnya dari data tersimpan — baris lain yang sudah diketik
+            // manual tapi belum disimpan tidak boleh ikut hilang.
+            setCounts((c) => ({
+              ...c,
+              ...Object.fromEntries(plan.rows.map((r) => [r.productId, String(r.countedQty)])),
+            }));
+          }}
+        />
+      )}
 
       {sorted.length > 0 && (
         <Card className="p-3">
