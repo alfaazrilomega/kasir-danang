@@ -130,7 +130,8 @@ const TABLES = {
       'received_amount', 'change_amount', 'points_earned', 'created_at',
       'sales_channel', 'payment_term', 'due_date', 'paid_amount', 'settled_at',
       'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
-      'adjusted_by', 'external_order_no', 'customer_name',
+      'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
+      'delivery_address',
     ],
     tenantColumn: 'store_id',
   },
@@ -923,6 +924,197 @@ app.delete('/api/admin/users/:id', requireUser, requireRoles(['admin']), asyncHa
   }
 }));
 
+// ---- Checkout publik (storefront tanpa login) ------------------------------
+//
+// Satu-satunya jalur tulis di server ini yang SENGAJA tidak lewat requireUser.
+// Belum ada payment gateway di jalur ini, jadi pesanan masuk berstatus
+// 'awaiting_confirmation' dan TIDAK memotong stok — staff mengonfirmasinya
+// lewat RPC confirm_web_order (di bawah), yang baru saat itu memanggil
+// apply_order_stock. Karena ini publik, semua angka (harga, nama produk)
+// dihitung ulang dari database sendiri, tidak pernah dipercaya dari body.
+// Bisa disetel lewat env supaya bisa dilonggarkan saat pengujian berulang dan
+// diperketat di produksi tanpa mengubah kode.
+const PUBLIC_ORDER_RATE_LIMIT = {
+  windowMs: Number(process.env.PUBLIC_ORDER_RATE_WINDOW_MS) || 10 * 60 * 1000,
+  max: Number(process.env.PUBLIC_ORDER_RATE_MAX) || 5,
+};
+const publicOrderRateState = new Map(); // ip -> { count, windowStart }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidLike(value) {
+  return UUID_RE.test(String(value ?? ''));
+}
+
+function publicOrderClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim();
+  return forwarded || req.socket?.remoteAddress || 'unknown';
+}
+
+function assertPublicOrderRateLimit(ip) {
+  const now = Date.now();
+  const entry = publicOrderRateState.get(ip);
+  if (!entry || now - entry.windowStart > PUBLIC_ORDER_RATE_LIMIT.windowMs) {
+    publicOrderRateState.set(ip, { count: 1, windowStart: now });
+    return;
+  }
+  entry.count += 1;
+  if (entry.count > PUBLIC_ORDER_RATE_LIMIT.max) {
+    throw new HttpError(429, 'Terlalu banyak percobaan checkout, coba lagi nanti.');
+  }
+}
+
+app.post('/api/public/orders', asyncHandler(async (req, res) => {
+  assertPublicOrderRateLimit(publicOrderClientIp(req));
+
+  const body = req.body ?? {};
+  const storeId = String(body.store_id ?? '').trim();
+  const customerName = String(body.customer_name ?? '').trim();
+  const customerPhone = String(body.customer_phone ?? '').trim();
+  const deliveryAddress = String(body.delivery_address ?? '').trim();
+  const paymentMethod = String(body.payment_method ?? '').trim();
+  const notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  if (!customerName || customerName.length > 120) {
+    throw new HttpError(400, 'Nama penerima wajib diisi (maks 120 karakter).');
+  }
+  if (!customerPhone || customerPhone.length > 20) {
+    throw new HttpError(400, 'Nomor HP wajib diisi (maks 20 karakter).');
+  }
+  if (!deliveryAddress || deliveryAddress.length > 500) {
+    throw new HttpError(400, 'Alamat kirim wajib diisi (maks 500 karakter).');
+  }
+  if (!['cash', 'qris'].includes(paymentMethod)) {
+    throw new HttpError(400, 'Metode bayar tidak dikenali.');
+  }
+  if (!items.length || items.length > 30) {
+    throw new HttpError(400, 'Jumlah baris pesanan tidak valid (maksimal 30 baris).');
+  }
+
+  const cleanItems = items.map((it) => {
+    const productId = String(it?.product_id ?? '');
+    const qty = Number(it?.qty);
+    if (!isUuidLike(productId)) throw new HttpError(400, 'product_id tidak valid.');
+    if (!Number.isInteger(qty) || qty < 1 || qty > 50) {
+      throw new HttpError(400, 'Qty per baris harus bilangan bulat 1-50.');
+    }
+    return {
+      product_id: productId,
+      qty,
+      size: it?.size ? String(it.size).slice(0, 60) : null,
+      note: it?.note ? String(it.note).slice(0, 200) : null,
+    };
+  });
+
+  const store = await pool.query('select id from public.stores where id = $1', [storeId]);
+  if (!store.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+
+  const productIds = [...new Set(cleanItems.map((it) => it.product_id))];
+  const productRows = await pool.query(
+    `select id, name, base_price, cost_price from public.products
+     where id = any($1::uuid[]) and store_id = $2 and is_active = true`,
+    [productIds, storeId],
+  );
+  const productById = new Map(productRows.rows.map((p) => [p.id, p]));
+  if (productById.size !== productIds.length) {
+    throw new HttpError(400, 'Ada produk yang sudah tidak tersedia, muat ulang halaman.');
+  }
+
+  const orderId = crypto.randomUUID();
+  const nowIso = new Date().toISOString();
+  const orderNumber =
+    `WEB-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+
+  let subtotal = 0;
+  const orderItems = cleanItems.map((it) => {
+    const product = productById.get(it.product_id);
+    const price = Number(product.base_price);
+    subtotal += price * it.qty;
+    return {
+      id: crypto.randomUUID(),
+      product_id: it.product_id,
+      name: product.name,
+      size: it.size,
+      qty: it.qty,
+      price,
+      cost_price: product.cost_price != null ? Number(product.cost_price) : null,
+      note: it.note,
+    };
+  });
+  // TODO: tambahkan ongkir dari KiriminAja di sini saat integrasinya siap.
+  const total = subtotal;
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    await client.query(
+      `insert into public.orders (
+        id, store_id, customer_id, cashier_id, shift_id, order_number,
+        subtotal, tax, discount, total, payment_method, payment_status,
+        order_status, order_type, table_number, notes, created_at,
+        sales_channel, payment_term, due_date, paid_amount, settled_at,
+        customer_name, customer_phone, delivery_address, points_earned
+      ) values (
+        $1, $2, null, null, null, $3,
+        $4, 0, 0, $4, $5, 'unpaid',
+        'awaiting_confirmation', 'take_away', null, $6, $7,
+        'website', 'cash', null, 0, null,
+        $8, $9, $10, 0
+      )`,
+      [orderId, storeId, orderNumber, total, paymentMethod, notes, nowIso, customerName, customerPhone, deliveryAddress],
+    );
+    for (const item of orderItems) {
+      await client.query(
+        `insert into public.order_items (id, order_id, product_id, name, size, qty, price, cost_price, note)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [item.id, orderId, item.product_id, item.name, item.size, item.qty, item.price, item.cost_price, item.note],
+      );
+    }
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  res.json({ data: { order_id: orderId, order_number: orderNumber } });
+}));
+
+// Katalog untuk storefront publik. Sama-sama tanpa requireUser: /api/query
+// (dipakai pullCustomerCatalog untuk role customer yang SUDAH login) menolak
+// permintaan tanpa token, jadi pengunjung anonim butuh jalur baca sendiri.
+// Cuma kolom yang aman ditampilkan ke publik yang di-select.
+app.get('/api/public/catalog', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+
+  const storeRes = await pool.query(
+    'select id, name, currency, logo_url from public.stores where id = $1',
+    [storeId],
+  );
+  if (!storeRes.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+
+  const categoriesRes = await pool.query(
+    'select id, name from public.categories where store_id = $1 order by sort_order',
+    [storeId],
+  );
+  const productsRes = await pool.query(
+    `select id, name, description, image_url, base_price, category_id, track_stock, stock_qty
+     from public.products where store_id = $1 and is_active = true order by name`,
+    [storeId],
+  );
+
+  res.json({
+    data: {
+      store: storeRes.rows[0],
+      categories: categoriesRes.rows,
+      products: productsRes.rows,
+    },
+  });
+}));
+
 app.post('/api/query', requireUser, asyncHandler(async (req, res) => {
   const data = await runQuery(req.user, req.body);
   res.json({ data });
@@ -930,6 +1122,54 @@ app.post('/api/query', requireUser, asyncHandler(async (req, res) => {
 
 app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
   if (!req.user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+
+  if (req.params.name === 'confirm_web_order') {
+    const orderId = String(req.body?.p_order_id ?? '');
+    if (!orderId) throw new HttpError(400, 'p_order_id wajib diisi.');
+    assertRoleAccess(req.user, POS_ROLES, 'Role ini tidak bisa mengonfirmasi pesanan.');
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      // Update kondisional ini WAJIB: apply_order_stock TIDAK idempotent
+      // (dipanggil dua kali = stok kepotong dua kali), jadi baris ini hanya
+      // boleh lolos sekali per order, aman dari klik ganda/race staff.
+      const updated = await client.query(
+        `update public.orders set order_status = 'done', payment_status = 'paid'
+         where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
+         returning id`,
+        [orderId, req.user.store_id],
+      );
+      if (!updated.rowCount) {
+        throw new HttpError(409, 'Pesanan sudah diproses atau bukan milik toko ini.');
+      }
+      await client.query('select public.apply_order_stock($1::uuid)', [orderId]);
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    res.json({ data: null });
+    return;
+  }
+
+  if (req.params.name === 'reject_web_order') {
+    const orderId = String(req.body?.p_order_id ?? '');
+    if (!orderId) throw new HttpError(400, 'p_order_id wajib diisi.');
+    assertRoleAccess(req.user, POS_ROLES, 'Role ini tidak bisa menolak pesanan.');
+    const updated = await pool.query(
+      `update public.orders set order_status = 'canceled'
+       where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
+       returning id`,
+      [orderId, req.user.store_id],
+    );
+    if (!updated.rowCount) {
+      throw new HttpError(409, 'Pesanan sudah diproses atau bukan milik toko ini.');
+    }
+    res.json({ data: null });
+    return;
+  }
 
   if (req.params.name === 'apply_order_stock') {
     const orderId = String(req.body?.p_order_id ?? '');

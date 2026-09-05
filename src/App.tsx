@@ -23,6 +23,11 @@ import { StockOpnamePage } from '@/pages/StockOpname';
 import { StockMutation } from '@/pages/StockMutation';
 import { UsersPage } from '@/pages/Users';
 import { CustomerPortal } from '@/pages/CustomerPortal';
+import { PublicCatalog } from '@/pages/public/PublicCatalog';
+import { PublicProductDetail } from '@/pages/public/PublicProductDetail';
+import { PublicCart } from '@/pages/public/PublicCart';
+import { PublicCheckout } from '@/pages/public/PublicCheckout';
+import { PublicOrderDone } from '@/pages/public/PublicOrderDone';
 import { useAuth } from '@/stores/auth';
 import { applyTheme, useUI } from '@/stores/ui';
 import { applyAccent } from '@/lib/accents';
@@ -70,6 +75,11 @@ export default function App() {
         <Route path="/users" element={<ProtectedRoute><AdminLayout><UsersPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><AdminLayout><Settings /></AdminLayout></ProtectedRoute>} />
         <Route path="/customer" element={<ProtectedRoute><AppShell><CustomerPortal /></AppShell></ProtectedRoute>} />
+        <Route path="/toko" element={<PublicCatalog />} />
+        <Route path="/toko/produk" element={<PublicProductDetail />} />
+        <Route path="/toko/keranjang" element={<PublicCart />} />
+        <Route path="/toko/checkout" element={<PublicCheckout />} />
+        <Route path="/toko/selesai" element={<PublicOrderDone />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </PinLockGate>

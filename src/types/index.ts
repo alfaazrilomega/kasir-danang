@@ -6,7 +6,7 @@ export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
 /** Tunai/langsung bayar vs tempo (piutang yang dicairkan belakangan). */
 export type PaymentTerm = 'cash' | 'tempo';
 export type OrderPaymentMethod = 'cash' | 'transfer' | 'card' | 'ewallet' | 'qris' | 'other';
-export type OrderStatus = 'done' | 'pending' | 'canceled';
+export type OrderStatus = 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
 export type OrderType = 'dine_in' | 'take_away';
 
 export interface Store {
@@ -146,6 +146,10 @@ export interface Order {
    * Dipakai impor rekap marketplace dan penjualan cepat di kasir.
    */
   customer_name: string | null;
+  /** Diisi hanya untuk pesanan tamu dari storefront publik (checkout tanpa login). */
+  customer_phone?: string | null;
+  /** Alamat kirim, teks polos — belum ada perhitungan ongkir (KiriminAja belum terintegrasi). */
+  delivery_address?: string | null;
 }
 
 /**

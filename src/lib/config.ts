@@ -48,3 +48,11 @@ function loadBundledConfig(): AppConfig {
 export function resetConfig() {
   localStorage.removeItem(CONFIG_KEY);
 }
+
+/**
+ * Toko tunggal untuk storefront publik (checkout tanpa login). Deployment ini
+ * satu toko saja, jadi konstanta ini boleh hardcode dengan fallback —
+ * env var dipakai kalau suatu saat perlu dites ke toko lain.
+ */
+export const PUBLIC_STORE_ID =
+  import.meta.env.VITE_PUBLIC_STORE_ID || '5d3e9a20-66ac-4012-9bab-103fbf9b08e4';

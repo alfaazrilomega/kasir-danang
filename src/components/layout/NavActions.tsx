@@ -13,6 +13,7 @@ import {
   PanelTopOpen,
   RefreshCcw,
   Settings as SettingsIcon,
+  ShoppingBag,
   Store,
   Sun,
   UserRound,
@@ -79,6 +80,7 @@ export function NavActions({
     hasCapability(profile?.role, 'manageInventory') ||
     hasCapability(profile?.role, 'useCashier');
   const canOpenShifts = hasCapability(profile?.role, 'manageShifts');
+  const canSeeWebOrders = hasCapability(profile?.role, 'useCashier');
 
   useEffect(() => {
     onOpenChange?.(openMenu !== null);
@@ -92,6 +94,18 @@ export function NavActions({
         (p) => p.track_stock && Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0),
       ).length;
     }, [canSeeInventory, profile?.store_id]) ?? 0;
+
+  // Pesanan dari storefront publik menunggu konfirmasi — lihat Orders.tsx tab
+  // "Pesanan Website". Admin dan kasir sama-sama harus melihat ini.
+  const webOrderCount =
+    useLiveQuery(async () => {
+      if (!profile?.store_id || !canSeeWebOrders) return 0;
+      return db.orders
+        .where('store_id')
+        .equals(profile.store_id)
+        .filter((o) => o.order_status === 'awaiting_confirmation')
+        .count();
+    }, [canSeeWebOrders, profile?.store_id]) ?? 0;
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -163,6 +177,22 @@ export function NavActions({
         },
       });
     }
+    if (canSeeWebOrders && webOrderCount > 0) {
+      out.push({
+        id: 'weborders',
+        tone: 'info',
+        icon: <ShoppingBag size={14} />,
+        title: `${webOrderCount} pesanan website menunggu konfirmasi`,
+        description: 'Buka Orders untuk konfirmasi atau tolak.',
+        action: {
+          label: 'Buka Orders',
+          onClick: () => {
+            setOpenMenu(null);
+            navigate('/orders');
+          },
+        },
+      });
+    }
     if (canSeeInventory && lowStockCount > 0) {
       out.push({
         id: 'lowstock',
@@ -180,7 +210,7 @@ export function NavActions({
       });
     }
     return out;
-  }, [canSeeInventory, online, pending, lowStockCount, navigate]);
+  }, [canSeeInventory, canSeeWebOrders, online, pending, lowStockCount, webOrderCount, navigate]);
 
   const initial = (profile?.full_name ?? profile?.email ?? 'U').charAt(0).toUpperCase();
   const iconButton = brand

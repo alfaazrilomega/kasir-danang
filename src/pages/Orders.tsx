@@ -44,13 +44,14 @@ import type {
 import { useNavigate } from '@/lib/router';
 import { buildReceiptText, printInvoice, printReceipt, whatsappLink } from '@/lib/receipt';
 
-type StatusFilter = 'all' | 'done' | 'pending' | 'canceled';
+type StatusFilter = 'all' | 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
 type PaymentFilter = 'all' | PaymentMethod;
 type OrderTypeFilter = 'all' | OrderType;
 type SortBy = 'newest' | 'oldest' | 'amount-desc' | 'amount-asc';
 
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Semua' },
+  { value: 'awaiting_confirmation', label: 'Pesanan Website' },
   { value: 'done', label: 'Selesai' },
   { value: 'pending', label: 'Pending' },
   { value: 'canceled', label: 'Dibatalkan' },
@@ -184,7 +185,13 @@ export function Orders() {
   const canAdjust = hasCapability(profile?.role, 'manageUsers');
 
   useEffect(() => {
-    if (storeId) pullRecentOrders(storeId, 500);
+    if (!storeId) return;
+    pullRecentOrders(storeId, 500);
+    // Pesanan storefront publik masuk lewat endpoint terpisah tanpa lewat
+    // outbox lokal staff, jadi halaman ini butuh polling ringan sendiri
+    // supaya pesanan baru terlihat tanpa reload manual.
+    const t = window.setInterval(() => pullRecentOrders(storeId, 500), 20_000);
+    return () => window.clearInterval(t);
   }, [storeId]);
 
   const orders =
@@ -335,6 +342,48 @@ export function Orders() {
         const text = buildReceiptText({ store, order: o, items: its, customerName: cust?.name });
         window.open(whatsappLink(cust?.phone, text), '_blank');
       });
+  }
+
+  const [webOrderBusy, setWebOrderBusy] = useState<string | null>(null);
+
+  /**
+   * Pesanan dari storefront publik masuk berstatus 'awaiting_confirmation' dan
+   * BELUM memotong stok (lihat POST /api/public/orders di server). Konfirmasi
+   * memanggil RPC confirm_web_order, yang baru di titik itu memotong stok
+   * lewat apply_order_stock — sengaja tidak dilakukan di sini di client supaya
+   * pemotongan stok tetap satu jalur dengan order lain.
+   */
+  async function confirmWebOrder(o: Order) {
+    setWebOrderBusy(o.id);
+    try {
+      const { error } = await getBackendClient().rpc('confirm_web_order', { p_order_id: o.id });
+      if (error) throw new Error(error.message);
+      await db.orders.update(o.id, { order_status: 'done', payment_status: 'paid' });
+      if (selected?.id === o.id) setSelected({ ...o, order_status: 'done', payment_status: 'paid' });
+      toast.success(`Pesanan ${o.order_number} dikonfirmasi, stok terpotong.`);
+      pullRecentOrders(storeId, 500);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal mengonfirmasi pesanan.');
+    } finally {
+      setWebOrderBusy(null);
+    }
+  }
+
+  async function rejectWebOrder(o: Order) {
+    if (!confirm(`Tolak pesanan ${o.order_number}? Stok tidak akan berubah.`)) return;
+    setWebOrderBusy(o.id);
+    try {
+      const { error } = await getBackendClient().rpc('reject_web_order', { p_order_id: o.id });
+      if (error) throw new Error(error.message);
+      await db.orders.update(o.id, { order_status: 'canceled' });
+      if (selected?.id === o.id) setSelected({ ...o, order_status: 'canceled' });
+      toast.success(`Pesanan ${o.order_number} ditolak.`);
+      pullRecentOrders(storeId, 500);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal menolak pesanan.');
+    } finally {
+      setWebOrderBusy(null);
+    }
   }
 
   function applyPreset(preset: Preset) {
@@ -673,16 +722,37 @@ export function Orders() {
                         tone={
                           o.order_status === 'done'
                             ? 'success'
+                            : o.order_status === 'awaiting_confirmation'
+                            ? 'info'
                             : o.order_status === 'pending'
                             ? 'warning'
                             : 'neutral'
                         }
                       >
-                        {o.order_status}
+                        {o.order_status === 'awaiting_confirmation' ? 'menunggu konfirmasi' : o.order_status}
                       </Badge>
                     </td>
                     <td className="py-3">
                       <div className="flex justify-end gap-1">
+                        {o.order_status === 'awaiting_confirmation' && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => confirmWebOrder(o)}
+                              disabled={webOrderBusy === o.id}
+                            >
+                              Konfirmasi
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => rejectWebOrder(o)}
+                              disabled={webOrderBusy === o.id}
+                            >
+                              Tolak
+                            </Button>
+                          </>
+                        )}
                         <button
                           onClick={() => reprint(o)}
                           className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
@@ -752,7 +822,14 @@ export function Orders() {
               {!customer && selected.customer_name && (
                 <Field label="Pelanggan" value={selected.customer_name} />
               )}
+              {selected.customer_phone && <Field label="No. HP" value={selected.customer_phone} />}
             </div>
+            {selected.delivery_address && (
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs dark:border-sky-500/30 dark:bg-sky-500/10">
+                <div className="font-semibold uppercase text-sky-700 dark:text-sky-300">Alamat Kirim</div>
+                <p className="mt-1 text-ink-700 dark:text-ink-200">{selected.delivery_address}</p>
+              </div>
+            )}
             <div className="border-t border-ink-100 dark:border-ink-800 pt-3">
               <div className="text-xs text-ink-500 uppercase mb-2">Items</div>
               <ul className="space-y-1.5">
@@ -842,7 +919,21 @@ export function Orders() {
             )}
 
             <div className="flex flex-wrap justify-end gap-2 border-t border-ink-100 pt-2 dark:border-ink-800">
-              {canAdjust && selected.order_status !== 'canceled' && (
+              {selected.order_status === 'awaiting_confirmation' && (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => rejectWebOrder(selected)}
+                    disabled={webOrderBusy === selected.id}
+                  >
+                    Tolak Pesanan
+                  </Button>
+                  <Button onClick={() => confirmWebOrder(selected)} disabled={webOrderBusy === selected.id}>
+                    Konfirmasi Pesanan
+                  </Button>
+                </>
+              )}
+              {canAdjust && selected.order_status !== 'canceled' && selected.order_status !== 'awaiting_confirmation' && (
                 <Button variant="secondary" onClick={() => setAdjustFor(selected)}>
                   <PencilLine size={14} /> Sesuaikan harga
                 </Button>

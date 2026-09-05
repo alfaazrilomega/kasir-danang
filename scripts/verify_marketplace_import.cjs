@@ -214,7 +214,7 @@ function bersihkan() {
       teks = await modal().innerText();
       // Template yang tidak bisa dibaca balik oleh aplikasinya sendiri adalah
       // template yang salah, dan itu baru ketahuan di tangan client.
-      record('Template hasil unduhan bisa dibaca balik', /susunan Aplikasi Kasir/i.test(teks),
+      record('Template hasil unduhan bisa dibaca balik', /susunan TokoKu/i.test(teks),
         (/Terbaca sebagai[^\n]*/i.exec(teks) || ['-'])[0].slice(0, 50));
       record('Contoh di template menunjukkan satu pesanan berisi dua barang',
         /Impor 1 Pesanan/i.test(teks), (/Impor \d+ Pesanan/i.exec(teks) || ['-'])[0]);
