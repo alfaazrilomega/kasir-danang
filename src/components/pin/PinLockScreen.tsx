@@ -153,7 +153,7 @@ export function PinLockScreen() {
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-1.5 border-t border-ink-100 pt-3 text-[10px] uppercase tracking-wider text-ink-400 dark:border-ink-800">
-          <Store size={10} /> Aplikasi Kasir
+          <Store size={10} /> TokoKu
         </div>
       </div>
     </div>

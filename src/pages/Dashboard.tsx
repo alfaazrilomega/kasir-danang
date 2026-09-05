@@ -599,7 +599,7 @@ export function Dashboard() {
                 <div className="relative flex flex-wrap items-end justify-between gap-5">
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
-                      {store?.name ?? 'Aplikasi Kasir'} · {roleLabel(profile?.role)}
+                      {store?.name ?? 'TokoKu'} · {roleLabel(profile?.role)}
                     </div>
                     <h2 className="mt-1.5 text-2xl font-bold md:text-3xl">
                       Halo, {profile?.full_name ?? 'Admin'}

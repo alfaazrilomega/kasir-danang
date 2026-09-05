@@ -84,7 +84,7 @@ export function TopNav() {
             </span>
             <div className="leading-tight">
               <div className="text-[10px] opacity-70">Aplikasi</div>
-              <div className="-mt-0.5">KASIR</div>
+              <div className="-mt-0.5">TOKOKU</div>
             </div>
           </div>
 

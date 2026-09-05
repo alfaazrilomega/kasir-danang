@@ -35,7 +35,7 @@ export function Login() {
           </span>
           <div className="leading-tight">
             <div className="text-[10px] opacity-70">Aplikasi</div>
-            <div className="-mt-0.5 text-lg">KASIR</div>
+            <div className="-mt-0.5 text-lg">TOKOKU</div>
           </div>
         </div>
         <div>
@@ -44,7 +44,7 @@ export function Login() {
             Offline-first POS. Tetap melayani pelanggan walau jaringan putus, otomatis sinkron saat online.
           </p>
         </div>
-        <p className="text-xs opacity-60">© Aplikasi Kasir - self-hosted React + Postgres</p>
+        <p className="text-xs opacity-60">© TokoKu - self-hosted React + Postgres</p>
       </div>
       <div className="grid place-items-center p-6">
         <form onSubmit={submit} className="card w-full max-w-md p-6">

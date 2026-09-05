@@ -150,7 +150,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     onSelect: selectModule,
     query,
     onQueryChange: setQuery,
-    storeName: store?.name ?? 'Aplikasi Kasir',
+    storeName: store?.name ?? 'TokoKu',
     userName: profile?.full_name ?? profile?.email ?? 'Admin',
     roleName: roleLabel(profile?.role),
     onNavigate: navigate,
