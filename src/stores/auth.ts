@@ -85,7 +85,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (!localStore) {
       localStore = {
         id: 'store-default-001',
-        name: 'Toko Aplikasi Kasir',
+        name: 'TokoKu',
         currency: 'IDR',
         tax_rate: 10,
         points_per_amount: 0.01,
@@ -204,7 +204,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (!store) {
       const newStore: Store = {
         id: 'store-default-001',
-        name: 'Toko Aplikasi Kasir',
+        name: 'TokoKu',
         currency: 'IDR',
         tax_rate: 10,
         points_per_amount: 0.01,

@@ -83,7 +83,7 @@ interface LayoutMap {
 const LAYOUTS: LayoutMap[] = [
   {
     layout: 'kasir',
-    label: 'susunan Aplikasi Kasir',
+    label: 'susunan TokoKu',
     channelCode: null,
     orderNumber: ['No. Pesanan'],
     externalOrderNo: ['No. Pesanan Platform'],

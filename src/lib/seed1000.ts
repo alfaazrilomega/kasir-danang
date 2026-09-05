@@ -111,7 +111,7 @@ export async function generate1000Data(
   // 1. STORE
   const store: Store = {
     id: targetStoreId,
-    name: 'Toko Aplikasi Kasir',
+    name: 'TokoKu',
     address: 'Jl. Malioboro No. 128, Yogyakarta',
     currency: 'IDR',
     tax_rate: 10,

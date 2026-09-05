@@ -552,7 +552,7 @@ export async function exportProductsSql(storeId: string): Promise<number> {
   const mappings = await db.product_channel_mappings.where('store_id').equals(storeId).toArray();
 
   const lines: string[] = [
-    '-- Ekspor data master Aplikasi Kasir',
+    '-- Ekspor data master TokoKu',
     `-- Dibuat: ${new Date().toISOString()}`,
     `-- Toko  : ${storeId}`,
     '--',

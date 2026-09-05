@@ -204,7 +204,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   {activeModule ? sectionTitleFor(activeModule) : 'Halaman'}
                 </span>
               </div>
-              <h1 className="truncate text-lg font-bold md:text-xl">{active?.label ?? 'Aplikasi Kasir'}</h1>
+              <h1 className="truncate text-lg font-bold md:text-xl">{active?.label ?? 'TokoKu'}</h1>
             </div>
 
             {/* The divider only earns its place when the page actually put
