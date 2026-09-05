@@ -14,6 +14,7 @@ import type {
   OrderPayment,
   Product,
   ProductChannelMapping,
+  ProductComponent,
   Promo,
   Purchase,
   PurchaseItem,
@@ -87,6 +88,7 @@ class KasirDB extends Dexie {
   sales_channels!: Table<SalesChannel, string>;
   order_payments!: Table<OrderPayment, string>;
   product_channel_mappings!: Table<ProductChannelMapping, string>;
+  product_components!: Table<ProductComponent, string>;
   supplier_product_mappings!: Table<SupplierProductMapping, string>;
 
   constructor() {
@@ -170,6 +172,13 @@ class KasirDB extends Dexie {
       order_returns: 'id, store_id, order_number, order_id, created_at',
       order_return_items: 'id, return_id, product_id',
     });
+
+    // v14: isi produk set. Diindeks pada induk maupun komponennya karena
+    // keduanya ditanya: "set ini isinya apa" dan "barang ini dipakai set mana".
+    this.version(14).stores({
+      product_components:
+        'id, store_id, parent_product_id, component_product_id, [store_id+parent_product_id]',
+    });
   }
 }
 
@@ -180,6 +189,7 @@ export async function clearLocalCache() {
     db.stores.clear(),
     db.categories.clear(),
     db.products.clear(),
+    db.product_components.clear(),
     db.customers.clear(),
     db.promos.clear(),
     db.orders.clear(),

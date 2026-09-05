@@ -224,6 +224,12 @@ const TABLES = {
     parent: { table: 'stock_opnames', column: 'opname_id' },
   },
   // Pengeluaran operasional (opex) untuk laporan laba rugi.
+  product_components: {
+    columns: [
+      'id', 'store_id', 'parent_product_id', 'component_product_id', 'qty', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
   expenses: {
     columns: [
       'id', 'store_id', 'category', 'description', 'amount', 'expense_date',
@@ -430,6 +436,15 @@ const TABLE_ROLE_ACCESS = {
     delete: INVENTORY_ROLES,
   },
   // Uang keluar: kasir boleh melihat untuk rekap shift, hanya admin mencatat.
+  product_components: {
+    // Kasir perlu MEMBACA isi set supaya POS bisa menghitung ketersediaannya,
+    // tapi menyusun isinya adalah pekerjaan data induk.
+    select: ALL_EFFECTIVE_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
   expenses: {
     select: POS_ROLES,
     insert: ['admin'],

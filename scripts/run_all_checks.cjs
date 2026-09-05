@@ -10,6 +10,7 @@ const SUITES = [
   'verify_currency_logic', 'verify_returns', 'verify_sales_import',
   'verify_marketplace_import', 'verify_pos_online', 'verify_purchase_rate_lock',
   'verify_purchase_revisions',
+  'verify_product_sets',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

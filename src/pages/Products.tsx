@@ -35,13 +35,25 @@ import {
   validateChannelDrafts,
   type ChannelMappingDraft,
 } from '@/components/products/ChannelSkuSection';
+import {
+  ProductSetSection,
+  hitungStokSet,
+  type SetComponentDraft,
+} from '@/components/products/ProductSetSection';
 import { findSkuConflict } from '@/lib/skuLookup';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
 import { CATEGORY_ICONS, getCategoryIcon } from '@/lib/categoryIcons';
 import { formatBytes, resizeImageToDataUrl } from '@/lib/imageUpload';
 import { resolveFeatures } from '@/lib/industries';
-import type { Category, Product, ProductChannelMapping, ProductSize, SalesChannel } from '@/types';
+import type {
+  Category,
+  Product,
+  ProductChannelMapping,
+  ProductComponent,
+  ProductSize,
+  SalesChannel,
+} from '@/types';
 
 interface FormState {
   id?: string;
@@ -59,6 +71,7 @@ interface FormState {
   min_stock: number;
   sizes: ProductSize[];
   channelMappings: ChannelMappingDraft[];
+  setComponents: SetComponentDraft[];
 }
 
 const emptyForm: FormState = {
@@ -80,6 +93,7 @@ const emptyForm: FormState = {
     { label: 'L', price_modifier: 10000 },
   ],
   channelMappings: [],
+  setComponents: [],
 };
 
 /**
@@ -126,6 +140,31 @@ export function Products() {
       () => db.sales_channels.where('store_id').equals(storeId).sortBy('sort_order'),
       [storeId],
     ) ?? [];
+  const setComponents =
+    useLiveQuery(
+      () => db.product_components.where('store_id').equals(storeId).toArray(),
+      [storeId],
+    ) ?? [];
+
+  // Dua himpunan ini menjaga aturan satu tingkat: set tidak boleh berisi set,
+  // dan barang yang sudah jadi isi tidak boleh dijadikan set.
+  const produkSet = useMemo(
+    () => new Set(setComponents.map((c) => c.parent_product_id)),
+    [setComponents],
+  );
+  const dipakaiSebagaiIsi = useMemo(
+    () => new Set(setComponents.map((c) => c.component_product_id)),
+    [setComponents],
+  );
+  const isiByParent = useMemo(() => {
+    const map = new Map<string, typeof setComponents>();
+    for (const c of setComponents) {
+      const list = map.get(c.parent_product_id);
+      if (list) list.push(c);
+      else map.set(c.parent_product_id, [c]);
+    }
+    return map;
+  }, [setComponents]);
 
   const mappingsByProduct = useMemo(() => {
     const map = new Map<string, ProductChannelMapping[]>();
@@ -196,6 +235,11 @@ export function Products() {
           is_synced: m.is_synced,
           last_synced_at: m.last_synced_at,
         })),
+      setComponents: (isiByParent.get(p.id) ?? []).map((c, i) => ({
+        key: `isi-${c.id}-${i}`,
+        component_product_id: c.component_product_id,
+        qty: String(c.qty ?? 1),
+      })),
     });
     setOpen(true);
   }
@@ -238,10 +282,63 @@ export function Products() {
     await db.product_channel_mappings.bulkPut(rows);
   }
 
+  /**
+   * Simpan isi produk set.
+   *
+   * Sama seperti pemetaan channel, hanya jalan saat online: seluruh pullX
+   * melakukan destructive replace, jadi baris yang dibuat offline akan terhapus
+   * diam-diam pada sinkronisasi berikutnya.
+   */
+  async function saveSetComponents(productId: string) {
+    if (!navigator.onLine) return;
+    const api = getBackendClient();
+
+    const sebelumnya = setComponents.filter((c) => c.parent_product_id === productId);
+    const isiBaru = form.setComponents.filter((d) => d.component_product_id);
+
+    // Baris lama dibuang lebih dulu supaya isi yang dihapus di layar benar-benar
+    // hilang, bukan sekadar tidak ditimpa.
+    for (const lama of sebelumnya) {
+      const { error } = await api.from('product_components').delete().eq('id', lama.id);
+      if (error) throw error;
+      await db.product_components.delete(lama.id);
+    }
+
+    if (!isiBaru.length) return;
+
+    const rows: ProductComponent[] = isiBaru.map((d) => ({
+      id: uuid(),
+      store_id: storeId,
+      parent_product_id: productId,
+      component_product_id: d.component_product_id,
+      qty: Math.max(1, Number(d.qty || 1)),
+    }));
+
+    const { error } = await api.from('product_components').insert(rows);
+    if (error) throw error;
+    await db.product_components.bulkPut(rows);
+  }
+
   async function save() {
     if (!form.name.trim() || !storeId) {
       toast.error('Nama wajib diisi.');
       return;
+    }
+
+    // Isi set yang belum dipilih barangnya cuma baris kosong; yang sudah
+    // dipilih wajib punya takaran yang masuk akal.
+    const isiSet = form.setComponents.filter((d) => d.component_product_id);
+    if (isiSet.some((d) => Number(d.qty || 0) <= 0)) {
+      toast.error('Takaran isi set harus lebih dari nol.');
+      return;
+    }
+    const ganda = new Set<string>();
+    for (const d of isiSet) {
+      if (ganda.has(d.component_product_id)) {
+        toast.error('Satu barang hanya boleh muncul sekali dalam isi set.');
+        return;
+      }
+      ganda.add(d.component_product_id);
     }
 
     // Keunikan HARUS dicek di sini: /api/query menelan error database, jadi
@@ -288,6 +385,7 @@ export function Products() {
       const { queued } = await writeThrough('products', 'upsert', row);
       await db.products.put(row);
       await saveChannelMappings(row.id);
+      await saveSetComponents(row.id);
       toast.success(
         queued
           ? 'Produk disimpan lokal. Akan dikirim ke server saat online.'
@@ -514,6 +612,9 @@ export function Products() {
           existingSkus={products.filter((p) => p.id !== form.id).map((p) => p.sku ?? '')}
           channelRows={channelRows}
           otherMappings={channelMappings.filter((m) => m.product_id !== form.id)}
+          products={products}
+          dipakaiSebagaiIsi={dipakaiSebagaiIsi}
+          produkSet={produkSet}
           onCancel={() => setOpen(false)}
           onSave={save}
           busy={busy}
@@ -533,7 +634,8 @@ export function Products() {
 }
 
 function ProductForm({
-  form, setForm, categories, currency, existingSkus, channelRows, otherMappings, onCancel, onSave, busy,
+  form, setForm, categories, currency, existingSkus, channelRows, otherMappings,
+  products, dipakaiSebagaiIsi, produkSet, onCancel, onSave, busy,
 }: {
   form: FormState;
   setForm: (f: FormState) => void;
@@ -542,6 +644,9 @@ function ProductForm({
   existingSkus: string[];
   channelRows: SalesChannel[];
   otherMappings: { id: string; channel_code: string; external_sku: string }[];
+  products: Product[];
+  dipakaiSebagaiIsi: Set<string>;
+  produkSet: Set<string>;
   onCancel: () => void;
   onSave: () => void;
   busy: boolean;
@@ -650,6 +755,17 @@ function ProductForm({
             onChange={(next) => setForm({ ...form, channelMappings: next })}
             channelRows={channelRows}
             otherMappings={otherMappings}
+          />
+        </section>
+
+        <section>
+          <ProductSetSection
+            productId={form.id ?? null}
+            value={form.setComponents}
+            onChange={(next) => setForm({ ...form, setComponents: next })}
+            products={products}
+            dipakaiSebagaiIsi={dipakaiSebagaiIsi}
+            produkSet={produkSet}
           />
         </section>
 

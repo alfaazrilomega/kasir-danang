@@ -25,6 +25,7 @@ import type {
   StockOpnameItem,
   Supplier,
   ProductChannelMapping,
+  ProductComponent,
   SupplierProductMapping,
   OrderReturn,
   OrderReturnItem,
@@ -71,6 +72,7 @@ export async function pullReference(storeId: string) {
 
   // POS butuh indeks SKU platform supaya scan/ketik kode marketplace ketemu.
   await pullChannelMappings(storeId);
+  await pullProductComponents(storeId);
 }
 
 export async function pullInventoryReference(storeId: string) {
@@ -93,7 +95,11 @@ export async function pullInventoryReference(storeId: string) {
     await db.products.bulkPut(productsRes.data);
   }
 
-  await Promise.all([pullChannelMappings(storeId), pullSupplierCatalog(storeId)]);
+  await Promise.all([
+    pullChannelMappings(storeId),
+    pullSupplierCatalog(storeId),
+    pullProductComponents(storeId),
+  ]);
 }
 
 export async function pullCustomerCatalog(storeId: string) {
@@ -329,6 +335,28 @@ export async function pullChannelMappings(storeId: string) {
   });
 }
 
+/**
+ * Isi produk set.
+ *
+ * POS membutuhkannya untuk menghitung ketersediaan set dari stok komponennya,
+ * jadi ikut ditarik bersama data acuan lain, bukan hanya di halaman Produk.
+ */
+export async function pullProductComponents(storeId: string) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const { data, error } = await api
+    .from('product_components')
+    .select('*')
+    .eq('store_id', storeId);
+  // Alasan guard sama seperti pullChannelMappings: respons kosong tidak bisa
+  // dibedakan dari database yang sedang tak terjangkau.
+  if (error || !data?.length) return;
+  await db.transaction('rw', db.product_components, async () => {
+    await db.product_components.where('store_id').equals(storeId).delete();
+    await db.product_components.bulkPut(data as ProductComponent[]);
+  });
+}
+
 /** Katalog barang supplier (kode & harga versi supplier). */
 export async function pullSupplierCatalog(storeId: string) {
   const api = getBackendClient();
@@ -472,6 +500,29 @@ export async function enqueueOrder(pending: PendingOrder) {
 async function decrementLocalStock(pending: PendingOrder) {
   for (const it of pending.payload.items) {
     if (!it.product_id) continue;
+
+    // Produk set tidak punya stok sendiri: yang berkurang isinya. Aturan ini
+    // harus sama persis dengan apply_order_stock di server (migrasi 019),
+    // kalau tidak angka di layar dan angka sebenarnya akan berbeda sampai
+    // sinkronisasi berikutnya.
+    const isi = await db.product_components
+      .where('parent_product_id')
+      .equals(it.product_id)
+      .toArray();
+
+    if (isi.length) {
+      for (const komponen of isi) {
+        const bagian = await db.products.get(komponen.component_product_id);
+        if (bagian && bagian.track_stock) {
+          await db.products.put({
+            ...bagian,
+            stock_qty: Number(bagian.stock_qty ?? 0) - it.qty * Number(komponen.qty ?? 1),
+          });
+        }
+      }
+      continue;
+    }
+
     const p = await db.products.get(it.product_id);
     if (p && p.track_stock) {
       await db.products.put({ ...p, stock_qty: Number(p.stock_qty ?? 0) - it.qty });

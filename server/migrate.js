@@ -100,6 +100,9 @@ const REQUIRED_COLUMNS = {
   stock_opname_items: [
     'id', 'opname_id', 'product_id', 'system_qty', 'counted_qty', 'note',
   ],
+  product_components: [
+    'id', 'store_id', 'parent_product_id', 'component_product_id', 'qty', 'created_at',
+  ],
   expenses: [
     'id', 'store_id', 'category', 'description', 'amount', 'expense_date',
     'payment_method', 'shift_id', 'created_by', 'created_at',

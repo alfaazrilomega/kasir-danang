@@ -23,6 +23,7 @@ export const PRODUCT_COLUMNS = [
   'nama_produk',
   'kategori',
   'deskripsi',
+  'url_foto',
   'harga_jual',
   'harga_modal',
   'stok',
@@ -69,6 +70,8 @@ export interface ParsedProduct {
   name: string;
   category: string;
   description: string | null;
+  /** Alamat gambar produk; foto diambil dari web, bukan diunggah. */
+  imageUrl: string | null;
   basePrice: number;
   costPrice: number;
   stockQty: number;
@@ -169,17 +172,32 @@ export function downloadFile(filename: string, content: string, mime: string) {
 export function buildProductTemplate(): string {
   const examples = [
     ['GD-WR155-13T', '8991234567890', 'Gear Depan WR155 520 13T', 'Gear & Rantai',
-      'Gear depan racing 13 mata', '175000', '120000', '25', '5', 'ya', 'ya',
+      'Gear depan racing 13 mata', 'https://contoh.com/foto/gd-wr155.jpg',
+      '175000', '120000', '25', '5', 'ya', 'ya',
       'SHP-GD-WR155-13T', 'TT-GD-WR155-13T', 'TKPD-GD-WR155-13T', 'WEB-GD-WR155-13T'],
     ['SET-CRF-RED', '8991234567891', 'Gear Set Honda CRF150 520 Red', 'Gear & Rantai',
-      '', '450000', '320000', '10', '2', 'ya', 'ya', 'SET-CRF-RED', '', '', ''],
-    ['OLI-MPX-1L', '', 'Oli Mesin MPX 1 Liter', 'Pelumas', '', '55000', '42000',
+      '', 'https://contoh.com/foto/set-crf.jpg', '450000', '320000', '10', '2',
+      'ya', 'ya', 'SET-CRF-RED', '', '', ''],
+    ['OLI-MPX-1L', '', 'Oli Mesin MPX 1 Liter', 'Pelumas', '', '', '55000', '42000',
       '100', '20', 'ya', 'ya', '', '', '', ''],
   ];
   return toCsv([...PRODUCT_COLUMNS], examples);
 }
 
 // --- Validasi & rencana impor ---------------------------------------------
+
+/**
+ * Terima alamat foto hanya bila benar-benar alamat web.
+ *
+ * Berkas dari Excel sering memuat sisa rumus atau teks seperti "-" di kolom
+ * yang dikosongkan. Menyimpannya apa adanya membuat gambar produk gagal muat
+ * tanpa sebab yang jelas, jadi yang bukan http/https diperlakukan kosong.
+ */
+function bacaUrlFoto(value: string): string | null {
+  const v = String(value ?? '').trim();
+  if (!v) return null;
+  return /^https?:\/\//i.test(v) ? v : null;
+}
 
 function parseBoolean(value: string, fallback: boolean): boolean {
   const v = value.trim().toLowerCase();
@@ -273,6 +291,7 @@ export async function planProductImport(
       name,
       category,
       description: get(r, 'deskripsi') || null,
+      imageUrl: bacaUrlFoto(get(r, 'url_foto')),
       basePrice,
       costPrice,
       stockQty,
@@ -358,7 +377,9 @@ export async function runProductImport(
       category_id: catByName.get(r.category.toLowerCase())?.id ?? null,
       name: r.name,
       description: r.description,
-      image_url: plan.mode === 'merge' ? prev?.image_url ?? null : null,
+      // Foto dari berkas menang; kalau kosong, foto lama dipertahankan pada
+      // mode gabung supaya impor harga tidak menghapus gambar yang sudah ada.
+      image_url: r.imageUrl ?? (plan.mode === 'merge' ? prev?.image_url ?? null : null),
       base_price: r.basePrice,
       sizes: plan.mode === 'merge' ? prev?.sizes ?? [] : [],
       is_active: r.isActive,
@@ -493,6 +514,7 @@ export async function exportProductsCsv(storeId: string): Promise<number> {
       p.name,
       catName.get(p.category_id ?? '') ?? '',
       p.description ?? '',
+      p.image_url ?? '',
       p.base_price,
       p.cost_price,
       p.stock_qty,

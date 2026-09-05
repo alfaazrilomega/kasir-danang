@@ -148,6 +148,21 @@ export interface Order {
   customer_name: string | null;
 }
 
+/**
+ * Isi sebuah produk set.
+ *
+ * Set tidak punya stok sendiri: stoknya adalah stok komponennya, dan menjual
+ * satu set memotong stok tiap komponen sebanyak takarannya.
+ */
+export interface ProductComponent {
+  id: string;
+  store_id: string;
+  parent_product_id: string;
+  component_product_id: string;
+  qty: number;
+  created_at?: string;
+}
+
 export interface SalesChannel {
   id: string;
   store_id: string;

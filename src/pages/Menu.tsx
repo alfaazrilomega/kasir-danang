@@ -18,6 +18,7 @@ import {
 import { getCategoryIcon } from '@/lib/categoryIcons';
 import { toast } from 'sonner';
 import { db } from '@/lib/db';
+import { hitungStokSet } from '@/components/products/ProductSetSection';
 import { useAuth } from '@/stores/auth';
 import { useCart } from '@/stores/cart';
 import { useUI } from '@/stores/ui';
@@ -62,6 +63,21 @@ export function MenuPage() {
 
   const products =
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const setComponents =
+    useLiveQuery(
+      () => db.product_components.where('store_id').equals(storeId).toArray(),
+      [storeId],
+    ) ?? [];
+  const produkById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const isiByParent = useMemo(() => {
+    const map = new Map<string, typeof setComponents>();
+    for (const c of setComponents) {
+      const list = map.get(c.parent_product_id);
+      if (list) list.push(c);
+      else map.set(c.parent_product_id, [c]);
+    }
+    return map;
+  }, [setComponents]);
   const channelMappings =
     useLiveQuery(
       () => db.product_channel_mappings.where('store_id').equals(storeId).toArray(),
@@ -197,9 +213,36 @@ export function MenuPage() {
     };
   }, [filterOpen]);
 
+  /**
+   * Ketersediaan sebuah produk.
+   *
+   * Produk set tidak punya stok sendiri; yang ada adalah berapa set yang masih
+   * bisa dirakit dari stok isinya. Menampilkan stok miliknya sendiri untuk set
+   * akan selalu menunjukkan nol dan membuatnya tak bisa dijual.
+   */
+  function tersedia(p: Product): { adalahSet: boolean; qty: number; dilacak: boolean } {
+    const isi = isiByParent.get(p.id);
+    if (isi?.length) {
+      return {
+        adalahSet: true,
+        qty: hitungStokSet(
+          isi.map((c) => ({ component_product_id: c.component_product_id, qty: Number(c.qty ?? 1) })),
+          produkById,
+        ),
+        dilacak: true,
+      };
+    }
+    return { adalahSet: false, qty: Number(p.stock_qty ?? 0), dilacak: !!p.track_stock };
+  }
+
   function addToCart(p: Product, sizeOverride?: string) {
-    if (p.track_stock && Number(p.stock_qty ?? 0) <= 0) {
-      toast.error(`${p.name} stok habis.`);
+    const stok = tersedia(p);
+    if (stok.dilacak && stok.qty <= 0) {
+      toast.error(
+        stok.adalahSet
+          ? `${p.name} tidak bisa dirakit: stok isinya tidak cukup.`
+          : `${p.name} stok habis.`,
+      );
       return;
     }
     const size = sizeOverride ?? selectedSize[p.id] ?? p.sizes?.[0]?.label ?? null;
@@ -441,8 +484,9 @@ export function MenuPage() {
               const size = selectedSize[p.id] ?? p.sizes?.[0]?.label ?? '';
               const modifier =
                 p.sizes?.find((s) => s.label === size)?.price_modifier ?? 0;
-              const low = p.track_stock && Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0);
-              const empty = p.track_stock && Number(p.stock_qty ?? 0) <= 0;
+              const stok = tersedia(p);
+              const low = stok.dilacak && stok.qty <= Number(p.min_stock ?? 0);
+              const empty = stok.dilacak && stok.qty <= 0;
               const isTop = topSellerIds.has(p.id);
               const compact = menuDensity === 'compact';
               return (
@@ -473,9 +517,10 @@ export function MenuPage() {
                           <Flame size={10} className="mr-0.5" /> Top
                         </Badge>
                       )}
-                      {p.track_stock && (
+                      {stok.dilacak && (
                         <Badge tone={empty ? 'danger' : low ? 'warning' : 'neutral'}>
-                          Stok {Number(p.stock_qty ?? 0)}
+                          {stok.adalahSet ? 'Set siap ' : 'Stok '}
+                          {stok.qty}
                         </Badge>
                       )}
                     </div>

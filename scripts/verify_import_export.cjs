@@ -63,6 +63,9 @@ async function openModal(page) {
   await page.waitForTimeout(700);
 }
 
+// Jumlah kolom diambil dari template, lalu dipakai membandingkan hasil ekspor.
+let kolomTemplate = 0;
+
 (async () => {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1440, height: 950 }, acceptDownloads: true });
@@ -95,11 +98,19 @@ async function openModal(page) {
       const lines = text.split('\n').map((l) => l.trim());
       record('Template diawali petunjuk sep=; untuk Excel', lines[0] === 'sep=;', lines[0]);
       const header = lines[1] || '';
-      record('Template terunduh dengan 15 kolom', header.split(';').length === 15, header.slice(0, 60) + '…');
+      kolomTemplate = header.split(';').length;
+      // Jumlahnya sengaja tidak ditulis sebagai angka tetap: menambah kolom
+      // baru adalah hal yang wajar, dan uji yang mengunci angkanya cuma
+      // menghasilkan kegagalan palsu. Yang benar-benar penting adalah kolom
+      // wajibnya ada dan ekspor memakai susunan yang sama.
+      record('Template memuat kolom wajib',
+        ['sku', 'nama_produk', 'harga_jual', 'stok', 'url_foto'].every(
+          (k) => header.split(';').includes(k)),
+        header.slice(0, 60) + '…');
       record('Template memuat kolom SKU marketplace', /sku_shopee/.test(header) && /sku_tiktok/.test(header));
     } else {
       record('Template diawali petunjuk sep=; untuk Excel', false, 'unduhan tidak terjadi');
-      record('Template terunduh dengan 15 kolom', false, 'unduhan tidak terjadi');
+      record('Template memuat kolom wajib', false, 'unduhan tidak terjadi');
       record('Template memuat kolom SKU marketplace', false);
     }
 
@@ -194,10 +205,13 @@ async function openModal(page) {
         lines.filter((l) => l.indexOf(TAG) >= 0).length === 3,
         lines.filter((l) => l.indexOf(TAG) >= 0).length + ' baris');
       record('Ekspor memakai pemisah titik koma', lines[0].trim() === 'sep=;');
-      record('Ekspor memakai kolom template', lines[1].split(';').length === 15);
+      record('Ekspor memakai kolom template',
+        lines[1].split(';').length === kolomTemplate,
+        lines[1].split(';').length + ' vs template ' + kolomTemplate);
       const namaKoma = lines.find((l) => l.includes('Gear Depan'));
       record('Nama bertanda koma tidak terpotong saat diekspor',
-        !!namaKoma && namaKoma.split(';').length === 15, (namaKoma || '').slice(0, 50));
+        !!namaKoma && namaKoma.split(';').length === kolomTemplate,
+        (namaKoma || '').slice(0, 50));
     } else {
       record('Ekspor memuat seluruh produk', false, 'unduhan tidak terjadi');
       record('Ekspor memuat produk hasil impor', false);
