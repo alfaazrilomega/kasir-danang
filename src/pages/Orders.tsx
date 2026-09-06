@@ -23,6 +23,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
@@ -346,6 +347,8 @@ export function Orders() {
   }
 
   const [webOrderBusy, setWebOrderBusy] = useState<string | null>(null);
+  // Pesanan web yang sedang dikonfirmasi; ongkirnya diisi di dialog.
+  const [confirmFor, setConfirmFor] = useState<Order | null>(null);
 
   /**
    * Pesanan dari storefront publik masuk berstatus 'awaiting_confirmation' dan
@@ -354,13 +357,26 @@ export function Orders() {
    * lewat apply_order_stock — sengaja tidak dilakukan di sini di client supaya
    * pemotongan stok tetap satu jalur dengan order lain.
    */
-  async function confirmWebOrder(o: Order) {
+  async function confirmWebOrder(o: Order, shippingCost: number) {
     setWebOrderBusy(o.id);
     try {
-      const { error } = await getBackendClient().rpc('confirm_web_order', { p_order_id: o.id });
+      const { error } = await getBackendClient().rpc('confirm_web_order', {
+        p_order_id: o.id,
+        p_shipping_cost: shippingCost,
+      });
       if (error) throw new Error(error.message);
-      await db.orders.update(o.id, { order_status: 'done', payment_status: 'paid' });
-      if (selected?.id === o.id) setSelected({ ...o, order_status: 'done', payment_status: 'paid' });
+      // Server menghitung ulang totalnya; cerminkan rumus yang sama di lokal
+      // supaya angka tidak berkedip sebelum pullRecentOrders selesai.
+      const totalBaru = Number(o.subtotal) - Number(o.discount) + Number(o.tax) + shippingCost;
+      const patch = {
+        order_status: 'done' as const,
+        payment_status: 'paid' as const,
+        shipping_cost: shippingCost,
+        total: totalBaru,
+      };
+      await db.orders.update(o.id, patch);
+      if (selected?.id === o.id) setSelected({ ...o, ...patch });
+      setConfirmFor(null);
       toast.success(`Pesanan ${o.order_number} dikonfirmasi, stok terpotong.`);
       pullRecentOrders(storeId, 500);
     } catch (e) {
@@ -739,7 +755,7 @@ export function Orders() {
                           <>
                             <Button
                               size="sm"
-                              onClick={() => confirmWebOrder(o)}
+                              onClick={() => setConfirmFor(o)}
                               disabled={webOrderBusy === o.id}
                             >
                               Konfirmasi
@@ -856,6 +872,9 @@ export function Orders() {
                 />
               )}
               <Row label="Pajak" value={formatMoney(selected.tax, store?.currency)} />
+              {Number(selected.shipping_cost ?? 0) > 0 && (
+                <Row label="Ongkir" value={formatMoney(Number(selected.shipping_cost), store?.currency)} />
+              )}
               <Row label="Total" value={formatMoney(selected.total, store?.currency)} bold />
               {selected.payment_method === 'cash' && selected.received_amount != null && (
                 <>
@@ -929,7 +948,7 @@ export function Orders() {
                   >
                     Tolak Pesanan
                   </Button>
-                  <Button onClick={() => confirmWebOrder(selected)} disabled={webOrderBusy === selected.id}>
+                  <Button onClick={() => setConfirmFor(selected)} disabled={webOrderBusy === selected.id}>
                     Konfirmasi Pesanan
                   </Button>
                 </>
@@ -957,6 +976,14 @@ export function Orders() {
           </div>
         )}
       </Modal>
+
+      <ConfirmWebOrderModal
+        order={confirmFor}
+        currency={store?.currency}
+        busy={!!confirmFor && webOrderBusy === confirmFor.id}
+        onClose={() => setConfirmFor(null)}
+        onConfirm={(ongkir) => confirmFor && confirmWebOrder(confirmFor, ongkir)}
+      />
 
       <AdjustPriceModal
         order={adjustFor}
@@ -996,6 +1023,84 @@ function receivableOf(order: Order): number {
  * marketplace baru ketahuan setelah settlement. Total asli disimpan di
  * original_total supaya jejaknya tidak hilang.
  */
+/**
+ * Konfirmasi pesanan web sekaligus mengisi ongkirnya.
+ *
+ * Ongkir belum bisa dihitung otomatis (KiriminAja menunggu API key), jadi
+ * staff mengetiknya di sini. Tanpa langkah ini total pesanan cuma berisi
+ * harga barang, sehingga tagihan ke pembeli dan rekap kas tidak cocok dengan
+ * uang yang benar-benar diterima.
+ */
+function ConfirmWebOrderModal({
+  order,
+  currency,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  order: Order | null;
+  currency?: string;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (shippingCost: number) => void;
+}) {
+  const [ongkir, setOngkir] = useState('0');
+
+  useEffect(() => {
+    // Nilai lama jangan terbawa ke pesanan berikutnya.
+    setOngkir(order ? String(Number(order.shipping_cost ?? 0)) : '0');
+  }, [order?.id]);
+
+  if (!order) return null;
+
+  const nilaiOngkir = Number(ongkir) || 0;
+  const barang = Number(order.subtotal) - Number(order.discount) + Number(order.tax);
+  const total = barang + nilaiOngkir;
+  const ongkirValid = Number.isFinite(nilaiOngkir) && nilaiOngkir >= 0;
+
+  return (
+    <Modal open onClose={onClose} title={`Konfirmasi ${order.order_number}`} size="sm">
+      <div className="space-y-3 text-sm">
+        <p className="text-ink-500">
+          Setelah dikonfirmasi, stok produk langsung terpotong dan pesanan masuk ke penjualan.
+        </p>
+
+        {order.delivery_address && (
+          <div className="rounded-xl bg-ink-50 p-3 text-xs dark:bg-ink-800/60">
+            <div className="font-semibold uppercase text-ink-500">Alamat kirim</div>
+            <p className="mt-1">{order.delivery_address}</p>
+          </div>
+        )}
+
+        <Input
+          name="shipping_cost"
+          label="Ongkos Kirim"
+          type="number"
+          min="0"
+          value={ongkir}
+          onChange={(e) => setOngkir(e.target.value)}
+          hint="Isi 0 kalau diambil sendiri atau ongkirnya ditanggung toko."
+        />
+
+        <div className="space-y-1 border-t border-ink-100 pt-3 dark:border-ink-800">
+          <Row label="Barang" value={formatMoney(barang, currency)} />
+          <Row label="Ongkir" value={formatMoney(nilaiOngkir, currency)} />
+          <Row label="Total tagihan" value={formatMoney(total, currency)} bold />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Batal
+          </Button>
+          <Button onClick={() => onConfirm(nilaiOngkir)} disabled={busy || !ongkirValid}>
+            {busy ? 'Memproses...' : 'Konfirmasi & Potong Stok'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AdjustPriceModal({
   order,
   currency,

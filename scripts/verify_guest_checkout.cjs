@@ -194,10 +194,52 @@ const record = (nama, ok, ket) => {
        join orders o on o.id = oi.order_id where o.order_number = '${orderNumberCash}' limit 1;`,
     );
 
+    const ONGKIR = 15000;
+    const totalSebelumKonfirmasi = Number(
+      psql(`select total from orders where order_number = '${orderNumberCash}';`),
+    );
+
     await barisCash.getByRole('button', { name: 'Konfirmasi' }).click();
-    await staff.waitForTimeout(2000);
+    await staff.waitForTimeout(1200);
+    record('Dialog konfirmasi meminta ongkir',
+      (await staff.getByLabel('Ongkos Kirim').count()) > 0);
+    await staff.getByLabel('Ongkos Kirim').fill(String(ONGKIR));
+    await staff.waitForTimeout(400);
+    await staff.getByRole('button', { name: /Konfirmasi & Potong Stok/i }).click();
+    await staff.waitForTimeout(2500);
+
     const statusCashSetelah = psql(`select order_status, payment_status from orders where order_number = '${orderNumberCash}';`);
     record('Konfirmasi mengubah status jadi done/paid', statusCashSetelah === 'done|paid', statusCashSetelah);
+
+    // Uang: ongkir tersimpan sendiri DAN ikut menambah total tagihan.
+    const barisUang = psql(
+      `select shipping_cost, total, subtotal from orders where order_number = '${orderNumberCash}';`,
+    ).split('|');
+    const [ongkirDb, totalDb, subtotalDb] = barisUang.map(Number);
+    record('Ongkir tersimpan di kolomnya sendiri', ongkirDb === ONGKIR, String(ongkirDb));
+    record('Total ikut naik sebesar ongkir',
+      totalDb === totalSebelumKonfirmasi + ONGKIR,
+      `${totalSebelumKonfirmasi} + ${ONGKIR} = ${totalDb}`);
+    record('Subtotal barang TIDAK ikut terkena ongkir',
+      subtotalDb === totalSebelumKonfirmasi,
+      `subtotal=${subtotalDb}`);
+
+    // Laba rugi: ongkir tidak boleh dihitung sebagai pendapatan produk.
+    await staff.goto(BASE_URL + '/reports?tab=pnl', { waitUntil: 'networkidle' });
+    await waitForApiIdle(staff, { idleMs: 3000, minWaitMs: 2000 });
+    const pendapatanSql = Number(psql(
+      `select coalesce(sum(total - tax - shipping_cost), 0) from orders
+       where store_id = (select store_id from orders where order_number = '${orderNumberCash}')
+         and order_status not in ('canceled', 'awaiting_confirmation');`,
+    ));
+    const pendapatanDenganOngkir = Number(psql(
+      `select coalesce(sum(total - tax), 0) from orders
+       where store_id = (select store_id from orders where order_number = '${orderNumberCash}')
+         and order_status not in ('canceled', 'awaiting_confirmation');`,
+    ));
+    record('Pendapatan laba rugi memang beda kalau ongkir ikut dihitung',
+      pendapatanDenganOngkir > pendapatanSql,
+      `tanpa ongkir=${pendapatanSql}, dengan ongkir=${pendapatanDenganOngkir}`);
 
     const stokSesudah = psql(
       `select p.stock_qty from products p join order_items oi on oi.product_id = p.id

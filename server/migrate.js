@@ -45,7 +45,7 @@ const REQUIRED_COLUMNS = {
     'sales_channel', 'payment_term', 'due_date', 'paid_amount', 'settled_at',
     'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
     'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
-    'delivery_address',
+    'delivery_address', 'shipping_cost',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',

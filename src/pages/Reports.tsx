@@ -532,7 +532,8 @@ export function Reports() {
       }
     } else if (tab === 'pnl') {
       headers = ['Keterangan', 'Nilai'];
-      rows.push(['Pendapatan (netto)', csvInt(curStats.revenue)]);
+      rows.push(['Pendapatan (netto, tanpa ongkir)', csvInt(curStats.revenue)]);
+      rows.push(['Ongkir ditagihkan (diteruskan ke kurir)', csvInt(curStats.shipping)]);
       rows.push(['Retur / refund', csvInt(curStats.refunds)]);
       rows.push(['HPP', csvInt(curStats.cogs)]);
       rows.push(['Laba kotor', csvInt(curStats.gross)]);
@@ -1777,6 +1778,11 @@ interface Stats {
   count: number;
   aov: number;
   revenue: number;
+  /**
+   * Ongkir yang ditagihkan ke pembeli pada periode ini. TIDAK termasuk di
+   * `revenue` karena uangnya diteruskan ke kurir dan tidak punya HPP.
+   */
+  shipping: number;
   /** Nilai retur pada periode ini. Sudah dipotong dari `revenue`. */
   refunds: number;
   cogs: number;
@@ -1803,7 +1809,15 @@ function computeStats(
   const orderIds = new Set(orderList.map((o) => o.id));
   let revenue = 0;
   let cogs = 0;
-  for (const o of orderList) revenue += Number(o.total) - Number(o.tax);
+  // Ongkir dikeluarkan dari pendapatan: uangnya diteruskan ke kurir dan
+  // tidak punya HPP, jadi memasukkannya membuat margin terlihat lebih
+  // besar dari kenyataan. Pajak juga bukan pendapatan toko.
+  let shipping = 0;
+  for (const o of orderList) {
+    const ongkir = Number(o.shipping_cost ?? 0);
+    shipping += ongkir;
+    revenue += Number(o.total) - Number(o.tax) - ongkir;
+  }
   for (const it of items) {
     if (!orderIds.has(it.order_id)) continue;
     const product = it.product_id ? productById.get(it.product_id) : null;
@@ -1820,6 +1834,7 @@ function computeStats(
     count,
     aov: count ? sales / count : 0,
     revenue: netRevenue,
+    shipping,
     refunds,
     cogs,
     gross,

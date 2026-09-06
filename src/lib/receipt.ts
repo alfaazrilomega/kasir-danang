@@ -70,6 +70,7 @@ export function buildReceiptHTML({ store, order, items, customerName }: ReceiptI
   <div class="row"><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
   ${order.discount > 0 ? `<div class="row"><span>Diskon${order.promo_code ? ` (${escapeHtml(order.promo_code)})` : ''}</span><span>-${money(order.discount)}</span></div>` : ''}
   <div class="row"><span>Pajak</span><span>${money(order.tax)}</span></div>
+  ${Number(order.shipping_cost ?? 0) > 0 ? `<div class="row"><span>Ongkir</span><span>${money(Number(order.shipping_cost))}</span></div>` : ''}
   <div class="row total"><span>TOTAL</span><span>${money(order.total)}</span></div>
   <div class="row"><span>Bayar (${order.payment_method.toUpperCase()})</span><span>${money(order.received_amount ?? order.total)}</span></div>
   ${order.change_amount && order.change_amount > 0 ? `<div class="row"><span>Kembali</span><span>${money(order.change_amount)}</span></div>` : ''}
@@ -169,6 +170,7 @@ export function buildInvoiceHTML({ store, order, items, customerName }: ReceiptI
     <div class="line"><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
     ${order.discount > 0 ? `<div class="line"><span>Diskon${order.promo_code ? ` (${escapeHtml(order.promo_code)})` : ''}</span><span>-${money(order.discount)}</span></div>` : ''}
     <div class="line"><span>Pajak</span><span>${money(order.tax)}</span></div>
+    ${Number(order.shipping_cost ?? 0) > 0 ? `<div class="line"><span>Ongkir</span><span>${money(Number(order.shipping_cost))}</span></div>` : ''}
     <div class="line grand"><span>TOTAL</span><span>${money(order.total)}</span></div>
     <div class="line"><span>Bayar (${order.payment_method.toUpperCase()})</span><span>${money(order.received_amount ?? order.total)}</span></div>
     ${order.change_amount && order.change_amount > 0 ? `<div class="line"><span>Kembali</span><span>${money(order.change_amount)}</span></div>` : ''}
@@ -235,6 +237,7 @@ export function buildReceiptText({ store, order, items, customerName }: ReceiptI
       ? `Diskon${order.promo_code ? ` (${order.promo_code})` : ''}  -${money(order.discount)}`
       : null,
     `Pajak        ${money(order.tax)}`,
+    Number(order.shipping_cost ?? 0) > 0 ? `Ongkir       ${money(Number(order.shipping_cost))}` : null,
     `*TOTAL       ${money(order.total)}*`,
     `Bayar (${order.payment_method.toUpperCase()})  ${money(order.received_amount ?? order.total)}`,
     order.change_amount && order.change_amount > 0

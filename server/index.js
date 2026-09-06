@@ -131,7 +131,7 @@ const TABLES = {
       'sales_channel', 'payment_term', 'due_date', 'paid_amount', 'settled_at',
       'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
       'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
-      'delivery_address',
+      'delivery_address', 'shipping_cost',
     ],
     tenantColumn: 'store_id',
   },
@@ -1137,17 +1137,32 @@ app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
     const orderId = String(req.body?.p_order_id ?? '');
     if (!orderId) throw new HttpError(400, 'p_order_id wajib diisi.');
     assertRoleAccess(req.user, POS_ROLES, 'Role ini tidak bisa mengonfirmasi pesanan.');
+
+    // Ongkir diisi staff saat konfirmasi (KiriminAja belum terintegrasi).
+    const ongkir = Number(req.body?.p_shipping_cost ?? 0);
+    if (!Number.isFinite(ongkir) || ongkir < 0 || ongkir > 100_000_000) {
+      throw new HttpError(400, 'Ongkir tidak valid.');
+    }
+
     const client = await pool.connect();
     try {
       await client.query('begin');
       // Update kondisional ini WAJIB: apply_order_stock TIDAK idempotent
       // (dipanggil dua kali = stok kepotong dua kali), jadi baris ini hanya
       // boleh lolos sekali per order, aman dari klik ganda/race staff.
+      //
+      // Total dihitung ulang DI SINI dari subtotal + ongkir, bukan diambil
+      // dari klien: total yang dikirim klien bisa saja tidak cocok dengan
+      // isi pesanannya.
       const updated = await client.query(
-        `update public.orders set order_status = 'done', payment_status = 'paid'
-         where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
+        `update public.orders
+            set order_status = 'done',
+                payment_status = 'paid',
+                shipping_cost = $3,
+                total = subtotal - discount + tax + $3
+          where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
          returning id`,
-        [orderId, req.user.store_id],
+        [orderId, req.user.store_id, ongkir],
       );
       if (!updated.rowCount) {
         throw new HttpError(409, 'Pesanan sudah diproses atau bukan milik toko ini.');

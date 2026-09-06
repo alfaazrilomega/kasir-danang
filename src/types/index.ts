@@ -150,6 +150,12 @@ export interface Order {
   customer_phone?: string | null;
   /** Alamat kirim, teks polos — belum ada perhitungan ongkir (KiriminAja belum terintegrasi). */
   delivery_address?: string | null;
+  /**
+   * Ongkos kirim yang dibebankan ke pembeli. Sudah termasuk di `total`, tapi
+   * DIKELUARKAN dari pendapatan di laba rugi: uangnya diteruskan ke kurir dan
+   * tidak punya HPP, jadi memasukkannya akan membesarkan margin secara palsu.
+   */
+  shipping_cost?: number;
 }
 
 /**
