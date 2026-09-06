@@ -692,17 +692,27 @@ app.get('/api/admin/system', requireUser, requireRoles(['admin']), asyncHandler(
       ),
       pool.query(
         `
+          -- 'awaiting_confirmation' = pesanan storefront publik yang belum
+          -- dikonfirmasi staff: belum dibayar, stok belum dipotong, dan masih
+          -- bisa ditolak. Menghitungnya di sini membuat angka bisnis dan
+          -- piutang terlihat lebih besar dari kenyataan.
           select
-            count(*) filter (where created_at >= date_trunc('day', now()))::int as today_count,
+            count(*) filter (
+              where created_at >= date_trunc('day', now())
+                and order_status <> 'awaiting_confirmation'
+            )::int as today_count,
             coalesce(
               sum(total) filter (
                 where created_at >= date_trunc('day', now())
                   and payment_status = 'paid'
-                  and order_status <> 'canceled'
+                  and order_status not in ('canceled', 'awaiting_confirmation')
               ),
               0
             )::numeric as today_sales,
-            count(*) filter (where payment_status = 'unpaid' and order_status <> 'canceled')::int as unpaid_count
+            count(*) filter (
+              where payment_status = 'unpaid'
+                and order_status not in ('canceled', 'awaiting_confirmation')
+            )::int as unpaid_count
           from public.orders
           where store_id = $1
         `,

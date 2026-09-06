@@ -63,6 +63,7 @@ import {
   type AdminModuleKey,
 } from '@/lib/adminModules';
 import type { Category, Order, Product, StockMovement, UserRole } from '@/types';
+import { countsAsSale } from '@/lib/orderStatus';
 
 type Period = 'today' | 'this-week' | 'this-month' | 'last-30' | 'last-month';
 type StockStatusFilter = 'all' | 'safe' | 'low' | 'empty' | 'untracked';
@@ -214,14 +215,14 @@ export function Dashboard() {
   const currentOrders = useMemo(
     () =>
       (orders ?? []).filter(
-        (o) => o.order_status !== 'canceled' && inRange(o, range.curStart, range.curEnd),
+        (o) => countsAsSale(o) && inRange(o, range.curStart, range.curEnd),
       ),
     [orders, range],
   );
   const previousOrders = useMemo(
     () =>
       (orders ?? []).filter(
-        (o) => o.order_status !== 'canceled' && inRange(o, range.prevStart, range.prevEnd),
+        (o) => countsAsSale(o) && inRange(o, range.prevStart, range.prevEnd),
       ),
     [orders, range],
   );
@@ -234,7 +235,7 @@ export function Dashboard() {
     }
     const seen = new Set<string>();
     for (const o of orders ?? []) {
-      if (o.order_status === 'canceled') continue;
+      if (!countsAsSale(o)) continue;
       const k = format(parseISO(o.created_at), 'yyyy-MM');
       const m = months.find((x) => x.key === k);
       if (!m) continue;

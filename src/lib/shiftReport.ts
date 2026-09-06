@@ -4,6 +4,7 @@
 
 import type { CashMovement, Order, Shift, Store } from '@/types';
 import { formatDateTime, formatMoney } from '@/lib/format';
+import { countsAsSale } from '@/lib/orderStatus';
 
 export interface ShiftReportInput {
   store: Store;
@@ -36,7 +37,7 @@ export function emptyBreakdown(): PaymentBreakdown {
 export function computeBreakdown(orders: Order[]): PaymentBreakdown {
   const b = emptyBreakdown();
   for (const o of orders) {
-    if (o.order_status === 'canceled') continue;
+    if (!countsAsSale(o)) continue;
     b[o.payment_method].count += 1;
     b[o.payment_method].total += Number(o.total);
   }
@@ -60,7 +61,7 @@ export function buildShiftReportHTML(input: ShiftReportInput): string {
   const closing = shift.closing_cash != null ? Number(shift.closing_cash) : null;
   const diff = closing != null ? closing - expected : null;
   const totalSales = orders
-    .filter((o) => o.order_status !== 'canceled')
+    .filter(countsAsSale)
     .reduce((s, o) => s + Number(o.total), 0);
   const canceled = orders.filter((o) => o.order_status === 'canceled').length;
 

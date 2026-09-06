@@ -34,6 +34,7 @@ import { pullOrderReturns, pullExpenses, pullRecentOrders, pullShifts } from '@/
 import { getBackendClient, type AdminUser } from '@/lib/api';
 import { hasCapability, normalizeRole, roleLabel } from '@/lib/roles';
 import { channelLabel } from '@/lib/channels';
+import { countsAsSale } from '@/lib/orderStatus';
 import { formatDate, formatDateTime, formatMoney, formatNumber, cn } from '@/lib/format';
 import {
   buildCsv,
@@ -174,7 +175,7 @@ export function Reports() {
     () =>
       scopedOrders.filter((o) => {
         const ts = new Date(o.created_at).getTime();
-        return ts >= ranges.fStart && ts <= ranges.tEnd && o.order_status !== 'canceled';
+        return ts >= ranges.fStart && ts <= ranges.tEnd && countsAsSale(o);
       }),
     [scopedOrders, ranges],
   );
@@ -182,7 +183,7 @@ export function Reports() {
     () =>
       scopedOrders.filter((o) => {
         const ts = new Date(o.created_at).getTime();
-        return ts >= ranges.prevStart && ts <= ranges.prevEnd && o.order_status !== 'canceled';
+        return ts >= ranges.prevStart && ts <= ranges.prevEnd && countsAsSale(o);
       }),
     [scopedOrders, ranges],
   );

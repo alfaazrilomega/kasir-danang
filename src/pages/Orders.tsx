@@ -42,6 +42,7 @@ import type {
   PaymentMethod,
 } from '@/types';
 import { useNavigate } from '@/lib/router';
+import { countsAsSale } from '@/lib/orderStatus';
 import { buildReceiptText, printInvoice, printReceipt, whatsappLink } from '@/lib/receipt';
 
 type StatusFilter = 'all' | 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
@@ -286,7 +287,7 @@ export function Orders() {
     let sales = 0;
     let canceled = 0;
     for (const o of filtered) {
-      if (o.order_status !== 'canceled') sales += o.total;
+      if (countsAsSale(o)) sales += o.total;
       else canceled++;
     }
     const avg = filtered.length > 0 ? sales / Math.max(1, filtered.length - canceled) : 0;
@@ -303,7 +304,7 @@ export function Orders() {
       other: { count: 0, total: 0 },
     };
     for (const o of filtered) {
-      if (o.order_status === 'canceled') continue;
+      if (!countsAsSale(o)) continue;
       m[o.payment_method].count++;
       m[o.payment_method].total += o.total;
     }
