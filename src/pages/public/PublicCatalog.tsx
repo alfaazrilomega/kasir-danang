@@ -11,6 +11,7 @@ import {
   Search,
   ShoppingBag,
   SlidersHorizontal,
+  Star,
   Store,
   Tags,
   Truck,
@@ -179,7 +180,7 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
   const slides = useMemo(() => {
     const s: ReactNode[] = [];
     if (store?.pdp_banner_url) {
-      s.push(<img src={store.pdp_banner_url} alt="Promo toko" className="h-full w-full bg-brand-600 object-contain" />);
+      s.push(<SlideBanner src={store.pdp_banner_url} />);
     }
     terlaris.slice(0, 4).forEach((k, i) => s.push(<SlideProduk k={k} nomor={i + 1} currency={store?.currency} />));
     if (!s.length) s.push(<SlideSambutan store={store} />);
@@ -384,7 +385,15 @@ function Ubin({ to, judul, teks, ikon: Ikon }: { to: string; judul: string; teks
   );
 }
 
-/** Karosel beranda: geser 0,3 dtk, ganti otomatis tiap 4 dtk, berhenti saat disorot. */
+const LAMA_SLIDE = 5000;
+
+/**
+ * Karosel beranda. Geser 0,5 dtk, ganti otomatis tiap 5 dtk (berhenti saat
+ * disorot). Kontrol ala situs brand balap (Renthal/JT): penghitung "01 / 05",
+ * bar progres yang terisi sepanjang durasi slide, dan panah bulat di kanan bawah.
+ * Setiap slide dibungkus `group/slide` + `data-aktif`, sehingga isinya bisa
+ * beranimasi masuk ketika slide itu tampil.
+ */
 function Karosel({ slides }: { slides: ReactNode[] }) {
   const [aktif, setAktif] = useState(0);
   const [jeda, setJeda] = useState(false);
@@ -392,91 +401,187 @@ function Karosel({ slides }: { slides: ReactNode[] }) {
 
   useEffect(() => {
     if (n < 2 || jeda) return;
-    const t = window.setInterval(() => setAktif((v) => (v + 1) % n), 4000);
-    return () => window.clearInterval(t);
-  }, [n, jeda]);
+    const t = window.setTimeout(() => setAktif((v) => (v + 1) % n), LAMA_SLIDE);
+    return () => window.clearTimeout(t);
+  }, [aktif, n, jeda]);
 
   useEffect(() => {
     if (aktif >= n) setAktif(0);
   }, [n, aktif]);
 
+  const tombolBulat =
+    'pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors duration-200 hover:bg-black/60';
+
   return (
-    <div className="group relative h-full overflow-hidden" onMouseEnter={() => setJeda(true)} onMouseLeave={() => setJeda(false)}>
-      <div className="flex h-full transition-transform duration-300" style={{ transform: `translateX(-${aktif * 100}%)` }}>
+    <div className="relative h-full overflow-hidden" onMouseEnter={() => setJeda(true)} onMouseLeave={() => setJeda(false)}>
+      <div className="flex h-full transition-transform duration-500 ease-out" style={{ transform: `translateX(-${aktif * 100}%)` }}>
         {slides.map((s, i) => (
-          <div key={i} className="h-full w-full shrink-0" aria-hidden={i !== aktif}>
+          <div key={i} data-aktif={i === aktif} className="group/slide h-full w-full shrink-0" aria-hidden={i !== aktif}>
             {s}
           </div>
         ))}
       </div>
       {n > 1 && (
-        <>
-          <button
-            type="button"
-            aria-label="Slide sebelumnya"
-            onClick={() => setAktif((aktif - 1 + n) % n)}
-            className="absolute left-0 top-1/2 grid h-[30px] w-6 -translate-y-1/2 place-items-center bg-black/25 text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            type="button"
-            aria-label="Slide berikutnya"
-            onClick={() => setAktif((aktif + 1) % n)}
-            className="absolute right-0 top-1/2 grid h-[30px] w-6 -translate-y-1/2 place-items-center bg-black/25 text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-          >
-            <ChevronRight size={16} />
-          </button>
-          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-2">
-            {slides.map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                aria-label={`Slide ${i + 1}`}
-                onClick={() => setAktif(i)}
-                className={cn('h-2 rounded-full bg-white transition-all duration-300', i === aktif ? 'w-5 opacity-100' : 'w-2 opacity-50')}
-              />
-            ))}
+        <div className="pointer-events-none absolute bottom-3 left-6 flex items-center gap-2 lg:bottom-4 lg:left-12">
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-black/60 px-3 py-2 backdrop-blur">
+            <span className="text-xs font-semibold tabular-nums text-white">
+              {String(aktif + 1).padStart(2, '0')}
+              <span className="text-white/50"> / {String(n).padStart(2, '0')}</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              {slides.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Slide ${i + 1}`}
+                  onClick={() => setAktif(i)}
+                  className={cn(
+                    'relative h-1 overflow-hidden rounded-full bg-white/30 transition-[width] duration-300',
+                    i === aktif ? 'w-9' : 'w-4 hover:bg-white/60',
+                  )}
+                >
+                  {i === aktif && (
+                    <span
+                      key={aktif}
+                      className="absolute inset-0 origin-left rounded-full bg-white"
+                      style={{ animation: `isi-bar ${LAMA_SLIDE}ms linear forwards`, animationPlayState: jeda ? 'paused' : 'running' }}
+                    />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
-        </>
+          <button type="button" aria-label="Slide sebelumnya" onClick={() => setAktif((aktif - 1 + n) % n)} className={tombolBulat}>
+            <ChevronLeft size={18} />
+          </button>
+          <button type="button" aria-label="Slide berikutnya" onClick={() => setAktif((aktif + 1) % n)} className={tombolBulat}>
+            <ChevronRight size={18} />
+          </button>
+        </div>
       )}
+    </div>
+  );
+}
+
+/** Isi slide muncul bertahap ketika slide-nya aktif: naik 12px + memudar, 400 ms. */
+const MUNCUL =
+  'translate-y-3 opacity-0 transition-all duration-[400ms] ease-out group-data-[aktif=true]/slide:translate-y-0 group-data-[aktif=true]/slide:opacity-100';
+
+/** Huruf condensed miring, senada dengan tipografi banner GNNK ("GEAR TYPE 520"). */
+const HURUF_BALAP = "font-['Barlow_Condensed',ui-sans-serif,sans-serif] italic";
+
+/** Motif bendera kotak dari logo GNNK, memudar dari kiri. Satu-satunya tekstur di slide. */
+function MotifBendera() {
+  return (
+    <div
+      aria-hidden
+      className="absolute inset-y-0 left-0 w-72 opacity-[0.05] [background:repeating-conic-gradient(#fff_0_25%,transparent_0_50%)_0_0/22px_22px] [mask-image:linear-gradient(to_right,black,transparent)]"
+    />
+  );
+}
+
+/**
+ * Banner promo tampil utuh di atas salinannya yang diburamkan: slide terisi
+ * penuh tanpa memotong logo, judul, dan produk di banner (rasio banner ≠ slide).
+ */
+function SlideBanner({ src }: { src: string }) {
+  return (
+    <div className="relative h-full overflow-hidden bg-ink-950">
+      <img src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl brightness-[.35] saturate-50" />
+      <img
+        src={src}
+        alt="Promo toko"
+        className="relative h-full w-full scale-[1.03] object-contain transition-transform duration-[6000ms] ease-out group-data-[aktif=true]/slide:scale-100"
+      />
     </div>
   );
 }
 
 function SlideProduk({ k, nomor, currency }: { k: KelompokProduk; nomor: number; currency?: string }) {
   const p = k.wakil;
+  // Merek sudah tertulis di label atas, jadi akhiran "GNNK Racing (Product)" dibuang dari judul.
+  const judul = p.name.replace(/\s*GNNK Racing( Product)?\s*$/i, '').trim() || p.name;
+  const coret = Number(p.compare_at_price ?? 0);
+  const diskon = coret > k.hargaMin && k.hargaMin > 0 ? Math.round((1 - k.hargaMin / coret) * 100) : 0;
+  const tautan = `/toko/produk?id=${p.id}`;
+  // Rating dengan ulasan sedikit ("4,8 (4 ulasan)") justru mengurangi kepercayaan.
+  const tampilRating = k.ratingCount >= 10;
+  const bentukMiring = '[clip-path:polygon(14%_0,100%_0,100%_100%,0_100%)]';
   return (
-    <Link
-      to={`/toko/produk?id=${p.id}`}
-      className="flex h-full items-center gap-6 bg-gradient-to-r from-brand-700 via-brand-600 to-brand-500 px-6 text-white lg:px-12"
-    >
-      <div className="min-w-0 flex-1">
-        <div className="text-xs font-semibold uppercase tracking-wide opacity-90 lg:text-sm">Terlaris #{nomor}</div>
-        <div className="mt-2 line-clamp-2 text-xl font-extrabold uppercase leading-tight lg:text-[40px] lg:leading-[44px]">{p.name}</div>
-        <div className="mt-3 text-base font-semibold lg:text-2xl">{formatMoney(k.hargaMin, currency)}</div>
-        <span className="mt-4 inline-flex h-9 items-center bg-ink-950 px-5 text-xs font-bold uppercase tracking-wide lg:mt-6 lg:text-sm">
-          Beli Sekarang
-        </span>
-      </div>
-      <div className="hidden h-[180px] w-[180px] shrink-0 overflow-hidden rounded-xl bg-white p-3 sm:block lg:h-[260px] lg:w-[260px]">
-        {p.image_url ? (
-          <img src={p.image_url} alt="" className="h-full w-full object-contain" />
-        ) : (
-          <div className="grid h-full place-items-center text-brand-300">
-            <ShoppingBag size={64} />
+    <div className="relative h-full overflow-hidden bg-[#0b0c1a] text-white">
+      <MotifBendera />
+      {/* Panel putih bersisi miring: latar putih foto produk menyatu dengan panel, tanpa kartu. */}
+      <div aria-hidden className={cn('absolute inset-y-0 right-0 hidden w-[calc(46%+6px)] bg-brand-500 sm:block', bentukMiring)} />
+      <Link to={tautan} aria-label={judul} className={cn('absolute inset-y-0 right-0 hidden w-[46%] overflow-hidden bg-white sm:block', bentukMiring)}>
+        <div className="absolute inset-y-0 right-0 w-[86%] translate-x-8 [-webkit-mask-composite:source-in] [mask-composite:intersect] [mask-image:linear-gradient(to_bottom,transparent_8%,#000_24%,#000_62%,transparent_85%),linear-gradient(to_right,transparent,#000_15%,#000_92%,transparent)] opacity-0 transition-all delay-100 duration-[600ms] ease-out group-data-[aktif=true]/slide:translate-x-0 group-data-[aktif=true]/slide:opacity-100">
+          {p.image_url ? (
+            // Diperbesar & tepinya dimask: logo, badge COD, dan teks promo bawaan foto tersembunyi, produknya yang dominan.
+            <img src={p.image_url} alt="" className="h-full w-full scale-[1.45] object-cover object-[55%_30%]" />
+          ) : (
+            <div className="grid h-full place-items-center text-brand-300">
+              <ShoppingBag size={72} />
+            </div>
+          )}
+        </div>
+      </Link>
+      <div className="relative flex h-full flex-col justify-center px-6 pb-12 sm:max-w-[56%] lg:px-12">
+        <div className="min-w-0">
+          <div className={cn(MUNCUL, HURUF_BALAP, 'text-base font-bold uppercase tracking-wide text-brand-400')}>Terlaris #{nomor}</div>
+          <h3 className={cn(MUNCUL, HURUF_BALAP, 'mt-1 line-clamp-2 text-[34px] font-extrabold uppercase leading-[0.92] tracking-tight delay-[60ms] lg:text-[52px]')}>
+            {judul}
+          </h3>
+          <div className={cn(MUNCUL, 'mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/65 delay-[120ms] lg:text-sm')}>
+            {tampilRating && (
+              <span className="flex items-center gap-1">
+                <Star size={14} className="fill-amber-400 text-amber-400" />
+                {k.ratingAvg.toFixed(1)} ({formatNumber(k.ratingCount)} ulasan)
+              </span>
+            )}
+            {k.terjual > 0 && <span>{formatNumber(k.terjual)} terjual</span>}
+            {k.anggota.length > 1 && <span>{k.anggota.length} pilihan ukuran</span>}
           </div>
-        )}
+          <div className={cn(MUNCUL, 'mt-4 flex items-end gap-3 delay-[180ms]')}>
+            <span className={cn(HURUF_BALAP, 'text-[30px] font-bold leading-none lg:text-[36px]')}>{formatMoney(k.hargaMin, currency)}</span>
+            {diskon > 0 && (
+              <>
+                <span className="pb-0.5 text-sm text-white/40 line-through">{formatMoney(coret, currency)}</span>
+                <span className="mb-0.5 rounded-sm bg-rose-500 px-1.5 py-0.5 text-xs font-bold">-{diskon}%</span>
+              </>
+            )}
+          </div>
+          <div className={cn(MUNCUL, 'mt-5 flex items-center gap-3 delay-[240ms]')}>
+            <Link
+              to={tautan}
+              className="inline-flex h-10 items-center rounded-md bg-brand-500 px-5 text-sm font-semibold shadow-lg shadow-brand-950/50 transition-colors duration-200 hover:bg-brand-400"
+            >
+              Beli Sekarang
+            </Link>
+            <Link
+              to={tautan}
+              className="inline-flex h-10 items-center gap-1 rounded-md border border-white/30 px-4 text-sm font-medium text-white/90 transition-colors duration-200 hover:border-white hover:text-white"
+            >
+              Lihat Detail <ChevronRight size={16} />
+            </Link>
+          </div>
+        </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
 function SlideSambutan({ store }: { store: PublicCatalogStore | null }) {
   return (
-    <div className="flex h-full flex-col justify-center bg-gradient-to-r from-brand-700 to-brand-500 px-6 text-white lg:px-12">
-      <div className="text-2xl font-extrabold uppercase lg:text-[40px] lg:leading-[44px]">{store?.name ?? 'TokoKu'}</div>
-      <div className="mt-3 text-sm opacity-90 lg:text-base">Pesan online, dikirim ke alamatmu. Bayar tunai (COD) atau QRIS.</div>
+    <div className="relative h-full overflow-hidden bg-[#0b0c1a] text-white">
+      <MotifBendera />
+      <div className="relative flex h-full flex-col justify-center px-6 pb-12 lg:px-12">
+        <div className={cn(MUNCUL, HURUF_BALAP, 'text-base font-bold uppercase tracking-wide text-brand-400')}>Selamat datang</div>
+        <div className={cn(MUNCUL, HURUF_BALAP, 'mt-1 text-[40px] font-extrabold uppercase leading-[0.92] tracking-tight delay-[60ms] lg:text-[56px]')}>
+          {store?.name ?? 'TokoKu'}
+        </div>
+        <div className={cn(MUNCUL, 'mt-3 max-w-lg text-sm text-white/75 delay-200 lg:text-base')}>
+          Pesan online, dikirim ke alamatmu. Bayar tunai (COD) atau QRIS.
+        </div>
+      </div>
     </div>
   );
 }

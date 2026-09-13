@@ -84,3 +84,9 @@
   }
   .dark .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-ink-700; }
 }
+
+/* Bar progres karosel beranda: terisi dari kiri selama satu slide. */
+@keyframes isi-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
