@@ -52,8 +52,9 @@ export function PublicAccount() {
   const keluar = useCustomer((s) => s.keluar);
   const favoritIds = useWishlist((s) => s.ids);
 
-  const tabAwal = new URLSearchParams(search).get('tab') as Tab | null;
-  const [tab, setTab] = useState<Tab>(tabAwal ?? 'pesanan');
+  const tabUrl = new URLSearchParams(search).get('tab');
+  const tab: Tab = (['pesanan', 'ulasan', 'favorit', 'profil'] as const).find((t) => t === tabUrl) ?? 'pesanan';
+  const setTab = (t: Tab) => navigate(`/toko/akun?tab=${t}`);
   const [orders, setOrders] = useState<CustomerOrder[] | null>(null);
   const [reviewable, setReviewable] = useState<ReviewableItem[] | null>(null);
   const [catalog, setCatalog] = useState<PublicCatalogData | null>(null);

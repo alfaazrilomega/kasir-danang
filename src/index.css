@@ -83,6 +83,10 @@
     @apply bg-ink-200 rounded-full;
   }
   .dark .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-ink-700; }
+
+  /* Bisa digulir tanpa bilah gulir yang terlihat. */
+  .tanpa-bilah { scrollbar-width: none; -ms-overflow-style: none; }
+  .tanpa-bilah::-webkit-scrollbar { display: none; }
 }
 
 /* Bar progres karosel beranda: terisi dari kiri selama satu slide. */

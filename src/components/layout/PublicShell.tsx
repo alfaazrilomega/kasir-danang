@@ -94,7 +94,13 @@ export function PublicShell({
 
   const namaToko = store?.name ?? 'TokoKu';
   const wa = tautanWhatsApp(store?.shop_phone, 'Halo, saya mau bertanya.');
-  const tautanPesanan = token ? '/toko/akun' : `/toko/masuk?next=${encodeURIComponent('/toko/akun')}`;
+  const tautanPesanan = token ? '/toko/akun?tab=pesanan' : `/toko/masuk?next=${encodeURIComponent('/toko/akun?tab=pesanan')}`;
+  // Tautan atas yang menunjuk halaman yang sedang dibuka diberi warna tema.
+  // Di halaman akun, tab Pesanan = "Lacak Pesanan"; tab lain = "Akun".
+  const diAkun = pathname === '/toko/akun';
+  const tabAkun = new URLSearchParams(search).get('tab') ?? 'pesanan';
+  const aktifLacak = diAkun && tabAkun === 'pesanan';
+  const aktifAkun = diAkun && tabAkun !== 'pesanan';
   const logo = (ukuran: string, ikon: number) => (
     <span className={cn('grid shrink-0 place-items-center overflow-hidden rounded-lg bg-brand-600 text-white', ukuran)}>
       {store?.logo_url ? <img src={store.logo_url} alt="" className="h-full w-full object-cover" /> : <Store size={ikon} />}
@@ -113,15 +119,15 @@ export function PublicShell({
         >
           <div className={cn(LEBAR, 'flex h-[25px] items-center justify-end gap-7 text-[12px] uppercase text-ink-500')}>
             {wa && (
-              <a href={wa} target="_blank" rel="noreferrer" className="text-brand-600 transition-colors duration-200 hover:text-brand-800">
+              <a href={wa} target="_blank" rel="noreferrer" className={TAUTAN_KECIL}>
                 Layanan Pelanggan
               </a>
             )}
-            <Link to={tautanPesanan} className={TAUTAN_KECIL}>
+            <Link to={tautanPesanan} aria-current={aktifLacak ? 'page' : undefined} className={cn(TAUTAN_KECIL, aktifLacak && 'text-brand-600')}>
               Lacak Pesanan
             </Link>
             {token ? (
-              <Link to="/toko/akun" className={TAUTAN_KECIL}>
+              <Link to="/toko/akun?tab=profil" aria-current={aktifAkun ? 'page' : undefined} className={cn(TAUTAN_KECIL, aktifAkun && 'text-brand-600')}>
                 Akun {me?.name.split(' ')[0] ?? 'Saya'}
               </Link>
             ) : (

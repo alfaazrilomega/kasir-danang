@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUp,
   ChevronLeft,
@@ -397,68 +397,63 @@ const LAMA_SLIDE = 5000;
 function Karosel({ slides }: { slides: ReactNode[] }) {
   const [aktif, setAktif] = useState(0);
   const [jeda, setJeda] = useState(false);
+  // Geseran jari yang sedang berlangsung. Ref menyimpan titik awal & jarak supaya
+  // tiap event membaca nilai terbaru; state `geser` hanya untuk menggambar posisinya.
+  const tarik = useRef<{ x0: number; dx: number } | null>(null);
+  const [geser, setGeser] = useState<number | null>(null);
+  const bingkai = useRef<HTMLDivElement>(null);
   const n = slides.length;
 
   useEffect(() => {
-    if (n < 2 || jeda) return;
+    if (n < 2 || jeda || geser !== null) return;
     const t = window.setTimeout(() => setAktif((v) => (v + 1) % n), LAMA_SLIDE);
     return () => window.clearTimeout(t);
-  }, [aktif, n, jeda]);
+  }, [aktif, n, jeda, geser]);
 
   useEffect(() => {
     if (aktif >= n) setAktif(0);
   }, [n, aktif]);
 
-  const tombolBulat =
-    'pointer-events-auto grid h-9 w-9 place-items-center rounded-full bg-black/40 text-white backdrop-blur transition-colors duration-200 hover:bg-black/60';
+  /** Geseran lebih dari 15% lebar slide pindah ke slide sebelah; kurang dari itu kembali. */
+  function lepas() {
+    const g = tarik.current;
+    if (!g) return;
+    tarik.current = null;
+    const lebar = bingkai.current?.offsetWidth || 1;
+    if (Math.abs(g.dx) > lebar * 0.15) setAktif((v) => (v + (g.dx < 0 ? 1 : -1) + n) % n);
+    setGeser(null);
+  }
 
   return (
-    <div className="relative h-full overflow-hidden" onMouseEnter={() => setJeda(true)} onMouseLeave={() => setJeda(false)}>
-      <div className="flex h-full transition-transform duration-500 ease-out" style={{ transform: `translateX(-${aktif * 100}%)` }}>
+    <div
+      ref={bingkai}
+      className="relative h-full touch-pan-y overflow-hidden"
+      onMouseEnter={() => setJeda(true)}
+      onMouseLeave={() => setJeda(false)}
+      // Hanya sentuhan/pena: seret mouse di desktop akan bentrok dengan klik tautan di slide.
+      onPointerDown={(e) => {
+        if (n < 2 || e.pointerType === 'mouse') return;
+        tarik.current = { x0: e.clientX, dx: 0 };
+        setGeser(0);
+      }}
+      onPointerMove={(e) => {
+        if (!tarik.current) return;
+        tarik.current.dx = e.clientX - tarik.current.x0;
+        setGeser(tarik.current.dx);
+      }}
+      onPointerUp={lepas}
+      onPointerCancel={lepas}
+    >
+      <div
+        className={cn('flex h-full', geser === null && 'transition-transform duration-500 ease-out')}
+        style={{ transform: `translateX(calc(${-aktif * 100}% + ${geser ?? 0}px))` }}
+      >
         {slides.map((s, i) => (
           <div key={i} data-aktif={i === aktif} className="group/slide h-full w-full shrink-0" aria-hidden={i !== aktif}>
             {s}
           </div>
         ))}
       </div>
-      {n > 1 && (
-        <div className="pointer-events-none absolute bottom-3 left-6 flex items-center gap-2 lg:bottom-4 lg:left-12">
-          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-black/60 px-3 py-2 backdrop-blur">
-            <span className="text-xs font-semibold tabular-nums text-white">
-              {String(aktif + 1).padStart(2, '0')}
-              <span className="text-white/50"> / {String(n).padStart(2, '0')}</span>
-            </span>
-            <div className="flex items-center gap-1.5">
-              {slides.map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  aria-label={`Slide ${i + 1}`}
-                  onClick={() => setAktif(i)}
-                  className={cn(
-                    'relative h-1 overflow-hidden rounded-full bg-white/30 transition-[width] duration-300',
-                    i === aktif ? 'w-9' : 'w-4 hover:bg-white/60',
-                  )}
-                >
-                  {i === aktif && (
-                    <span
-                      key={aktif}
-                      className="absolute inset-0 origin-left rounded-full bg-white"
-                      style={{ animation: `isi-bar ${LAMA_SLIDE}ms linear forwards`, animationPlayState: jeda ? 'paused' : 'running' }}
-                    />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button type="button" aria-label="Slide sebelumnya" onClick={() => setAktif((aktif - 1 + n) % n)} className={tombolBulat}>
-            <ChevronLeft size={18} />
-          </button>
-          <button type="button" aria-label="Slide berikutnya" onClick={() => setAktif((aktif + 1) % n)} className={tombolBulat}>
-            <ChevronRight size={18} />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -778,8 +773,8 @@ function HasilCari({
       {/* ---------- Panel filter kiri ---------- */}
       <aside
         className={cn(
-          'shrink-0 text-[13px]',
-          filterHp ? 'fixed inset-0 z-40 overflow-y-auto bg-white p-4 dark:bg-ink-900' : 'hidden w-[190px] lg:block',
+          'tanpa-bilah shrink-0 text-[13px]',
+          filterHp ? 'fixed inset-0 z-40 overflow-y-auto bg-white p-4 dark:bg-ink-900' : 'hidden w-[190px] self-start overscroll-contain lg:sticky lg:top-[calc(var(--tinggi-header,120px)+12px)] lg:block lg:max-h-[calc(100vh-var(--tinggi-header,120px)-24px)] lg:overflow-y-auto',
         )}
       >
         {filterHp && (
