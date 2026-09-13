@@ -180,7 +180,7 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
   const slides = useMemo(() => {
     const s: ReactNode[] = [];
     if (store?.pdp_banner_url) {
-      s.push(<SlideBanner src={store.pdp_banner_url} />);
+      s.push(<SlideBanner src={store.pdp_banner_url} store={store} />);
     }
     terlaris.slice(0, 4).forEach((k, i) => s.push(<SlideProduk k={k} nomor={i + 1} currency={store?.currency} />));
     if (!s.length) s.push(<SlideSambutan store={store} />);
@@ -481,18 +481,37 @@ function MotifBendera() {
 }
 
 /**
- * Banner promo memenuhi slide. Rasio banner (±1,8:1) lebih tinggi dari slide
- * (±2,9:1), jadi tepi atas & bawahnya terpotong; titik fokus 40% menjaga judul
- * dan produk tetap terlihat. Banner 2400×800 akan tampil tanpa terpotong.
+ * Banner promo (±1,8:1) di slide lebar (±2,9:1). Di layar lebar banner tampil
+ * utuh di kanan dan tepi kirinya memudar ke panel gelap berisi ajakan belanja,
+ * jadi slide penuh tanpa memotong banner. Di HP banner memenuhi slide.
  */
-function SlideBanner({ src }: { src: string }) {
+function SlideBanner({ src, store }: { src: string; store: PublicCatalogStore }) {
   return (
-    <div className="relative h-full overflow-hidden bg-ink-950">
-      <img
-        src={src}
-        alt="Promo toko"
-        className="h-full w-full scale-105 object-cover object-[center_40%] transition-transform duration-[6000ms] ease-out group-data-[aktif=true]/slide:scale-100"
-      />
+    <div className="relative h-full overflow-hidden bg-[#141417] text-white">
+      <img src={src} alt="Promo toko" className="h-full w-full object-cover object-[center_40%] sm:hidden" />
+      <div className="hidden h-full sm:block">
+        <MotifBendera />
+        <img
+          src={src}
+          alt="Promo toko"
+          className="absolute inset-y-0 right-0 h-full w-auto max-w-none origin-right scale-105 transition-transform duration-[6000ms] ease-out [mask-image:linear-gradient(to_right,transparent,#000_22%)] group-data-[aktif=true]/slide:scale-100"
+        />
+        <div className="relative flex h-full max-w-[40%] flex-col justify-center px-12 pb-12">
+          <div className={cn(MUNCUL, HURUF_BALAP, 'text-base font-bold uppercase tracking-wide text-brand-400')}>{store.name}</div>
+          <div className={cn(MUNCUL, HURUF_BALAP, 'mt-1 text-[34px] font-extrabold uppercase leading-[0.92] tracking-tight delay-[60ms] lg:text-[48px]')}>
+            Gear Set &amp; Sprocket Pilihan
+          </div>
+          <div className={cn(MUNCUL, 'mt-3 text-sm text-white/70 delay-[120ms]')}>Untuk harian hingga balap. Pesan online, bayar di tempat.</div>
+          <div className={cn(MUNCUL, 'mt-5 delay-[180ms]')}>
+            <Link
+              to="/toko?urut=terlaris"
+              className="inline-flex h-10 items-center gap-1 rounded-md bg-brand-500 px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-600"
+            >
+              Belanja Sekarang <ChevronRight size={16} />
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
