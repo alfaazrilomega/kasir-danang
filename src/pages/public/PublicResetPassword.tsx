@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from '@/lib/router';
 import { cn } from '@/lib/format';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { lupaSandiAturUlang, lupaSandiCekKode, lupaSandiKirimKode, useCustomer } from '@/lib/customerAccount';
-import { KOLOM_AUTH, KartuAuth, KerangkaAuth, KolomSandi, PesanGalat, TOMBOL_AUTH, tujuanAman } from '@/components/public/KerangkaAuth';
+import { Bidang, KOLOM_AUTH, KerangkaAuth, KolomSandi, PesanGalat, TOMBOL_AUTH, tujuanAman } from '@/components/public/KerangkaAuth';
 
 type Langkah = 'akun' | 'kode' | 'sandi' | 'selesai';
 
@@ -16,8 +16,8 @@ const JUDUL: Record<Langkah, string> = {
 };
 
 /**
- * Lupa kata sandi, susunan halaman Reset Password Shopee (kartu di tengah,
- * panah kembali, satu kolom + BERIKUTNYA):
+ * Lupa kata sandi, memakai kerangka yang sama dengan halaman masuk (penanda
+ * "Langkah N dari 3", satu kolom per langkah):
  *   1. nomor HP / email akun → kode 6 digit dikirim ke email akun
  *   2. masukkan kode (bisa kirim ulang setelah 60 detik)
  *   3. kata sandi baru → langsung masuk
@@ -110,48 +110,61 @@ export function PublicResetPassword() {
   const siap =
     langkah === 'akun' ? !!identifier.trim() : langkah === 'kode' ? kode.length === 6 : langkah === 'sandi' ? !!sandi && !!ulang : true;
 
+  const langkahKe = { akun: 1, kode: 2, sandi: 3, selesai: 3 }[langkah];
+
   return (
-    <KerangkaAuth panelMerek={false}>
-      <KartuAuth lebar="max-w-[500px]">
-        <div className="relative flex h-14 items-center justify-center">
-          {langkah !== 'selesai' && (
+    <KerangkaAuth
+      label="Pemulihan Akun"
+      kembali={{ to: `/toko/masuk${nextParam ? `?next=${encodeURIComponent(next)}` : ''}`, teks: 'Kembali ke Masuk' }}
+    >
+      {langkah !== 'selesai' && (
+        <div className="flex h-8 items-center gap-1.5">
+          {langkah !== 'akun' && (
             <button
               type="button"
               onClick={kembali}
               aria-label="Kembali"
-              className="absolute left-0 grid h-10 w-10 place-items-center text-brand-600 transition-colors duration-150 hover:text-brand-800"
+              className="-ml-1.5 grid h-8 w-8 place-items-center rounded-lg text-black/55 transition-colors duration-150 hover:bg-black/[0.05] hover:text-black"
             >
-              <ArrowLeft size={24} />
+              <ArrowLeft size={18} />
             </button>
           )}
-          <h1 className="text-xl text-black/80 dark:text-ink-100">{JUDUL[langkah]}</h1>
+          <span className="text-xs font-medium text-brand-600">Langkah {langkahKe} dari 3</span>
         </div>
+      )}
+      {langkah === 'selesai' && <CheckCircle2 size={40} className="text-brand-500" />}
+      <h1 className="mt-1 text-[28px] font-semibold leading-[34px] tracking-tight text-[#0b0c1a]">{JUDUL[langkah]}</h1>
 
-        <form onSubmit={kirim} className="mx-auto mt-6 w-full max-w-[340px]" noValidate>
-          {langkah === 'akun' && (
-            <>
-              <p className="mb-4 text-center text-sm text-black/55 dark:text-ink-400">
-                Masukkan nomor HP atau email akunmu. Kode verifikasi dikirim ke email akun tersebut.
-              </p>
+      <form onSubmit={kirim} className="mt-2" noValidate>
+        {langkah === 'akun' && (
+          <>
+            <p className="mb-5 text-sm text-black/55">
+              Masukkan nomor HP atau email akun Anda. Kode verifikasi dikirim ke email akun tersebut.
+            </p>
+            <Bidang id="identifier" label="No. Handphone/Email" slotGalat={false}>
               <input
+                id="identifier"
                 aria-label="No. Handphone/Email"
-                placeholder="No. Handphone/Email"
+                placeholder="0812xxxx atau nama@email.com"
                 autoComplete="username"
                 autoFocus
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 className={KOLOM_AUTH}
               />
-            </>
-          )}
+            </Bidang>
+          </>
+        )}
 
-          {langkah === 'kode' && (
-            <>
-              <p className="mb-4 text-center text-sm text-black/55 dark:text-ink-400">
-                Bila <b className="font-medium text-black/75 dark:text-ink-200">{identifier}</b> terdaftar, kode verifikasi 6 digit
-                sudah dikirim ke email akunnya. Periksa juga folder Spam.
-              </p>
+        {langkah === 'kode' && (
+          <>
+            <p className="mb-5 text-sm text-black/55">
+              Bila <b className="font-medium text-black/75">{identifier}</b> terdaftar, kode verifikasi 6 digit sudah dikirim ke email
+              akunnya. Periksa juga folder Spam.
+            </p>
+            <Bidang id="kode" label="Kode verifikasi" slotGalat={false}>
               <input
+                id="kode"
                 aria-label="Kode verifikasi"
                 inputMode="numeric"
                 autoComplete="one-time-code"
@@ -160,55 +173,55 @@ export function PublicResetPassword() {
                 placeholder="••••••"
                 value={kode}
                 onChange={(e) => setKode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className={cn(KOLOM_AUTH, 'text-center text-lg tracking-[0.6em]')}
+                className={cn(KOLOM_AUTH, 'h-12 text-center text-lg tracking-[0.5em]')}
               />
-              <div className="mt-3 text-center text-sm text-black/55 dark:text-ink-400">
-                {jeda > 0 ? (
-                  `Kirim ulang kode dalam ${jeda} detik`
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => void kirimKode()}
-                    disabled={busy}
-                    className="text-brand-600 transition-colors duration-150 hover:text-brand-800"
-                  >
-                    Kirim ulang kode
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-
-          {langkah === 'sandi' && (
-            <div className="space-y-4">
-              <KolomSandi label="Kata sandi baru" value={sandi} onChange={setSandi} autoComplete="new-password" />
-              <KolomSandi label="Ulangi kata sandi baru" value={ulang} onChange={setUlang} autoComplete="new-password" />
-              <p className="text-xs text-black/45 dark:text-ink-400">Minimal 6 karakter.</p>
+            </Bidang>
+            <div className="mt-3 text-sm text-black/55">
+              {jeda > 0 ? (
+                `Kirim ulang kode dalam ${jeda} detik`
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void kirimKode()}
+                  disabled={busy}
+                  className="font-medium text-brand-600 transition-colors duration-150 hover:text-brand-700"
+                >
+                  Kirim ulang kode
+                </button>
+              )}
             </div>
-          )}
+          </>
+        )}
 
-          {langkah === 'selesai' && (
-            <div className="flex flex-col items-center text-center">
-              <span className="grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10">
-                <CheckCircle2 size={36} />
-              </span>
-              <p className="mt-4 text-sm text-black/65 dark:text-ink-300">Kata sandi akunmu sudah diganti dan kamu sudah masuk.</p>
-            </div>
-          )}
+        {langkah === 'sandi' && (
+          <div className="mt-3 space-y-4">
+            <Bidang id="sandi-baru" label="Kata sandi baru" slotGalat={false}>
+              <KolomSandi id="sandi-baru" label="Kata sandi baru" placeholder="Minimal 6 karakter" value={sandi} onChange={setSandi} autoComplete="new-password" />
+            </Bidang>
+            <Bidang id="sandi-ulang" label="Ulangi kata sandi baru" slotGalat={false}>
+              <KolomSandi id="sandi-ulang" label="Ulangi kata sandi baru" placeholder="Ketik ulang kata sandi" value={ulang} onChange={setUlang} autoComplete="new-password" />
+            </Bidang>
+          </div>
+        )}
 
+        {langkah === 'selesai' && (
+          <p className="text-sm text-black/55">Kata sandi akun Anda sudah diganti dan Anda sudah masuk.</p>
+        )}
+
+        <div className="mt-2">
           <PesanGalat teks={galat} />
+        </div>
 
-          {langkah === 'selesai' ? (
-            <button type="button" onClick={() => navigate(next)} className={TOMBOL_AUTH}>
-              Lanjut Belanja
-            </button>
-          ) : (
-            <button type="submit" disabled={busy || !siap} className={TOMBOL_AUTH}>
-              {busy ? 'Memproses…' : langkah === 'sandi' ? 'Simpan' : 'Berikutnya'}
-            </button>
-          )}
-        </form>
-      </KartuAuth>
+        {langkah === 'selesai' ? (
+          <button type="button" onClick={() => navigate(next)} className={cn(TOMBOL_AUTH, 'mt-2')}>
+            Lanjut Belanja
+          </button>
+        ) : (
+          <button type="submit" disabled={busy || !siap} className={cn(TOMBOL_AUTH, 'mt-2')}>
+            {busy ? 'Memproses…' : langkah === 'sandi' ? 'Simpan' : 'Berikutnya'}
+          </button>
+        )}
+      </form>
     </KerangkaAuth>
   );
 }
