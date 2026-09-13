@@ -245,6 +245,8 @@ export function cartTotals(
   promo: Promo | null,
   manualDiscount: number,
   pointsPerAmount: number,
+  /** true = harga jual sudah termasuk pajak: pajak diekstrak, total tidak bertambah. */
+  taxInclusive = false,
 ): Totals {
   const subtotal = lines.reduce((sum, l) => sum + l.qty * l.price, 0);
   let promoDiscount = 0;
@@ -256,8 +258,12 @@ export function cartTotals(
   const md = Math.min(manualDiscount, subtotal - promoDiscount);
   const discount = +(promoDiscount + md).toFixed(2);
   const taxable = Math.max(0, subtotal - discount);
-  const tax = +(taxable * (taxRate / 100)).toFixed(2);
-  const total = +(taxable + tax).toFixed(2);
+  // Harga sudah termasuk pajak: pembeli tetap membayar `taxable`, pajaknya
+  // dihitung mundur (150.000 dengan pajak 10% -> pajak 13.636,36).
+  const tax = taxInclusive
+    ? +(taxable - taxable / (1 + taxRate / 100)).toFixed(2)
+    : +(taxable * (taxRate / 100)).toFixed(2);
+  const total = taxInclusive ? +taxable.toFixed(2) : +(taxable + tax).toFixed(2);
   const pointsEarned = pointsPerAmount > 0 ? Math.floor(total * pointsPerAmount) : 0;
   return { subtotal, promoDiscount, manualDiscount: md, discount, taxable, tax, total, pointsEarned };
 }

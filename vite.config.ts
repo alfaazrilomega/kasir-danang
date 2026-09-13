@@ -41,6 +41,8 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         globIgnores: ['**/kasir-config.js'],
+        // Bundel utama sudah di atas batas bawaan 2 MiB; tanpa ini build gagal.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: '/index.html',
         runtimeCaching: [
           {

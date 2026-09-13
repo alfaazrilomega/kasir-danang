@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowDownUp,
+  Ban,
   Calendar,
   Download,
   Eye,
@@ -14,6 +15,7 @@ import {
   Printer,
   Search,
   SlidersHorizontal,
+  Trash2,
   Upload,
   Users,
   X,
@@ -28,7 +30,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
-import { pullRecentOrders } from '@/lib/sync';
+import { pullInventoryReference, pullRecentOrders } from '@/lib/sync';
+import { resolveFeatures } from '@/lib/industries';
 import { SalesImportModal } from '@/components/data/SalesImportModal';
 import { channelFeePercent, channelLabel, resolveChannels } from '@/lib/channels';
 import { hasCapability } from '@/lib/roles';
@@ -45,6 +48,7 @@ import type {
 import { useNavigate } from '@/lib/router';
 import { countsAsSale } from '@/lib/orderStatus';
 import { buildReceiptText, printInvoice, printReceipt, whatsappLink } from '@/lib/receipt';
+import { skuMapFor } from '@/lib/printSupport';
 
 type StatusFilter = 'all' | 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
 type PaymentFilter = 'all' | PaymentMethod;
@@ -64,6 +68,8 @@ const PAY_TABS: { value: PaymentFilter; label: string }[] = [
   { value: 'cash', label: 'Cash' },
   { value: 'qris', label: 'QRIS' },
   { value: 'ewallet', label: 'E-wallet' },
+  { value: 'transfer', label: 'Transfer' },
+  // Kasir tidak lagi menawarkan kartu, tapi pesanan lama tetap bisa disaring.
   { value: 'card', label: 'Card' },
   // Penjualan hasil impor massal: metode bayarnya tidak tercatat di berkas.
   { value: 'other', label: 'Lainnya' },
@@ -185,6 +191,11 @@ export function Orders() {
   const [termFilter, setTermFilter] = useState<'all' | 'cash' | 'tempo' | 'receivable'>('all');
   // Penyesuaian harga & pencairan piutang menyentuh angka penjualan — admin saja.
   const canAdjust = hasCapability(profile?.role, 'manageUsers');
+  // Toko tanpa tipe order (mis. toko sparepart) tidak perlu kolom Dine In/Take Away.
+  const features = resolveFeatures(store?.industry, store?.features as never);
+  // Centang pesanan untuk dibatalkan/dihapus sekaligus (salah input, salah impor).
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [voidBusy, setVoidBusy] = useState(false);
 
   useEffect(() => {
     if (!storeId) return;
@@ -302,6 +313,7 @@ export function Orders() {
       qris: { count: 0, total: 0 },
       ewallet: { count: 0, total: 0 },
       card: { count: 0, total: 0 },
+      transfer: { count: 0, total: 0 },
       other: { count: 0, total: 0 },
     };
     for (const o of filtered) {
@@ -326,10 +338,19 @@ export function Orders() {
       .where('order_id')
       .equals(o.id)
       .toArray()
-      .then((its) => {
+      .then(async (its) => {
         if (!its.length) return;
-        if (format === 'invoice') printInvoice({ store, order: o, items: its });
-        else printReceipt({ store, order: o, items: its });
+        const nama = o.customer_id ? customerName.get(o.customer_id) ?? null : o.customer_name;
+        if (format === 'invoice') {
+          printInvoice({
+            store,
+            order: o,
+            items: its,
+            customerName: nama,
+            skuByProductId: await skuMapFor(its),
+            printedBy: profile?.full_name ?? null,
+          });
+        } else printReceipt({ store, order: o, items: its, customerName: nama });
       });
   }
 
@@ -403,6 +424,66 @@ export function Orders() {
     }
   }
 
+  const dipilih = filtered.filter((o) => picked.has(o.id));
+  const semuaDipilih = filtered.length > 0 && dipilih.length === filtered.length;
+
+  function pilihSatu(id: string, on: boolean) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function pilihSemua(on: boolean) {
+    setPicked(on ? new Set(filtered.map((o) => o.id)) : new Set());
+  }
+
+  /**
+   * Batal atau hapus pesanan yang dicentang. Hanya pesanan yang terlihat di
+   * tabel yang diproses, supaya centang lama yang tersembunyi filter tidak
+   * ikut terhapus diam-diam. Stok dikembalikan server dari catatan mutasinya.
+   */
+  async function voidPicked(hapus: boolean) {
+    const target = dipilih;
+    if (!target.length) return;
+    const aktif = target.filter((o) => o.order_status !== 'canceled').length;
+    const pesan = hapus
+      ? `Hapus ${target.length} pesanan? Data pesanan hilang permanen.` +
+        (aktif ? ` Stok barang dari ${aktif} pesanan yang belum batal dikembalikan.` : '')
+      : `Batalkan ${target.length} pesanan? Stok barangnya dikembalikan.`;
+    if (!confirm(pesan)) return;
+    setVoidBusy(true);
+    try {
+      const ids = target.map((o) => o.id);
+      const { error } = await getBackendClient().rpc('void_orders', { p_order_ids: ids, p_delete: hapus });
+      if (error) throw new Error(error.message);
+      if (hapus) {
+        await db.transaction('rw', db.orders, db.order_items, db.order_payments, async () => {
+          await db.order_items.where('order_id').anyOf(ids).delete();
+          await db.order_payments.where('order_id').anyOf(ids).delete();
+          await db.orders.bulkDelete(ids);
+        });
+      } else {
+        await db.orders.where('id').anyOf(ids).modify({ order_status: 'canceled' });
+      }
+      if (selected && ids.includes(selected.id)) setSelected(null);
+      setPicked(new Set());
+      toast.success(
+        hapus
+          ? `${ids.length} pesanan dihapus. Stok sudah dikembalikan.`
+          : `${ids.length} pesanan dibatalkan. Stok sudah dikembalikan.`,
+      );
+      pullRecentOrders(storeId, 500);
+      pullInventoryReference(storeId);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal memproses pesanan.');
+    } finally {
+      setVoidBusy(false);
+    }
+  }
+
   function applyPreset(preset: Preset) {
     const r = preset.range();
     setFrom(r.from);
@@ -428,6 +509,12 @@ export function Orders() {
     const { exportOrdersBySKU } = await import('@/lib/exportUtils');
     const count = await exportOrdersBySKU(filtered, { filenameSuffix: `${from}_${to}` });
     toast.success(`${count} baris pesanan diekspor.`);
+  }
+
+  async function exportDanaCair() {
+    const { exportDisbursement } = await import('@/lib/exportUtils');
+    const count = await exportDisbursement(filtered, { filenameSuffix: `${from}_${to}` });
+    toast.success(`${count} pesanan diekspor ke laporan dana cair.`);
   }
 
   const activePreset = detectPreset(from, to);
@@ -478,6 +565,11 @@ export function Orders() {
           >
             <Download size={16} /> Export CSV
           </Button>
+          {canAdjust && (
+            <Button onClick={exportDanaCair} disabled={filtered.length === 0} variant="onBrand">
+              <Landmark size={16} /> Export Dana Cair
+            </Button>
+          )}
           {/* Diletakkan di sebelah Add New Order sesuai permintaan client:
               "import masal pada bagian add new order". */}
           <Button onClick={() => setImportOpen(true)} variant="onBrandSoft">
@@ -538,12 +630,14 @@ export function Orders() {
             value={pay}
             onChange={(v) => setPay(v as PaymentFilter)}
           />
-          <FilterChips
-            label="Tipe"
-            options={TYPE_TABS}
-            value={orderType}
-            onChange={(v) => setOrderType(v as OrderTypeFilter)}
-          />
+          {features.useOrderType && (
+            <FilterChips
+              label="Tipe"
+              options={TYPE_TABS}
+              value={orderType}
+              onChange={(v) => setOrderType(v as OrderTypeFilter)}
+            />
+          )}
           <FilterChips
             label="Termin"
             options={[
@@ -689,6 +783,26 @@ export function Orders() {
       </Card>
 
       <Card className="p-5">
+        {canAdjust && dipilih.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm dark:border-brand-500/30 dark:bg-brand-500/10">
+            <span className="font-medium">{dipilih.length} pesanan dipilih</span>
+            <button
+              type="button"
+              className="text-xs text-ink-500 underline"
+              onClick={() => setPicked(new Set())}
+            >
+              Batal pilih
+            </button>
+            <div className="ml-auto flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => voidPicked(false)} disabled={voidBusy}>
+                <Ban size={14} /> Batalkan
+              </Button>
+              <Button size="sm" variant="danger" onClick={() => voidPicked(true)} disabled={voidBusy}>
+                <Trash2 size={14} /> Hapus
+              </Button>
+            </div>
+          </div>
+        )}
         {filtered.length === 0 ? (
           <EmptyState
             title="Tidak ada order cocok"
@@ -699,9 +813,19 @@ export function Orders() {
             <table className="w-full text-sm">
               <thead className="text-left text-ink-500 text-xs">
                 <tr>
+                  {canAdjust && (
+                    <th className="w-8 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label="Pilih semua pesanan"
+                        checked={semuaDipilih}
+                        onChange={(e) => pilihSemua(e.target.checked)}
+                      />
+                    </th>
+                  )}
                   <th className="py-2">Order ID</th>
                   <th className="py-2">Date</th>
-                  <th className="py-2">Type</th>
+                  {features.useOrderType && <th className="py-2">Type</th>}
                   <th className="py-2">Customer</th>
                   <th className="py-2">Amount</th>
                   <th className="py-2">Payment</th>
@@ -712,6 +836,16 @@ export function Orders() {
               <tbody>
                 {filtered.map((o) => (
                   <tr key={o.id} className="border-t border-ink-100 dark:border-ink-800">
+                    {canAdjust && (
+                      <td className="py-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Pilih ${o.order_number}`}
+                          checked={picked.has(o.id)}
+                          onChange={(e) => pilihSatu(o.id, e.target.checked)}
+                        />
+                      </td>
+                    )}
                     <td className="py-3 font-semibold">
                       {o.order_number}
                       {o.external_order_no && (
@@ -721,10 +855,12 @@ export function Orders() {
                       )}
                     </td>
                     <td className="py-3">{formatDateTime(o.created_at)}</td>
-                    <td className="py-3 text-xs">
-                      {o.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}
-                      {o.table_number && <span className="text-ink-500"> · {o.table_number}</span>}
-                    </td>
+                    {features.useOrderType && (
+                      <td className="py-3 text-xs">
+                        {o.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}
+                        {o.table_number && <span className="text-ink-500"> · {o.table_number}</span>}
+                      </td>
+                    )}
                     <td className="py-3 text-xs">
                       {o.customer_id
                         ? customerName.get(o.customer_id) ?? '—'
@@ -773,14 +909,14 @@ export function Orders() {
                         <button
                           onClick={() => reprint(o)}
                           className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
-                          title="Cetak ulang struk thermal"
+                          title="Cetak ulang struk thermal / simpan PDF"
                         >
                           <Printer size={14} />
                         </button>
                         <button
                           onClick={() => reprint(o, 'invoice')}
                           className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
-                          title="Cetak faktur A4 (untuk pesanan toko/grosir)"
+                          title="Cetak faktur A4 / simpan PDF"
                         >
                           <FileText size={14} />
                         </button>
@@ -816,7 +952,7 @@ export function Orders() {
         onDone={() => pullRecentOrders(storeId, 500)}
       />
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.order_number ?? ''} size="md">
+      <Modal open={!!selected} onClose={() => setSelected(null)} title={selected?.order_number ?? ''} size="lg">
         {selected && (
           <div className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-3">
@@ -967,12 +1103,15 @@ export function Orders() {
                 <MessageCircle size={14} /> WhatsApp
               </Button>
               <Button variant="secondary" onClick={() => reprint(selected)}>
-                <Printer size={14} /> Cetak Thermal
+                <Printer size={14} /> Cetak Thermal / PDF
               </Button>
               <Button onClick={() => reprint(selected, 'invoice')}>
-                <FileText size={14} /> Cetak Faktur A4
+                <FileText size={14} /> Cetak Faktur A4 / PDF
               </Button>
             </div>
+            <p className="text-right text-[11px] text-ink-500">
+              Untuk menyimpan PDF, pilih "Simpan sebagai PDF" di jendela cetak.
+            </p>
           </div>
         )}
       </Modal>

@@ -21,6 +21,7 @@ import { Reports } from '@/pages/Reports';
 import { Expenses } from '@/pages/Expenses';
 import { StockOpnamePage } from '@/pages/StockOpname';
 import { StockMutation } from '@/pages/StockMutation';
+import { ProductFeedback } from '@/pages/ProductFeedback';
 import { UsersPage } from '@/pages/Users';
 import { CustomerPortal } from '@/pages/CustomerPortal';
 import { PublicCatalog } from '@/pages/public/PublicCatalog';
@@ -28,6 +29,9 @@ import { PublicProductDetail } from '@/pages/public/PublicProductDetail';
 import { PublicCart } from '@/pages/public/PublicCart';
 import { PublicCheckout } from '@/pages/public/PublicCheckout';
 import { PublicOrderDone } from '@/pages/public/PublicOrderDone';
+import { PublicLogin } from '@/pages/public/PublicLogin';
+import { PublicResetPassword } from '@/pages/public/PublicResetPassword';
+import { PublicAccount } from '@/pages/public/PublicAccount';
 import { useAuth } from '@/stores/auth';
 import { applyTheme, useUI } from '@/stores/ui';
 import { applyAccent } from '@/lib/accents';
@@ -70,6 +74,7 @@ export default function App() {
         <Route path="/shifts" element={<ProtectedRoute><AdminLayout><Shifts /></AdminLayout></ProtectedRoute>} />
         <Route path="/stock-mutation" element={<ProtectedRoute><AdminLayout><StockMutation /></AdminLayout></ProtectedRoute>} />
         <Route path="/stock-opname" element={<ProtectedRoute><AdminLayout><StockOpnamePage /></AdminLayout></ProtectedRoute>} />
+        <Route path="/feedback" element={<ProtectedRoute><AdminLayout><ProductFeedback /></AdminLayout></ProtectedRoute>} />
         <Route path="/expenses" element={<ProtectedRoute><AdminLayout><Expenses /></AdminLayout></ProtectedRoute>} />
         <Route path="/reports" element={<ProtectedRoute><AdminLayout><Reports /></AdminLayout></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><AdminLayout><UsersPage /></AdminLayout></ProtectedRoute>} />
@@ -80,6 +85,9 @@ export default function App() {
         <Route path="/toko/keranjang" element={<PublicCart />} />
         <Route path="/toko/checkout" element={<PublicCheckout />} />
         <Route path="/toko/selesai" element={<PublicOrderDone />} />
+        <Route path="/toko/masuk" element={<PublicLogin />} />
+        <Route path="/toko/lupa-sandi" element={<PublicResetPassword />} />
+        <Route path="/toko/akun" element={<PublicAccount />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </PinLockGate>

@@ -27,7 +27,13 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
-import { pullInventoryReference, pullPurchases, pullSuppliers, receivePurchase } from '@/lib/sync';
+import {
+  pullInventoryReference,
+  pullPurchases,
+  pullSuppliers,
+  receivePurchaseActual,
+} from '@/lib/sync';
+import { ProductPicker } from '@/components/data/ProductPicker';
 import { cn, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
 import type {
@@ -499,14 +505,32 @@ export function Purchases() {
   // Simpan terus selama nota BARU sedang diketik. Nota yang sudah ada tidak
   // ikut disimpan: isinya sudah aman di database, dan menyimpan salinannya
   // hanya berisiko menimpa balik dengan versi lama.
+  // Status simpan draft terakhir, supaya pengguna tahu isian panjangnya aman.
+  const [draftStatus, setDraftStatus] = useState<{ at: Date; ok: boolean } | null>(null);
+  // Nota yang sedang diterima; jumlah aktual per baris diisi di dialog.
+  const [receiveFor, setReceiveFor] = useState<Purchase | null>(null);
   useEffect(() => {
-    if (!storeId || !formOpen || form.id || !adaIsi(form)) return;
+    if (!storeId || !formOpen || form.id) return;
+    if (!adaIsi(form)) {
+      setDraftStatus(null);
+      return;
+    }
     try {
       localStorage.setItem(kunciDraft(storeId), JSON.stringify(form));
+      setDraftStatus({ at: new Date(), ok: true });
     } catch {
-      // Kuota penuh atau mode privat: draft dilewati, bukan alasan gagal.
+      // Kuota penuh atau mode privat: draft tidak tersimpan. Pengguna diberi
+      // tahu supaya tidak mengandalkannya.
+      setDraftStatus({ at: new Date(), ok: false });
     }
   }, [form, formOpen, storeId]);
+
+  // Jumlah barang di nota, dalam pcs. Dipisah dari nilai rupiah supaya
+  // pengecekan jumlah pesanan tidak perlu menghitung dari tiap baris.
+  const totalQty = useMemo(
+    () => form.items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
+    [form.items],
+  );
 
   const formTotals = useMemo(() => {
     const isUsd = form.currency === 'USD';
@@ -662,26 +686,34 @@ export function Purchases() {
     toast.success(`Status nota jadi "${STATUS_LABELS[status]}".`);
   }
 
-  async function receive(purchase: Purchase) {
+  function receive(purchase: Purchase) {
     if (purchase.received_at) {
       toast.error('Barang nota ini sudah pernah diterima.');
       return;
     }
+    setDetailId(null);
+    setReceiveFor(purchase);
+  }
+
+  async function confirmReceive(purchase: Purchase, actual: { id: string; qty: number }[]) {
     const rows = itemsByPurchase.get(purchase.id) ?? [];
-    const tracked = rows.filter((item) => item.product_id);
-    if (!confirm(
-      `Terima barang nota ${purchase.invoice_number}? Stok ${tracked.length} produk akan bertambah dan mutasi stok tercatat.`,
-    )) {
-      return;
-    }
+    const beda = actual.some((a) => {
+      const row = rows.find((r) => r.id === a.id);
+      return !!row && Number(row.qty) !== a.qty;
+    });
     setBusy(true);
-    const { error } = await receivePurchase(purchase.id, storeId);
+    const { error } = await receivePurchaseActual(purchase.id, storeId, actual);
     setBusy(false);
     if (error) {
       toast.error(error.message);
       return;
     }
-    toast.success('Barang diterima, stok sudah diperbarui.');
+    setReceiveFor(null);
+    toast.success(
+      beda
+        ? 'Barang diterima dengan jumlah aktual. Nilai nota dan sisa pelunasan sudah disesuaikan.'
+        : 'Barang diterima, stok sudah diperbarui.',
+    );
   }
 
   async function removePurchase(purchase: Purchase) {
@@ -983,7 +1015,7 @@ export function Purchases() {
         open={formOpen}
         onClose={() => setFormOpen(false)}
         title={form.id ? 'Edit Nota Pembelian' : 'Nota Pembelian Baru'}
-        size="lg"
+        size="xl"
       >
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1094,19 +1126,19 @@ export function Purchases() {
                   key={item.key}
                   className="rounded-xl border border-ink-100 p-3 dark:border-ink-800"
                 >
-                  <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_0.8fr_0.8fr_0.5fr_0.8fr_auto]">
-                    <select
-                      className="input"
+                  {/* Baris 1: produk selebar penuh supaya nama & SKU terbaca utuh
+                      (client: "nama produk tayang tidak ke-skip"). Baris 2: rinciannya. */}
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.6fr)_minmax(0,1fr)_auto]">
+                    <ProductPicker
+                      className="sm:col-span-5"
+                      products={products}
                       value={item.product_id}
-                      onChange={(e) => pickProduct(item.key, e.target.value)}
-                    >
-                      <option value="">— Pilih produk / manual —</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} {p.sku ? `(${p.sku})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(id) => pickProduct(item.key, id)}
+                      excludeIds={form.items
+                        .filter((row) => row.key !== item.key && row.product_id)
+                        .map((row) => row.product_id)}
+                      emptyLabel="— Item manual (tanpa produk) —"
+                    />
                     <input
                       className="input"
                       placeholder="Nama item"
@@ -1173,7 +1205,7 @@ export function Purchases() {
                               : [blankItem()],
                         })
                       }
-                      className="grid h-10 w-10 place-items-center rounded-xl text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                      className="grid h-10 w-10 place-items-center rounded-xl text-ink-400 hover:bg-rose-50 hover:text-rose-600 sm:col-start-6 sm:row-start-1 dark:hover:bg-rose-500/10"
                       title="Hapus item"
                     >
                       <X size={16} />
@@ -1258,8 +1290,11 @@ export function Purchases() {
                 — menyembunyikan salah satunya memaksa orang menghitung sendiri
                 di kepala tiap kali membuka nota. */}
             <div className="grid gap-2 sm:grid-cols-2">
+              <div className="border-b border-brand-100 pb-2 dark:border-brand-500/20 sm:col-span-2">
+                <SummaryLine label="Total qty" value={`${formatNumber(totalQty)} pcs`} />
+              </div>
               <SummaryLine
-                label="Subtotal item"
+                label="Subtotal harga"
                 value={formatMoney(formTotals.subtotal, currency)}
                 secondary={
                   formTotals.isUsd ? formatMoney(formTotals.subtotalIdr, 'IDR') : undefined
@@ -1317,6 +1352,15 @@ export function Purchases() {
           </div>
 
           <div className="flex justify-end gap-2 border-t border-ink-100 pt-3 dark:border-ink-800">
+            {!form.id && draftStatus && (
+              <span
+                className={`mr-auto self-center text-xs ${draftStatus.ok ? 'text-ink-500' : 'text-rose-600'}`}
+              >
+                {draftStatus.ok
+                  ? `Draft tersimpan otomatis · ${draftStatus.at.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                  : 'Draft gagal tersimpan di perangkat ini. Simpan nota sebelum menutup.'}
+              </span>
+            )}
             <Button variant="secondary" onClick={() => setFormOpen(false)}>
               Batal
             </Button>
@@ -1327,12 +1371,22 @@ export function Purchases() {
         </div>
       </Modal>
 
+      <ReceiveDialog
+        purchase={receiveFor}
+        items={receiveFor ? itemsByPurchase.get(receiveFor.id) ?? [] : []}
+        busy={busy}
+        onClose={() => setReceiveFor(null)}
+        onConfirm={(actual) => {
+          if (receiveFor) void confirmReceive(receiveFor, actual);
+        }}
+      />
+
       {/* ---------- Detail nota ---------- */}
       <Modal
         open={detail !== null}
         onClose={() => setDetailId(null)}
         title={detail ? `Nota ${detail.invoice_number}` : 'Detail Nota'}
-        size="lg"
+        size="xl"
       >
         {detail && (
           <PurchaseDetail
@@ -1465,7 +1519,10 @@ function PurchaseDetail({
       </div>
 
       <div>
-        <div className="mb-2 text-sm font-semibold">Item ({formatNumber(items.length)})</div>
+        <div className="mb-2 text-sm font-semibold">
+          Item ({formatNumber(items.length)}) · Total qty{' '}
+          {formatNumber(items.reduce((sum, it) => sum + Number(it.qty || 0), 0))} pcs
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-ink-500">
@@ -1937,4 +1994,135 @@ function daysUntilDue(purchase: Purchase): number | null {
 function noteRate(purchase: { exchange_rate?: number | string | null }): number {
   const rate = Number(purchase.exchange_rate || 0);
   return rate > 0 ? rate : 1;
+}
+
+/**
+ * Terima barang dengan jumlah aktual. Pesanan ke supplier sering meleset
+ * (dipesan 100, jadi 110 atau 95); yang masuk stok dan yang dibayar harus
+ * mengikuti jumlah yang benar-benar datang, bukan jumlah yang dipesan.
+ * Semua angka di sini dalam IDR, sama seperti nilai nota yang tersimpan.
+ */
+function ReceiveDialog({
+  purchase,
+  items,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  purchase: Purchase | null;
+  items: PurchaseItem[];
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (actual: { id: string; qty: number }[]) => void;
+}) {
+  const [qty, setQty] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setQty(Object.fromEntries(items.map((it) => [it.id, String(Number(it.qty))])));
+    // Diisi ulang hanya saat nota yang dibuka berganti.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [purchase?.id]);
+
+  if (!purchase) return null;
+
+  const angka = (id: string, cadangan: number) => {
+    const v = qty[id];
+    if (v === undefined || v === '') return cadangan;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : cadangan;
+  };
+  const subtotal = items.reduce(
+    (sum, it) => sum + angka(it.id, Number(it.qty)) * Number(it.cost_price || 0),
+    0,
+  );
+  const total =
+    subtotal - Number(purchase.discount || 0) + Number(purchase.tax || 0) + Number(purchase.other_cost || 0);
+  const sudahBayar = Number(purchase.paid_amount || 0);
+  const sisa = total - sudahBayar;
+  const valid = items.every((it) => {
+    const v = qty[it.id];
+    return v !== undefined && v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
+  });
+
+  return (
+    <Modal open onClose={onClose} title={`Terima barang ${purchase.invoice_number}`} size="lg">
+      <div className="space-y-3 text-sm">
+        <p className="text-ink-500">
+          Isi jumlah yang benar-benar datang. Stok bertambah sebanyak jumlah ini, dan nilai nota
+          serta sisa pelunasan ikut disesuaikan.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs text-ink-500">
+              <tr>
+                <th className="py-1.5">Item</th>
+                <th className="py-1.5 text-right">Dipesan</th>
+                <th className="py-1.5 text-right">Diterima</th>
+                <th className="py-1.5 text-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it) => {
+                const n = angka(it.id, Number(it.qty));
+                const beda = n !== Number(it.qty);
+                return (
+                  <tr key={it.id} className="border-t border-ink-100 dark:border-ink-800">
+                    <td className="py-2">
+                      <div className="font-medium">{it.name}</div>
+                      {it.sku && <div className="text-[11px] text-ink-500">{it.sku}</div>}
+                    </td>
+                    <td className="py-2 text-right tabular-nums">{formatNumber(Number(it.qty))}</td>
+                    <td className="py-2 text-right">
+                      <input
+                        aria-label={`Diterima ${it.name}`}
+                        type="number"
+                        min="0"
+                        className={`input !w-24 !py-1 text-right ${beda ? '!border-amber-400' : ''}`}
+                        value={qty[it.id] ?? ''}
+                        onChange={(e) => setQty({ ...qty, [it.id]: e.target.value })}
+                      />
+                    </td>
+                    <td className="py-2 text-right tabular-nums">
+                      {formatMoney(n * Number(it.cost_price || 0))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="space-y-1 border-t border-ink-100 pt-2 dark:border-ink-800">
+          <div className="flex justify-between">
+            <span>Subtotal</span>
+            <span className="tabular-nums">{formatMoney(subtotal)}</span>
+          </div>
+          <div className="flex justify-between font-semibold">
+            <span>Total nota</span>
+            <span className="tabular-nums">{formatMoney(total)}</span>
+          </div>
+          <div className="flex justify-between text-ink-500">
+            <span>Sudah dibayar</span>
+            <span className="tabular-nums">{formatMoney(sudahBayar)}</span>
+          </div>
+          <div className="flex justify-between font-semibold">
+            <span>{sisa >= 0 ? 'Sisa pelunasan' : 'Kelebihan bayar'}</span>
+            <span className="tabular-nums">{formatMoney(Math.abs(sisa))}</span>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Batal
+          </Button>
+          <Button
+            onClick={() =>
+              onConfirm(items.map((it) => ({ id: it.id, qty: angka(it.id, Number(it.qty)) })))
+            }
+            disabled={busy || !valid}
+          >
+            {busy ? 'Memproses...' : 'Terima barang'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
 }

@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/stores/auth';
+import { skuMapFor } from '@/lib/printSupport';
 import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import {
   buildReceiptText,
@@ -45,7 +46,7 @@ export function ReceiptModal({
   data: ReceiptData | null;
   onClose: () => void;
 }) {
-  const { store } = useAuth();
+  const { store, profile } = useAuth();
   const [waPhone, setWaPhone] = useState('');
   const [emailAddr, setEmailAddr] = useState('');
   const [sending, setSending] = useState<NotificationChannel | null>(null);
@@ -149,7 +150,7 @@ export function ReceiptModal({
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddr);
 
   return (
-    <Modal open onClose={onClose} title={`Struk ${order.order_number}`} size="md">
+    <Modal open onClose={onClose} title={`Struk ${order.order_number}`} size="lg">
       <div className="space-y-4">
         <div className="flex items-center gap-3 rounded-xl bg-emerald-50 p-3 dark:bg-emerald-500/15">
           <div className="grid h-10 w-10 place-items-center rounded-full bg-emerald-500 text-white">
@@ -261,8 +262,15 @@ export function ReceiptModal({
           </Button>
           <Button
             variant="secondary"
-            onClick={() =>
-              printInvoice({ store, order, items, customerName: customer?.name })
+            onClick={async () =>
+              printInvoice({
+                store,
+                order,
+                items,
+                customerName: customer?.name ?? order.customer_name,
+                skuByProductId: await skuMapFor(items),
+                printedBy: profile?.full_name ?? null,
+              })
             }
             title="Cetak faktur satu halaman penuh (A4), atau simpan sebagai PDF"
           >

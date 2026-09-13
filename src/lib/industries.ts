@@ -22,6 +22,8 @@ export interface IndustryFeatures {
   useSizes: boolean;
   /** New products default to track_stock = true. */
   defaultTrackStock: boolean;
+  /** Harga jual sudah termasuk pajak: pajak diekstrak, bukan ditambahkan. */
+  taxInclusive?: boolean;
 }
 
 export interface IndustryDef {

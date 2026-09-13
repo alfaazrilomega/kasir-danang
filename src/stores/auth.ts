@@ -129,28 +129,10 @@ export const useAuth = create<AuthState>((set, get) => ({
     };
     const foundDemo = uid ? demoRoles[uid] : null;
 
-    const prodCount = await db.products.count();
-    if (prodCount < 20) {
-      try {
-        const { generate1000Data, pushSeedToServer } = await import('@/lib/seed1000');
-        await generate1000Data(store.id, uid);
-        // Dorong ke server supaya data demo juga ada di Postgres; tanpa ini
-        // fitur yang menyentuh product_id lewat API selalu gagal.
-        //
-        // Sengaja TIDAK di-await: unggahannya ribuan baris dan akan menahan
-        // layar login belasan detik. Data lokal sudah siap dipakai, dorongan
-        // ke server berjalan di belakang.
-        void pushSeedToServer()
-          .then((res) => {
-            if (res.failures.length) console.warn('[Seed push]', res.failures);
-            else console.info(`[Seed push] ${res.pushed} baris terkirim ke server.`);
-          })
-          .catch((err) => console.warn('[Seed push] gagal:', err));
-        store = (await db.stores.toCollection().first()) ?? store;
-      } catch (err) {
-        console.warn('[Seed Data Error]:', err);
-      }
-    }
+    // Masuk lewat server: katalog, shift, dan transaksi selalu diambil dari server.
+    // Data demo acak TIDAK lagi dibuat otomatis di perangkat baru. Dulu seed ini
+    // ikut didorong ke server sehingga toko asli terisi produk & pesanan palsu,
+    // dan shift demo yang tidak ada di server membuat penjualan kasir ditolak.
 
     const resolvedProfile: Profile = {
       id: uid,

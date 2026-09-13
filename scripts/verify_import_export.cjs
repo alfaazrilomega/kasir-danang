@@ -11,6 +11,22 @@ const fs = require('fs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
+/** Pecah teks CSV menjadi baris logis; baris baru di dalam tanda kutip tidak memecah baris. */
+function barisCsv(teks) {
+  const hasil = [];
+  let kini = '';
+  let dalamKutip = false;
+  for (const ch of teks.replace(/\r\n/g, '\n')) {
+    if (ch === '"') dalamKutip = !dalamKutip;
+    if (ch === '\n' && !dalamKutip) {
+      hasil.push(kini);
+      kini = '';
+    } else kini += ch;
+  }
+  if (kini) hasil.push(kini);
+  return hasil;
+}
+
 const PSQL = 'C:/Program Files/PostgreSQL/16/bin/psql.exe';
 const envText = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
 const dbPw = /:\/\/[^:]+:([^@]*)@/.exec(envText.split(/\r?\n/).find((l) => l.startsWith('DATABASE_URL=')))[1];
@@ -135,6 +151,13 @@ let kolomTemplate = 0;
     page.once('dialog', (d) => d.accept());
     await page.locator('input[type="file"]').setInputFiles(goodPath);
     await page.waitForTimeout(2500);
+    // Default modal sekarang "Gabung per SKU" (revisi 9.9); bagian ini khusus
+    // menguji mode ganti total, jadi mode itu dipilih eksplisit.
+    const tombolGanti = page.getByRole('button', { name: /^Ganti total$/i });
+    if (await tombolGanti.count()) {
+      await tombolGanti.first().click();
+      await page.waitForTimeout(2500);
+    }
     const planText = await page.locator('body').innerText();
     record('Rencana menampilkan jumlah produk baru', /Produk baru/i.test(planText));
     record('Peringatan penggantian data lama tampil', /akan\s+diganti/i.test(planText.replace(/\s+/g, ' ')));
@@ -194,7 +217,8 @@ let kolomTemplate = 0;
     if (csvDl) {
       const p = path.join(tmp, 'ekspor.csv');
       await csvDl.saveAs(p);
-      const lines = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').trim().split('\n');
+      // Deskripsi boleh berisi baris baru (dibungkus kutip), jadi baris dipecah dengan memperhatikan kutip.
+      const lines = barisCsv(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').trim());
       // Baris 0 = sep=;, baris 1 = judul kolom, sisanya data.
       // Ekspor memuat seluruh katalog termasuk produk yang diarsipkan; status
       // aktifnya dibawa di kolom `aktif`, jadi tidak ada data yang hilang.
@@ -208,7 +232,7 @@ let kolomTemplate = 0;
       record('Ekspor memakai kolom template',
         lines[1].split(';').length === kolomTemplate,
         lines[1].split(';').length + ' vs template ' + kolomTemplate);
-      const namaKoma = lines.find((l) => l.includes('Gear Depan'));
+      const namaKoma = lines.find((l) => l.includes('Gear Depan, Racing'));
       record('Nama bertanda koma tidak terpotong saat diekspor',
         !!namaKoma && namaKoma.split(';').length === kolomTemplate,
         (namaKoma || '').slice(0, 50));

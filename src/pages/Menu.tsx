@@ -29,6 +29,7 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { useBarcodeScanner } from '@/lib/barcode';
+import { urutNamaSku } from '@/lib/sortProducts';
 import { buildChannelSkuIndex, normalizeSku } from '@/lib/skuLookup';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney } from '@/lib/format';
@@ -141,7 +142,7 @@ export function MenuPage() {
           return (popularity.get(b.id) ?? 0) - (popularity.get(a.id) ?? 0);
         case 'name':
         default:
-          return a.name.localeCompare(b.name);
+          return urutNamaSku(a, b);
       }
     });
     return sorted;
@@ -235,6 +236,16 @@ export function MenuPage() {
     return { adalahSet: false, qty: Number(p.stock_qty ?? 0), dilacak: !!p.track_stock };
   }
 
+  // Modal set dihitung dari modal isinya saat ini, supaya laba penjualan set
+  // ikut harga beli terakhir tanpa harus menyimpan ulang produk setnya.
+  function modalSetSaatIni(productId: string): number {
+    return (isiByParent.get(productId) ?? []).reduce(
+      (sum, c) =>
+        sum + Number(produkById.get(c.component_product_id)?.cost_price ?? 0) * Number(c.qty ?? 1),
+      0,
+    );
+  }
+
   function addToCart(p: Product, sizeOverride?: string) {
     const stok = tersedia(p);
     if (stok.dilacak && stok.qty <= 0) {
@@ -254,7 +265,7 @@ export function MenuPage() {
       qty: 1,
       price: Number(p.base_price) + Number(modifier),
       base_price: Number(p.base_price) + Number(modifier),
-      cost_price: Number(p.cost_price ?? 0),
+      cost_price: stok.adalahSet ? modalSetSaatIni(p.id) : Number(p.cost_price ?? 0),
       note: '',
       image_url: p.image_url,
       sku: p.sku,

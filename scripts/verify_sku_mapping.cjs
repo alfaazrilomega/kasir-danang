@@ -117,7 +117,8 @@ function openKasir(evalFn) {
     record('Chip channel asli tampil', chipCount > 0, chipCount + ' chip');
     await page.screenshot({ path: path.join(SHOTS, '20_products_channel_chips.png') });
 
-    const editBtn = page.locator('tbody tr').first().locator('button.rounded-full').first();
+    // Baris produk juga punya ikon riwayat & label, jadi tombol Edit dipilih lewat judulnya.
+    const editBtn = page.locator('tbody tr').first().locator('button[title="Edit"]');
     await editBtn.click({ timeout: 10000 }).catch((e) => console.log('  [edit click] ' + e.message));
     await page.waitForTimeout(2000);
     const sectionVisible = await page.getByText('SKU Platform / Marketplace').first().isVisible().catch(() => false);

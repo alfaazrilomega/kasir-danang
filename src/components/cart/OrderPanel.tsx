@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Banknote,
@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
+  Landmark,
   Minus,
   Pause,
   Pencil,
@@ -51,8 +52,8 @@ export function OrderPanel() {
   const taxRate = Number(store?.tax_rate ?? 0);
   const pointsPerAmount = Number(store?.points_per_amount ?? 0);
   const totals = useMemo(
-    () => cartTotals(lines, taxRate, promo, manualDiscount, pointsPerAmount),
-    [lines, taxRate, promo, manualDiscount, pointsPerAmount],
+    () => cartTotals(lines, taxRate, promo, manualDiscount, pointsPerAmount, !!features.taxInclusive),
+    [lines, taxRate, promo, manualDiscount, pointsPerAmount, features.taxInclusive],
   );
   const [busy, setBusy] = useState(false);
 
@@ -194,6 +195,7 @@ Lanjutkan simpan?`,
       order_number: finalOrderNumber,
       subtotal: totals.subtotal,
       tax: totals.tax,
+      tax_inclusive: !!features.taxInclusive,
       discount: totals.discount,
       total: totalAkhir,
       payment_method: payment,
@@ -544,7 +546,7 @@ Lanjutkan simpan?`,
                   >
                     <Minus size={12} />
                   </button>
-                  <span className="w-8 text-center text-sm font-semibold">{l.qty}</span>
+                  <QtyInput value={l.qty} onCommit={(n) => updateQty(i, n)} />
                   <button
                     onClick={() => updateQty(i, l.qty + 1)}
                     className="grid h-7 w-7 place-items-center rounded-full border border-ink-200 dark:border-ink-700"
@@ -675,7 +677,7 @@ Lanjutkan simpan?`,
             {totals.discount > 0 && (
               <Row label="Diskon" value={`-${formatMoney(totals.discount, store?.currency)}`} red />
             )}
-            <Row label={`Pajak (${taxRate}%)`} value={formatMoney(totals.tax, store?.currency)} />
+            <Row label={features.taxInclusive ? `Termasuk pajak ${taxRate}%` : `Pajak (${taxRate}%)`} value={formatMoney(totals.tax, store?.currency)} />
             <div className="border-t border-dashed border-ink-200 dark:border-ink-700 my-1" />
             <Row label="Total" value={formatMoney(totals.total, store?.currency)} bold />
             {payment === 'cash' && receivedAmount > 0 && (
@@ -786,7 +788,7 @@ Lanjutkan simpan?`,
                 <PayTile icon={Banknote} label="Cash" active={payment === 'cash'} onClick={() => setPayment('cash')} />
                 <PayTile icon={QrCode} label="QRIS" active={payment === 'qris'} onClick={() => setPayment('qris')} />
                 <PayTile icon={Smartphone} label="E-wallet" active={payment === 'ewallet'} onClick={() => setPayment('ewallet')} />
-                <PayTile icon={CreditCard} label="Debit/Credit" active={payment === 'card'} onClick={() => setPayment('card')} />
+                <PayTile icon={Landmark} label="Transfer" active={payment === 'transfer'} onClick={() => setPayment('transfer')} />
               </div>
             )}
           </div>
@@ -1063,3 +1065,32 @@ function CustomerPickerModal({ open, onClose, onSelect }: { open: boolean; onClo
   );
 }
 
+/**
+ * Qty yang bisa diketik langsung: pesanan toko 100 pcs tidak masuk akal
+ * ditekan tombol + seratus kali. Teksnya ditahan di state lokal selama
+ * diketik, karena updateQty menghapus baris begitu qty <= 0 — tanpa ini,
+ * mengosongkan angka untuk mengetik ulang langsung menghilangkan barangnya.
+ */
+function QtyInput({ value, onCommit }: { value: number; onCommit: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label="Jumlah"
+      value={draft}
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => {
+        const bersih = e.target.value.replace(/\D/g, '');
+        setDraft(bersih);
+        const n = Number(bersih);
+        if (bersih && n >= 1) onCommit(n);
+      }}
+      onBlur={() => {
+        if (!draft || Number(draft) < 1) setDraft(String(value));
+      }}
+      className="w-12 rounded-lg border border-ink-200 bg-transparent py-0.5 text-center text-sm font-semibold tabular-nums focus:border-brand-500 focus:outline-none dark:border-ink-700"
+    />
+  );
+}

@@ -99,6 +99,9 @@ const record = (nama, ok, ket) => {
     await page.getByRole('button', { name: /Detail/i }).first().click();
     await page.waitForTimeout(1800);
     await modal().getByRole('button', { name: /Terima barang/i }).first().click();
+    await page.waitForTimeout(1200);
+    // Dialog jumlah aktual: jumlah diterima = jumlah dipesan, langsung konfirmasi.
+    await modal().getByRole('button', { name: /^Terima barang$/i }).click();
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 3000, timeoutMs: 120000 });
     await page.waitForTimeout(1800);
     record('Barang tercatat diterima',

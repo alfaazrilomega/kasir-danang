@@ -446,6 +446,25 @@ export async function receivePurchase(purchaseId: string, storeId: string) {
   return { error: null };
 }
 
+/**
+ * Terima barang dengan jumlah aktual per baris (dipesan 100, datang 110).
+ * Nilai nota dan sisa pelunasan ikut jumlah yang benar-benar datang.
+ */
+export async function receivePurchaseActual(
+  purchaseId: string,
+  storeId: string,
+  items: { id: string; qty: number }[],
+) {
+  const api = getBackendClient();
+  const { error } = await api.rpc('receive_purchase_actual', {
+    p_purchase_id: purchaseId,
+    p_items: items,
+  });
+  if (error) return { error };
+  await Promise.all([pullPurchases(storeId), pullInventoryReference(storeId)]);
+  return { error: null };
+}
+
 export async function enqueueOrder(pending: PendingOrder) {
   await db.pending.put(pending);
   await db.orders.put({ ...pending.payload.order });

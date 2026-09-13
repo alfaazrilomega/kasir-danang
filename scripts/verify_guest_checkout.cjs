@@ -15,6 +15,8 @@ const { execFileSync } = require('child_process');
 const { trackApi, waitForApiIdle, envValue, BASE_URL, ADMIN_PASSWORD, DB_PASSWORD } = require('./lib/harness.cjs');
 
 const CAP = Date.now().toString().slice(-6);
+// Checkout memakai akun pembeli (keputusan client), jadi uji mendaftar akun baru.
+const EMAIL_PEMBELI = `uji.pembeli.${CAP}@contoh.id`;
 
 function psql(q, boleh = false) {
   try {
@@ -49,76 +51,82 @@ const record = (nama, ok, ket) => {
     // ---- 1. Kunjungi /toko tanpa login ----
     await guest.goto(BASE_URL + '/toko', { waitUntil: 'networkidle' });
     await waitForApiIdle(guest, { idleMs: 2000, minWaitMs: 1500 });
-    const jumlahKartuProduk = await guest.locator('button:has-text("+ Keranjang")').count();
+    const jumlahKartuProduk = await guest.locator('a[data-kartu-produk]').count();
     record('Katalog publik tampil tanpa login', jumlahKartuProduk > 0, jumlahKartuProduk + ' produk');
 
+    // Kartu ala Lazada tidak punya tombol keranjang: buka produknya lalu tambah dari halaman detail.
+    const tambahDariKartu = async (n) => {
+      await guest.locator('a[data-kartu-produk]').filter({ hasNotText: 'Stok habis' }).nth(n).click();
+      await guest.waitForURL((u) => u.pathname.includes('/toko/produk'), { timeout: 10000 }).catch(() => {});
+      const tombol = guest.getByRole('button', { name: /Tambah ke keranjang/i }).first();
+      await tombol.waitFor({ timeout: 15000 });
+      await tombol.click();
+      await guest.waitForTimeout(500);
+    };
+
     // ---- 2. Tambah ke keranjang, cek badge ----
-    const tombolTersedia = guest.locator('button:has-text("+ Keranjang"):not([disabled])');
-    await tombolTersedia.first().click();
-    await guest.waitForTimeout(500);
+    await tambahDariKartu(0);
     const badge = await guest.locator('a[aria-label="Keranjang"] span').last().textContent();
     record('Badge keranjang bertambah', badge?.trim() === '1', 'badge=' + badge);
 
-    // ---- 2a. Urutkan + filter multi-kategori ----
-    await guest.goto(BASE_URL + '/toko', { waitUntil: 'networkidle' });
+    // ---- 2a. Urutkan + filter multi-kategori (halaman Semua Produk) ----
+    await guest.goto(BASE_URL + '/toko?semua=1', { waitUntil: 'networkidle' });
     await waitForApiIdle(guest, { idleMs: 1500, minWaitMs: 1000 });
 
     // Intl.NumberFormat memakai spasi tak-putus di "Rp 25.000", jadi teks
     // dicocokkan dengan \s (bukan spasi biasa) lalu diambil angkanya saja.
     const hargaTampil = async () => {
-      const teks = await guest.locator('.card').allInnerTexts();
+      const teks = await guest.locator('a[data-kartu-produk]').allInnerTexts();
       return teks
         .map((t) => /Rp\s*([\d.]+)/.exec(t))
         .filter(Boolean)
         .map((m) => Number(m[1].replace(/\./g, '')));
     };
 
-    await guest.locator('select').first().selectOption('harga-asc');
+    await guest.getByLabel('Urutkan produk').selectOption('harga-asc');
     await guest.waitForTimeout(600);
     const naik = await hargaTampil();
     record('Urutkan harga terendah benar-benar menaik',
       naik.length > 1 && naik.every((v, i) => i === 0 || naik[i - 1] <= v),
       naik.slice(0, 4).join(' <= '));
 
-    await guest.locator('select').first().selectOption('harga-desc');
+    await guest.getByLabel('Urutkan produk').selectOption('harga-desc');
     await guest.waitForTimeout(600);
     const turun = await hargaTampil();
     record('Urutkan harga tertinggi benar-benar menurun',
       turun.length > 1 && turun.every((v, i) => i === 0 || turun[i - 1] >= v),
       turun.slice(0, 4).join(' >= '));
 
-    const totalSemua = Number((await guest.locator('text=/\\d+ produk/').first().textContent() || '0').replace(/\D/g, ''));
-    await guest.getByRole('button', { name: /Filter/i }).click();
-    await guest.waitForTimeout(400);
-    const centang = guest.locator('input[type="checkbox"]');
+    const jumlahDitemukan = async () =>
+      Number(((await guest.getByText(/produk ditemukan/).first().textContent()) || '0').replace(/[^0-9]/g, ''));
+    const totalSemua = await jumlahDitemukan();
+    const centang = guest.locator('aside input[type="checkbox"]');
     await centang.nth(0).check();
     await guest.waitForTimeout(500);
-    const setelahSatu = Number((await guest.locator('text=/\\d+ produk/').first().textContent() || '0').replace(/\D/g, ''));
+    const setelahSatu = await jumlahDitemukan();
     await centang.nth(1).check();
     await guest.waitForTimeout(500);
-    const setelahDua = Number((await guest.locator('text=/\\d+ produk/').first().textContent() || '0').replace(/\D/g, ''));
+    const setelahDua = await jumlahDitemukan();
     record('Filter kategori bisa dicentang lebih dari satu (multi-pilih)',
       setelahDua > setelahSatu && setelahDua < totalSemua,
       `semua=${totalSemua}, 1 kategori=${setelahSatu}, 2 kategori=${setelahDua}`);
 
-    const jumlahChip = await guest.locator('button:has-text("Reset filter")').count();
-    record('Panel filter menyediakan Reset filter', jumlahChip > 0);
-    await guest.getByRole('button', { name: 'Reset filter' }).first().click();
+    const jumlahChip = await guest.getByRole('button', { name: 'Hapus semua', exact: true }).count();
+    record('Filter aktif menyediakan Hapus semua', jumlahChip > 0);
+    await guest.getByRole('button', { name: 'Hapus semua', exact: true }).click();
     await guest.waitForTimeout(500);
-    const setelahReset = Number((await guest.locator('text=/\\d+ produk/').first().textContent() || '0').replace(/\D/g, ''));
-    record('Reset filter mengembalikan semua produk', setelahReset === totalSemua,
+    const setelahReset = await jumlahDitemukan();
+    record('Hapus semua filter mengembalikan semua produk', setelahReset === totalSemua,
       `${setelahReset} vs ${totalSemua}`);
 
     // ---- 2b. Detail produk + Beli Sekarang (tidak boleh menyentuh keranjang) ----
     await guest.goto(BASE_URL + '/toko', { waitUntil: 'networkidle' });
     await waitForApiIdle(guest, { idleMs: 1500, minWaitMs: 1000 });
-    const kartuTersedia = guest
-      .locator('.card')
-      .filter({ has: guest.locator('button:has-text("+ Keranjang"):not([disabled])') })
-      .first();
-    await kartuTersedia.locator('a').first().click();
+    await guest.locator('a[data-kartu-produk]').filter({ hasNotText: 'Stok habis' }).first().click();
     await guest.waitForURL((u) => u.pathname.includes('/toko/produk'), { timeout: 10000 }).catch(() => {});
     record('Klik produk membuka halaman detail', guest.url().includes('/toko/produk'), guest.url());
+    // Halaman detail memuat datanya sendiri; tunggu sampai tombol belinya tampil.
+    await guest.getByRole('button', { name: 'Beli Sekarang' }).first().waitFor({ timeout: 15000 }).catch(() => {});
     record(
       'Halaman detail menawarkan Tambah ke Keranjang & Beli Sekarang terpisah',
       (await guest.getByRole('button', { name: 'Beli Sekarang' }).count()) > 0 &&
@@ -129,6 +137,27 @@ const record = (nama, ok, ket) => {
     await guest.waitForURL((u) => u.pathname.includes('/toko/checkout'), { timeout: 10000 }).catch(() => {});
     record('Beli Sekarang membawa ke checkout mode direct',
       new URL(guest.url()).searchParams.get('mode') === 'direct', guest.url());
+
+    // ---- Checkout wajib akun: daftar dari halaman checkout, lalu kembali ----
+    record('Checkout tanpa akun meminta masuk dulu',
+      (await guest.getByText('Masuk untuk checkout').count()) > 0);
+    await guest.getByRole('button', { name: /^Daftar$/ }).click();
+    await guest.waitForURL((u) => u.pathname.includes('/toko/masuk'), { timeout: 10000 }).catch(() => {});
+    await guest.getByLabel('Nama lengkap').fill('Uji Pembeli ' + CAP);
+    // exact: kalimat persetujuan data juga memuat kata "email".
+    await guest.getByLabel('Email', { exact: true }).fill(EMAIL_PEMBELI);
+    await guest.getByLabel('Nomor HP / WhatsApp', { exact: true }).fill('0812' + CAP + '03');
+    await guest.getByLabel('Kata sandi').fill('rahasia123');
+    await guest.locator('main form input[type="checkbox"]').check();
+    await guest.locator('main form button[type="submit"]').click();
+    await guest.waitForURL((u) => u.pathname.includes('/toko/checkout'), { timeout: 15000 }).catch(() => {});
+    record('Setelah daftar kembali ke checkout yang sama',
+      guest.url().includes('/toko/checkout') && new URL(guest.url()).searchParams.get('mode') === 'direct',
+      guest.url());
+    await guest.waitForTimeout(1200);
+    record('Nama & HP terisi otomatis dari akun',
+      (await guest.getByLabel('Nama Penerima').inputValue()) === 'Uji Pembeli ' + CAP,
+      await guest.getByLabel('Nama Penerima').inputValue());
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu BuyNow ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '03');
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 3, ' + CAP);
@@ -156,7 +185,7 @@ const record = (nama, ok, ket) => {
     // ---- 4. Pesanan kedua, bayar QRIS (untuk diuji Tolak nanti) ----
     await guest.goto(BASE_URL + '/toko', { waitUntil: 'networkidle' });
     await waitForApiIdle(guest, { idleMs: 2000, minWaitMs: 1500 });
-    await guest.locator('button:has-text("+ Keranjang"):not([disabled])').nth(1).click();
+    await tambahDariKartu(1);
     await guest.goto(BASE_URL + '/toko/checkout', { waitUntil: 'networkidle' });
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu QRIS ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '02');
@@ -166,6 +195,18 @@ const record = (nama, ok, ket) => {
     await guest.waitForURL((u) => u.pathname.includes('/toko/selesai'), { timeout: 15000 }).catch(() => {});
     orderNumberQris = new URL(guest.url()).searchParams.get('order');
     record('Checkout QRIS menghasilkan nomor pesanan', !!orderNumberQris, orderNumberQris || '(kosong)');
+
+    // ---- Pesanan tercatat di akun pembeli ----
+    await guest.goto(BASE_URL + '/toko/akun', { waitUntil: 'networkidle' });
+    await guest.waitForTimeout(1500);
+    const teksAkun = await guest.locator('body').innerText();
+    record('Pesanan Saya menampilkan pesanan akun',
+      !!orderNumberCash && teksAkun.includes(orderNumberCash) && !!orderNumberQris && teksAkun.includes(orderNumberQris));
+    const tertaut = psql(`select count(*) from public.orders o join public.customers c on c.id = o.customer_id
+                           where c.email = '${EMAIL_PEMBELI}';`);
+    record('Pesanan web tertaut ke data pelanggan akun', Number(tertaut) >= 3, tertaut + ' pesanan');
+    const alamat = psql(`select coalesce(address, '') from public.customers where email = '${EMAIL_PEMBELI}';`);
+    record('Alamat pertama tersimpan ke akun', alamat.includes('Jl. Uji Tamu No. 3'), alamat);
 
     // ---- 5. Login admin di konteks TERPISAH, cek antrian & konfirmasi/tolak ----
     const staffCtx = await browser.newContext({ viewport: { width: 1400, height: 1000 } });

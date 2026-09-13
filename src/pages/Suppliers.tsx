@@ -38,6 +38,8 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SupplierCatalogModal } from '@/components/suppliers/SupplierCatalogModal';
+import { SupplierTrackingModal } from '@/components/suppliers/SupplierTrackingModal';
+import { History } from 'lucide-react';
 import { db } from '@/lib/db';
 import { getBackendClient } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
@@ -99,6 +101,7 @@ export function Suppliers() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [catalogFor, setCatalogFor] = useState<Supplier | null>(null);
+  const [trackingFor, setTrackingFor] = useState<Supplier | null>(null);
 
   useEffect(() => {
     if (!storeId) return;
@@ -462,6 +465,9 @@ export function Suppliers() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-ink-100 pt-3 dark:border-ink-800">
+                  <Button size="sm" onClick={() => setTrackingFor(supplier)}>
+                    <History size={12} /> Tracking
+                  </Button>
                   <Button size="sm" variant="secondary" onClick={() => startEdit(supplier)}>
                     <Pencil size={12} /> Edit
                   </Button>
@@ -584,6 +590,7 @@ export function Suppliers() {
         </div>
       </Modal>
 
+      <SupplierTrackingModal supplier={trackingFor} onClose={() => setTrackingFor(null)} currency={currency} />
       <SupplierCatalogModal
         supplier={catalogFor}
         storeId={storeId}

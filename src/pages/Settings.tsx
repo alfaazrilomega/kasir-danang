@@ -49,6 +49,7 @@ import {
 import { useNavigate } from '@/lib/router';
 import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
+import { Globe } from 'lucide-react';
 import { ACCENTS } from '@/lib/accents';
 import { hasCapability } from '@/lib/roles';
 import {
@@ -75,6 +76,13 @@ interface FormState {
   industry: IndustryId;
   features: IndustryFeatures;
   logoUrl: string | null;
+  signatureUrl: string | null;
+  signerName: string;
+  shopPhone: string;
+  shopCity: string;
+  returnPolicy: string;
+  warrantyInfo: string;
+  pdpBanner: string | null;
 }
 
 function snapshot(store: Store | null): FormState {
@@ -90,6 +98,13 @@ function snapshot(store: Store | null): FormState {
     industry: (store?.industry as IndustryId) ?? DEFAULT_INDUSTRY,
     features: resolveFeatures(store?.industry, store?.features as never),
     logoUrl: store?.logo_url ?? null,
+    signatureUrl: store?.invoice_signature_url ?? null,
+    signerName: store?.invoice_signer_name ?? '',
+    shopPhone: store?.shop_phone ?? '',
+    shopCity: store?.shop_city ?? '',
+    returnPolicy: store?.return_policy ?? '',
+    warrantyInfo: store?.warranty_info ?? '',
+    pdpBanner: store?.pdp_banner_url ?? null,
   };
 }
 
@@ -97,6 +112,7 @@ const SECTIONS: { id: string; label: string; icon: typeof SettingsIcon }[] = [
   { id: 'profile', label: 'Profil', icon: Building2 },
   { id: 'business', label: 'Jenis Usaha', icon: SettingsIcon },
   { id: 'receipt', label: 'Struk', icon: ReceiptIcon },
+  { id: 'online', label: 'Toko Online', icon: Globe },
   { id: 'loyalty', label: 'Loyalitas', icon: Coins },
   { id: 'channels', label: 'Channel', icon: StoreIcon },
   { id: 'security', label: 'Keamanan', icon: ShieldCheck },
@@ -140,6 +156,7 @@ export function Settings() {
   const lockNow = usePinLock((s) => s.lock);
   const [lastSync, setLastSync] = useState<string | null>(() => localStorage.getItem(LAST_SYNC_KEY));
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const signatureInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const snap = snapshot(store);
@@ -189,6 +206,18 @@ export function Settings() {
     }
   }
 
+  async function handleSignatureChange(file: File | undefined | null) {
+    if (!file) return;
+    try {
+      // PNG tetap PNG, jadi latar transparan tanda tangan tidak berubah hitam.
+      const processed = await resizeImageToDataUrl(file, { maxDim: 600, quality: 0.9 });
+      patch('signatureUrl', processed.dataUrl);
+      toast.success(`Tanda tangan dimuat (${formatBytes(processed.bytes)}).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal memproses gambar.');
+    }
+  }
+
   async function saveStore() {
     if (!store || !canManageStore) return;
     const payload = {
@@ -203,6 +232,13 @@ export function Settings() {
       industry: form.industry,
       features: form.features as unknown as Record<string, unknown>,
       logo_url: form.logoUrl,
+      invoice_signature_url: form.signatureUrl,
+      invoice_signer_name: form.signerName.trim() || null,
+      shop_phone: form.shopPhone.trim() || null,
+      shop_city: form.shopCity.trim() || null,
+      return_policy: form.returnPolicy.trim() || null,
+      warranty_info: form.warrantyInfo.trim() || null,
+      pdp_banner_url: form.pdpBanner,
     };
     setBusy(true);
     const api = getBackendClient();
@@ -425,7 +461,13 @@ export function Settings() {
                   step="0.01"
                   value={form.taxRate}
                   onChange={(e) => patch('taxRate', parseFloat(e.target.value) || 0)}
-                  hint={`Pajak ${form.taxRate}% otomatis ditambahkan ke setiap order.`}
+                  hint={
+                    form.taxRate > 0
+                      ? form.features.taxInclusive
+                        ? `Harga jual dianggap sudah termasuk pajak ${form.taxRate}%. Isi 0 untuk mematikan pajak.`
+                        : `Pajak ${form.taxRate}% ditambahkan di atas harga jual. Isi 0 untuk mematikan pajak.`
+                      : 'Pajak mati. Isi angka persen untuk menyalakan.'
+                  }
                 />
               </>
             )}
@@ -509,6 +551,12 @@ export function Settings() {
                   checked={form.features.defaultTrackStock}
                   onChange={(v) => setFeature('defaultTrackStock', v)}
                 />
+                <FeatureToggle
+                  label="Harga sudah termasuk pajak"
+                  hint="Harga tayang (mis. 150rb) sudah termasuk pajak. Pajak dihitung mundur, total tidak bertambah."
+                  checked={!!form.features.taxInclusive}
+                  onChange={(v) => setFeature('taxInclusive', v)}
+                />
               </div>
               <button
                 onClick={() =>
@@ -550,6 +598,149 @@ export function Settings() {
                 currency={form.currency}
                 taxRate={form.taxRate}
               />
+            </div>
+            {canManageStore && (
+              <div className="mt-4 border-t border-ink-100 pt-4 dark:border-ink-800">
+                <div className="text-sm font-semibold">Tanda tangan faktur A4</div>
+                <p className="mt-0.5 text-xs text-ink-500">
+                  Tercetak di bagian bawah faktur A4. Pakai file PNG berlatar transparan agar rapi.
+                </p>
+                <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="flex flex-col items-start gap-2">
+                    <div className="grid h-24 w-48 place-items-center overflow-hidden rounded-xl border border-dashed border-ink-200 bg-white dark:border-ink-700">
+                      {form.signatureUrl ? (
+                        <img
+                          src={form.signatureUrl}
+                          alt="Tanda tangan"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-xs text-ink-400">Belum ada tanda tangan</span>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => signatureInputRef.current?.click()}
+                        className="rounded-lg border border-ink-200 px-2.5 py-1 text-xs font-medium hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800"
+                      >
+                        <Upload size={12} className="inline mr-1" />
+                        {form.signatureUrl ? 'Ganti' : 'Upload PNG'}
+                      </button>
+                      {form.signatureUrl && (
+                        <button
+                          type="button"
+                          aria-label="Hapus tanda tangan"
+                          onClick={() => patch('signatureUrl', null)}
+                          className="rounded-lg border border-ink-200 px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:border-ink-700 dark:hover:bg-rose-500/10"
+                        >
+                          <X size={12} className="inline" />
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      ref={signatureInputRef}
+                      type="file"
+                      accept="image/png,image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleSignatureChange(e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Input
+                      label="Nama penanda tangan"
+                      placeholder="Kosongkan untuk memakai nama kasir"
+                      value={form.signerName}
+                      onChange={(e) => patch('signerName', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </Section>
+
+          <Section
+            id="online"
+            icon={Globe}
+            title="Toko Online"
+            description="Tampil di halaman produk toko online: tombol Chat, pengembalian, dan garansi."
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                name="shop_phone"
+                label="Nomor WhatsApp toko"
+                placeholder="08xxxxxxxxxx"
+                value={form.shopPhone}
+                onChange={(e) => patch('shopPhone', e.target.value)}
+                hint="Dipakai tombol Chat penjual. Kosongkan untuk menyembunyikan tombolnya."
+              />
+              <Input
+                name="shop_city"
+                label="Lokasi toko (kota)"
+                placeholder="cth. Kota Jakarta Barat"
+                value={form.shopCity}
+                onChange={(e) => patch('shopCity', e.target.value)}
+                hint="Tampil di kartu produk toko online. Selama kosong, kartu memakai lokasi contoh."
+              />
+              <TextArea
+                name="return_policy"
+                label="Pengembalian & jaminan (satu per baris)"
+                placeholder={'100% Ori\nPengembalian Gratis 7 Hari'}
+                value={form.returnPolicy}
+                onChange={(e) => patch('returnPolicy', e.target.value)}
+              />
+              <TextArea
+                name="warranty_info"
+                label="Garansi toko"
+                placeholder="cth. Garansi toko 30 hari"
+                value={form.warrantyInfo}
+                onChange={(e) => patch('warrantyInfo', e.target.value)}
+              />
+              <div className="md:col-span-2">
+                <div className="mb-1.5 text-sm font-medium">Banner promo halaman produk</div>
+                <p className="mb-2 text-xs text-ink-500">
+                  Tampil di bawah merek pada halaman produk, seperti banner "Gratis Ongkir" di marketplace.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  {form.pdpBanner ? (
+                    <img src={form.pdpBanner} alt="Banner" className="max-h-20 rounded-lg ring-1 ring-ink-100 dark:ring-ink-800" />
+                  ) : (
+                    <span className="text-xs text-ink-400">Belum ada banner.</span>
+                  )}
+                  <label className="cursor-pointer rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800">
+                    <Upload size={12} className="mr-1 inline" /> {form.pdpBanner ? 'Ganti' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        try {
+                          const hasil = await resizeImageToDataUrl(file, { maxDim: 1200, quality: 0.85 });
+                          patch('pdpBanner', hasil.dataUrl);
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Gagal memproses gambar.');
+                        }
+                      }}
+                    />
+                  </label>
+                  {form.pdpBanner && (
+                    <button
+                      type="button"
+                      onClick={() => patch('pdpBanner', null)}
+                      className="rounded-lg border border-ink-200 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:border-ink-700"
+                      aria-label="Hapus banner"
+                    >
+                      <X size={12} className="inline" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </Section>
 
@@ -1028,7 +1219,14 @@ function shallowEqualForm(a: FormState, b: FormState): boolean {
     a.features.useOrderType === b.features.useOrderType &&
     a.features.useTable === b.features.useTable &&
     a.features.useSizes === b.features.useSizes &&
-    a.features.defaultTrackStock === b.features.defaultTrackStock
+    a.features.defaultTrackStock === b.features.defaultTrackStock &&
+    !!a.features.taxInclusive === !!b.features.taxInclusive &&
+    a.signatureUrl === b.signatureUrl &&
+    a.signerName === b.signerName &&
+    a.shopPhone === b.shopPhone &&
+    a.returnPolicy === b.returnPolicy &&
+    a.warrantyInfo === b.warrantyInfo &&
+    a.pdpBanner === b.pdpBanner
   );
 }
 

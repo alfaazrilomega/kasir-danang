@@ -20,6 +20,7 @@ export interface PaymentBreakdown {
   qris: { count: number; total: number };
   ewallet: { count: number; total: number };
   card: { count: number; total: number };
+  transfer: { count: number; total: number };
   /** Metode tidak diketahui, mis. penjualan hasil impor massal. */
   other: { count: number; total: number };
 }
@@ -30,6 +31,7 @@ export function emptyBreakdown(): PaymentBreakdown {
     qris: { count: 0, total: 0 },
     ewallet: { count: 0, total: 0 },
     card: { count: 0, total: 0 },
+    transfer: { count: 0, total: 0 },
     other: { count: 0, total: 0 },
   };
 }
@@ -101,7 +103,8 @@ export function buildShiftReportHTML(input: ShiftReportInput): string {
     ${row('Cash', `${breakdown.cash.count}×  ${money(breakdown.cash.total)}`)}
     ${row('QRIS', `${breakdown.qris.count}×  ${money(breakdown.qris.total)}`)}
     ${row('E-wallet', `${breakdown.ewallet.count}×  ${money(breakdown.ewallet.total)}`)}
-    ${row('Card', `${breakdown.card.count}×  ${money(breakdown.card.total)}`)}
+    ${row('Transfer', `${breakdown.transfer.count}×  ${money(breakdown.transfer.total)}`)}
+    ${breakdown.card.count > 0 ? row('Card', `${breakdown.card.count}×  ${money(breakdown.card.total)}`) : ''}
     ${row('Total order', String(orders.length - canceled))}
     ${canceled > 0 ? row('Dibatalkan', String(canceled)) : ''}
     ${row('Total penjualan', money(totalSales), true)}

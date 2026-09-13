@@ -23,18 +23,33 @@ const REQUIRED_COLUMNS = {
   stores: [
     'id', 'name', 'address', 'currency', 'tax_rate', 'logo_url', 'receipt_header',
     'receipt_footer', 'points_per_amount', 'low_stock_threshold', 'industry',
-    'features', 'created_at',
+    'features', 'created_at', 'invoice_signature_url', 'invoice_signer_name', 'shop_phone', 'return_policy', 'warranty_info', 'pdp_banner_url', 'shop_city',
   ],
   profiles: ['id', 'store_id', 'full_name', 'email', 'role', 'avatar_url', 'created_at'],
   categories: ['id', 'store_id', 'name', 'icon', 'sort_order', 'created_at'],
   products: [
     'id', 'store_id', 'category_id', 'name', 'description', 'image_url',
     'base_price', 'sizes', 'is_active', 'sku', 'barcode', 'cost_price',
-    'stock_qty', 'min_stock', 'track_stock', 'created_at',
+    'stock_qty', 'min_stock', 'track_stock', 'created_at', 'weight_gram',
+    'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'compare_at_price',
+    'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
+    'highlights', 'license_type', 'license_code', 'video_url',
+  ],
+  product_reviews: [
+    'id', 'store_id', 'product_id', 'order_id', 'customer_id', 'reviewer_name', 'rating',
+    'body', 'images', 'variant_label', 'is_hidden', 'seller_reply', 'replied_at', 'created_at',
+    'tags', 'helpful_count',
+  ],
+  customer_password_resets: [
+    'id', 'user_id', 'store_id', 'code_hash', 'attempts', 'expires_at', 'used_at', 'created_at',
+  ],
+  product_questions: [
+    'id', 'store_id', 'product_id', 'customer_id', 'asker_name', 'question', 'answer',
+    'answered_at', 'is_hidden', 'created_at',
   ],
   customers: [
     'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
-    'is_active', 'points', 'created_at',
+    'is_active', 'points', 'created_at', 'address', 'user_id', 'privacy_accepted_at',
   ],
   promos: ['id', 'store_id', 'code', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'created_at'],
   orders: [
@@ -45,7 +60,7 @@ const REQUIRED_COLUMNS = {
     'sales_channel', 'payment_term', 'due_date', 'paid_amount', 'settled_at',
     'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
     'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
-    'delivery_address', 'shipping_cost',
+    'delivery_address', 'shipping_cost', 'tax_inclusive',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',
@@ -262,7 +277,12 @@ async function validateSchema() {
     throw new Error(`Kolom belum lengkap: ${missingColumns.join(', ')}`);
   }
 
-  for (const signature of ['public.apply_order_stock(uuid)', 'public.receive_purchase(uuid)']) {
+  for (const signature of [
+    'public.apply_order_stock(uuid)',
+    'public.receive_purchase(uuid)',
+    'public.receive_purchase_actual(uuid, jsonb)',
+    'public.void_orders(uuid, uuid[], boolean)',
+  ]) {
     const fn = await pool.query('select to_regprocedure($1) as fn', [signature]);
     if (!fn.rows[0]?.fn) throw new Error(`Function ${signature} belum tersedia.`);
   }

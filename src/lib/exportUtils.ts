@@ -7,7 +7,8 @@
  * teknis seperti `sale`/`paid` diterjemahkan ke label manusia.
  */
 import { db } from './db';
-import { channelLabel } from './channels';
+import { channelFeePercent, channelLabel } from './channels';
+import { countsAsSale } from './orderStatus';
 import type { Category, Order, Product, StockMovement } from '@/types';
 import {
   buildCsv,
@@ -90,9 +91,13 @@ export async function exportOrdersBySKU(
   const prodMap = Object.fromEntries(products.map(p => [p.id, p]));
   // Nama channel, bukan kode mentah seperti "shopee".
   const channels = await db.sales_channels.toArray();
+  // Pelanggan terdaftar dicari lewat customer_id; pesanan impor marketplace
+  // hanya membawa nama penerima di customer_name.
+  const customers = await db.customers.toArray();
+  const namaPelanggan = new Map(customers.map((c) => [c.id, c.name]));
 
   const headers = [
-    'No. Pesanan', 'No. Pesanan Platform', 'Tanggal', 'Channel', 'SKU', 'Barcode',
+    'No. Pesanan', 'No. Pesanan Platform', 'Tanggal', 'Channel', 'Pelanggan', 'SKU', 'Barcode',
     'Nama Produk', 'Qty', 'Harga Satuan', 'Subtotal', 'Status Bayar', 'Status Order',
   ];
   const rows: (string | number | null)[] [] = [];
@@ -106,6 +111,7 @@ export async function exportOrdersBySKU(
         text(ord.external_order_no),
         fmtDateTime(ord.created_at),
         channelLabel(ord.sales_channel, channels),
+        text((ord.customer_id ? namaPelanggan.get(ord.customer_id) : null) ?? ord.customer_name ?? null),
         text(prod?.sku),
         text(prod?.barcode),
         text(it.name),
@@ -132,7 +138,11 @@ export async function exportOrdersBySKU(
  * lewat channel mana dan nomor pesanan berapa. Baris jenis lain (restock,
  * adjust) tidak berasal dari pesanan, jadi kedua kolom itu dikosongkan.
  */
-export async function exportStockMovementsBySKU(movementList?: StockMovement[]) {
+export async function exportStockMovementsBySKU(
+  movementList?: StockMovement[],
+  /** Pesanan yang sudah ditarik halaman Mutasi Stok (termasuk yang di luar cache). */
+  orderLookup?: Map<string, Order>,
+) {
   // Beri daftar terfilter untuk mengekspor persis yang tampil di layar.
   const movements = movementList ?? (await db.stock_movements.toArray());
   const products = await db.products.toArray();
@@ -141,11 +151,14 @@ export async function exportStockMovementsBySKU(movementList?: StockMovement[]) 
   const orderIds = [...new Set(movements.map((m) => m.ref_order_id).filter((id): id is string => !!id))];
   const orders = orderIds.length ? await db.orders.bulkGet(orderIds) : [];
   const orderMap = new Map(orders.filter((o): o is Order => !!o).map((o) => [o.id, o]));
+  for (const [id, o] of orderLookup ?? []) if (!orderMap.has(id)) orderMap.set(id, o);
   const channelRows = await db.sales_channels.toArray();
+  const customers = await db.customers.toArray();
+  const namaPelanggan = new Map(customers.map((c) => [c.id, c.name]));
 
   const headers = [
     'SKU', 'Barcode', 'Nama Produk', 'Jenis', 'Perubahan Stok', 'Alasan', 'Tanggal',
-    'Channel', 'No. Pesanan Platform',
+    'No. Pesanan', 'Channel', 'No. Pesanan Platform', 'Pelanggan',
   ];
   const rows = movements
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -160,8 +173,12 @@ export async function exportStockMovementsBySKU(movementList?: StockMovement[]) 
         int(m.qty_delta),
         text(m.reason),
         fmtDateTime(m.created_at),
+        order ? text(order.order_number) : '',
         order ? text(channelLabel(order.sales_channel, channelRows)) : '',
         order ? text(order.external_order_no) : '',
+        order
+          ? text((order.customer_id ? namaPelanggan.get(order.customer_id) : null) ?? order.customer_name ?? null)
+          : '',
       ];
     });
 
@@ -266,5 +283,58 @@ export async function exportSupplierCatalog() {
     });
 
   downloadCsv(csvFilename('katalog-supplier'), buildCsv(headers, rows));
+  return rows.length;
+}
+
+/**
+ * Laporan dana cair per pesanan: harga tayang dikurangi potongan platform
+ * (biaya admin dll) = uang yang benar-benar diterima toko.
+ *
+ * Potongan aktual dipakai bila total pesanan sudah disesuaikan lewat
+ * "Sesuaikan harga" (total asli tersimpan di original_total). Selain itu
+ * potongan diperkirakan dari persen biaya channel di Pengaturan.
+ */
+export async function exportDisbursement(orderList: Order[], opts?: { filenameSuffix?: string }) {
+  const channels = await db.sales_channels.toArray();
+  const customers = await db.customers.toArray();
+  const namaPelanggan = new Map(customers.map((c) => [c.id, c.name]));
+
+  const headers = [
+    'No. Pesanan', 'No. Pesanan Platform', 'Tanggal', 'Channel', 'Pelanggan', 'Status Order',
+    'Harga Tayang', 'Potongan (Admin dll)', 'Dana Cair', 'Dasar Potongan', 'Sudah Diterima',
+    'Belum Diterima',
+  ];
+  const rows = orderList
+    .filter(countsAsSale)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((o) => {
+      const disesuaikan = o.original_total != null;
+      const tayang = Number(o.original_total ?? o.total);
+      const fee = channelFeePercent(o.sales_channel, channels);
+      const cair = disesuaikan ? Number(o.total) : Math.round(tayang * (1 - fee / 100));
+      const diterima =
+        o.payment_term === 'tempo'
+          ? Number(o.paid_amount ?? 0)
+          : o.payment_status === 'paid'
+            ? cair
+            : Number(o.paid_amount ?? 0);
+      return [
+        text(o.order_number),
+        text(o.external_order_no),
+        fmtDateTime(o.created_at),
+        channelLabel(o.sales_channel, channels),
+        text((o.customer_id ? namaPelanggan.get(o.customer_id) : null) ?? o.customer_name ?? null),
+        label('orderStatus', o.order_status),
+        int(tayang),
+        int(tayang - cair),
+        int(cair),
+        disesuaikan ? 'Aktual (disesuaikan)' : fee > 0 ? `Estimasi ${fee}% biaya channel` : 'Tanpa potongan',
+        int(diterima),
+        int(Math.max(0, cair - diterima)),
+      ];
+    });
+
+  const suffix = opts?.filenameSuffix || new Date().toISOString().slice(0, 10);
+  downloadCsv(csvFilename('dana-cair', suffix), buildCsv(headers, rows));
   return rows.length;
 }

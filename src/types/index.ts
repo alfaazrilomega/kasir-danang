@@ -1,7 +1,8 @@
 export type UserRole = 'admin' | 'manager' | 'warehouse' | 'cashier' | 'customer';
 // 'other' dipakai penjualan hasil impor massal: berkasnya tidak menyimpan
 // metode bayar, dan menebak 'cash' akan merusak rekap metode pembayaran.
-export type PaymentMethod = 'cash' | 'card' | 'ewallet' | 'qris' | 'other';
+// 'card' tetap ada untuk pesanan lama; kasir kini ditawari 'transfer'.
+export type PaymentMethod = 'cash' | 'card' | 'ewallet' | 'qris' | 'transfer' | 'other';
 export type PaymentStatus = 'paid' | 'unpaid' | 'partial';
 /** Tunai/langsung bayar vs tempo (piutang yang dicairkan belakangan). */
 export type PaymentTerm = 'cash' | 'tempo';
@@ -25,6 +26,18 @@ export interface Store {
   /** Per-store feature overrides on top of industry defaults. */
   features?: Record<string, unknown> | null;
   created_at?: string;
+  /** Gambar tanda tangan (data URL) di faktur A4. */
+  invoice_signature_url?: string | null;
+  /** Nama penanda tangan faktur A4. */
+  /** Nomor WhatsApp toko untuk tombol Chat di halaman produk. */
+  shop_phone?: string | null;
+  return_policy?: string | null;
+  warranty_info?: string | null;
+  /** Banner promo di halaman produk toko online. */
+  pdp_banner_url?: string | null;
+  /** Kota toko, tampil di kartu produk toko online. */
+  shop_city?: string | null;
+  invoice_signer_name?: string | null;
 }
 
 export interface Profile {
@@ -65,6 +78,34 @@ export interface Product {
   stock_qty: number;
   min_stock: number;
   track_stock: boolean;
+  /** Berat satuan dalam gram; dipakai menghitung ongkir. 0 = belum diisi. */
+  weight_gram?: number;
+  /** Ukuran paket (cm) untuk berat volumetrik ekspedisi. 0 = belum diisi. */
+  length_cm?: number;
+  width_cm?: number;
+  height_cm?: number;
+  /** Merek, ditampilkan di halaman produk toko online. */
+  brand?: string | null;
+  /** Label variasi (mis. "12T"); produk aktif bernama sama tampil sebagai satu produk bervariasi. */
+  variant_name?: string | null;
+  /** Harga coret sebelum diskon; 0 = tidak ada. */
+  compare_at_price?: number;
+  /** Foto tambahan untuk galeri halaman produk. */
+  images?: string[];
+  /** Spesifikasi bebas ala marketplace, mis. [{ label: 'Bahan', value: 'Baja' }]. */
+  spec?: { label: string; value: string }[];
+  /** Nama atribut variasi, mis. "Ukuran" atau "Warna" (bawaan: Variasi). */
+  variant_label?: string | null;
+  warranty_type?: string | null;
+  warranty_period?: string | null;
+  /** "Apa yang ada di dalam kotak". */
+  box_contents?: string | null;
+  /** Sorotan produk, satu poin per baris. */
+  highlights?: string | null;
+  license_type?: string | null;
+  license_code?: string | null;
+  /** Tautan video produk (YouTube atau file video) untuk galeri. */
+  video_url?: string | null;
 }
 
 export interface Customer {
@@ -77,6 +118,8 @@ export interface Customer {
   joined_date: string;
   is_active: boolean;
   points: number;
+  /** Alamat utama; diisi pembeli dari akun storefront. */
+  address?: string | null;
 }
 
 export interface Promo {
@@ -156,6 +199,8 @@ export interface Order {
    * tidak punya HPP, jadi memasukkannya akan membesarkan margin secara palsu.
    */
   shipping_cost?: number;
+  /** true = harga jual sudah termasuk pajak; pajak diekstrak, bukan ditambahkan. */
+  tax_inclusive?: boolean;
 }
 
 /**
@@ -471,4 +516,36 @@ export interface OrderReturnItem {
   /** Barang layak jual dikembalikan ke stok; barang rusak tidak. */
   restock: boolean;
   note: string | null;
+}
+
+export interface ProductReview {
+  id: string;
+  store_id: string;
+  product_id: string;
+  order_id: string | null;
+  customer_id: string | null;
+  reviewer_name: string;
+  rating: number;
+  body: string | null;
+  images: string[];
+  variant_label: string | null;
+  is_hidden: boolean;
+  seller_reply: string | null;
+  replied_at: string | null;
+  created_at: string;
+  tags: string[];
+  helpful_count: number;
+}
+
+export interface ProductQuestion {
+  id: string;
+  store_id: string;
+  product_id: string;
+  customer_id: string | null;
+  asker_name: string;
+  question: string;
+  answer: string | null;
+  answered_at: string | null;
+  is_hidden: boolean;
+  created_at: string;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Banknote, ChevronLeft, QrCode, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
@@ -11,6 +11,7 @@ import { Link, useLocation, useNavigate } from '@/lib/router';
 import { usePublicCart, type PublicCartLine } from '@/stores/publicCart';
 import { submitPublicOrder } from '@/lib/publicOrders';
 import { PUBLIC_STORE_ID } from '@/lib/config';
+import { updateCustomerMe, useCustomer } from '@/lib/customerAccount';
 
 type PayOption = 'cash' | 'qris';
 
@@ -21,11 +22,16 @@ export function PublicCheckout() {
 
   const cartLines = usePublicCart((s) => s.lines);
   const clearCart = usePublicCart((s) => s.clear);
+  const removeLine = usePublicCart((s) => s.remove);
   const buyNow = usePublicCart((s) => s.buyNow);
   const clearBuyNow = usePublicCart((s) => s.clearBuyNow);
 
   // "Beli Sekarang" checkout hanya satu item ini, TIDAK menyentuh keranjang.
-  const lines: PublicCartLine[] = isDirect && buyNow ? [buyNow] : cartLines;
+  // Dari keranjang: ?pilih=id1,id2 berarti hanya barang yang dicentang yang dibayar.
+  const pilihParam = new URLSearchParams(search).get('pilih');
+  const pilihIds = pilihParam ? pilihParam.split(',') : null;
+  const lines: PublicCartLine[] =
+    isDirect && buyNow ? [buyNow] : pilihIds ? cartLines.filter((l) => pilihIds.includes(l.product_id)) : cartLines;
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -33,6 +39,18 @@ export function PublicCheckout() {
   const [payment, setPayment] = useState<PayOption>('cash');
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Keputusan client: belanja memakai akun. Keranjang boleh diisi tanpa masuk,
+  // checkout wajib masuk supaya pesanan tercatat di akun pembeli.
+  const token = useCustomer((s) => s.token);
+  const me = useCustomer((s) => s.me);
+  const setMe = useCustomer((s) => s.setMe);
+  useEffect(() => {
+    if (!me) return;
+    setName((v) => v || me.name);
+    setPhone((v) => v || me.phone || '');
+    setAddress((v) => v || me.address || '');
+  }, [me]);
 
   const subtotal = useMemo(() => lines.reduce((sum, l) => sum + l.price * l.qty, 0), [lines]);
   const totalQty = useMemo(() => lines.reduce((sum, l) => sum + l.qty, 0), [lines]);
@@ -52,7 +70,29 @@ export function PublicCheckout() {
     );
   }
 
+  if (!token) {
+    const kembali = encodeURIComponent(`/toko/checkout${search}`);
+    return (
+      <PublicShell>
+        <Card className="mx-auto max-w-md space-y-3 p-6 text-center">
+          <h1 className="text-lg font-bold">Masuk untuk checkout</h1>
+          <p className="text-sm text-ink-500">
+            Pesanan dicatat di akun kamu, jadi statusnya bisa dipantau kapan saja. Isi keranjang
+            tetap tersimpan.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="secondary" onClick={() => navigate(`/toko/masuk?tab=daftar&next=${kembali}`)}>
+              Daftar
+            </Button>
+            <Button onClick={() => navigate(`/toko/masuk?next=${kembali}`)}>Masuk</Button>
+          </div>
+        </Card>
+      </PublicShell>
+    );
+  }
+
   async function submit() {
+    if (!token) return;
     if (!name.trim()) return toast.error('Nama penerima wajib diisi.');
     if (!phone.trim()) return toast.error('Nomor HP wajib diisi.');
     if (!address.trim()) return toast.error('Alamat pengiriman wajib diisi.');
@@ -66,7 +106,7 @@ export function PublicCheckout() {
       payment_method: payment,
       notes: notes.trim() || undefined,
       items: lines.map((l) => ({ product_id: l.product_id, qty: l.qty })),
-    });
+    }, token);
     setBusy(false);
 
     if (error || !data) {
@@ -74,7 +114,16 @@ export function PublicCheckout() {
       return;
     }
 
+    // Alamat pertama disimpan ke akun supaya checkout berikutnya terisi otomatis.
+    if (me && !me.address) {
+      void updateCustomerMe(token, {
+        name: me.name,
+        phone: me.phone || phone.trim(),
+        address: address.trim(),
+      }).then(({ data: baru }) => baru && setMe(baru));
+    }
     if (isDirect) clearBuyNow();
+    else if (pilihIds) pilihIds.forEach(removeLine);
     else clearCart();
     navigate(`/toko/selesai?order=${encodeURIComponent(data.order_number)}`);
   }

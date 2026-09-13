@@ -144,6 +144,28 @@ export function StockOpnamePage() {
     return { total: items.length, counted, plus, minus };
   }, [items, counts]);
 
+  // Centang = hasil hitung fisik sama dengan stok sistem. Petugas cukup mencari
+  // produknya lalu mencentang, tanpa mengetik angka satu per satu. Angka hanya
+  // diketik untuk barang yang jumlahnya berbeda.
+  const sesuai = (i: StockOpnameItem) => {
+    const raw = counts[i.product_id];
+    return raw !== undefined && raw !== '' && Number(raw) === Number(i.system_qty);
+  };
+  const semuaSesuai = rows.length > 0 && rows.every((r) => sesuai(r.item));
+  function centangSemua(on: boolean) {
+    setCounts((c) => {
+      const next = { ...c };
+      for (const { item } of rows) {
+        const raw = next[item.product_id];
+        const kosong = raw === undefined || raw === '';
+        // Hitungan yang sudah diketik berbeda tidak pernah ditimpa.
+        if (on && kosong) next[item.product_id] = String(Number(item.system_qty));
+        if (!on && !kosong && Number(raw) === Number(item.system_qty)) next[item.product_id] = '';
+      }
+      return next;
+    });
+  }
+
   async function createSession(tanggal: string) {
     if (!storeId) return;
     const tracked = products.filter((p) => p.track_stock);
@@ -492,6 +514,11 @@ export function StockOpnamePage() {
                   />
                   Hanya yang selisih
                 </label>
+                {!locked && (
+                  <span className="text-xs text-ink-500">
+                    Centang = hitungan fisik sama dengan stok sistem.
+                  </span>
+                )}
               </div>
               {!locked && (
                 <div className="flex gap-2">
@@ -517,6 +544,17 @@ export function StockOpnamePage() {
               <table className="w-full text-left text-sm">
                 <thead className="text-xs uppercase tracking-wide text-ink-500">
                   <tr>
+                    {!locked && (
+                      <th className="w-8 pb-2">
+                        <input
+                          type="checkbox"
+                          aria-label="Centang semua yang tampil: sesuai stok sistem"
+                          title="Centang semua yang tampil: sesuai stok sistem"
+                          checked={semuaSesuai}
+                          onChange={(e) => centangSemua(e.target.checked)}
+                        />
+                      </th>
+                    )}
                     <th className="pb-2">Produk</th>
                     <th className="pb-2 text-right">Stok Sistem</th>
                     <th className="pb-2 text-right">Hitung Fisik</th>
@@ -526,6 +564,21 @@ export function StockOpnamePage() {
                 <tbody>
                   {rows.map(({ item, product, counted, variance }) => (
                     <tr key={item.id} className="border-t border-ink-100 dark:border-ink-800">
+                      {!locked && (
+                        <td className="py-2.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Sesuai ${product!.name}`}
+                            checked={sesuai(item)}
+                            onChange={(e) =>
+                              setCounts((c) => ({
+                                ...c,
+                                [item.product_id]: e.target.checked ? String(Number(item.system_qty)) : '',
+                              }))
+                            }
+                          />
+                        </td>
+                      )}
                       <td className="py-2.5">
                         <div className="font-medium">{product!.name}</div>
                         <div className="font-mono text-[10px] text-ink-500">

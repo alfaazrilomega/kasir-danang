@@ -45,6 +45,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { StatCard } from '@/components/dashboard/StatCard';
+import { SupplierTrackingCard } from '@/components/dashboard/SupplierTrackingCard';
 import { SalesChart } from '@/components/dashboard/SalesChart';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
@@ -646,6 +647,8 @@ export function Dashboard() {
                   progress={totals.products ? lowStock.length / totals.products : 0}
                 />
               </div>
+
+              <SupplierTrackingCard />
 
               <div className="grid gap-4 lg:grid-cols-[1.15fr_1.85fr]">
                 <Card className="p-5">

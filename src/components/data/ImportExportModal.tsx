@@ -45,7 +45,9 @@ interface Props {
 
 export function ImportExportModal({ open, storeId, onClose, onImported }: Props) {
   const [tab, setTab] = useState<Tab>('pilih');
-  const [mode, setMode] = useState<ImportMode>('replace');
+  // Default GABUNG, bukan ganti total: mengunggah beberapa SKU baru saja
+  // dengan mode ganti total akan mengarsipkan semua produk lain.
+  const [mode, setMode] = useState<ImportMode>('merge');
   const [plan, setPlan] = useState<ImportPlan | null>(null);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -115,6 +117,7 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
       } else {
         toast.success(
           `${formatNumber(res.products)} produk, ${res.categories} kategori baru, ` +
+            (res.sets ? `${formatNumber(res.sets)} produk set, ` : '') +
             `${formatNumber(res.channelSkus)} SKU platform diimpor.`,
         );
       }
@@ -248,12 +251,17 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
 
           {plan && (
             <div className="space-y-2">
-              <div className="grid gap-2 sm:grid-cols-4">
+              <div className={`grid gap-2 ${plan.sets > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
                 <Stat label="Produk baru" value={plan.toCreate} tone="emerald" />
                 <Stat label="Diperbarui" value={plan.toUpdate} tone="brand" />
                 <Stat label="Kategori" value={plan.categories.length} />
                 <Stat label="SKU platform" value={plan.channelSkus} />
+                {plan.sets > 0 && <Stat label="Produk set" value={plan.sets} />}
               </div>
+              <p className="text-[11px] text-ink-500">
+                Kolom isi_set: SKU isi dipisah koma, tambah " x2" bila jumlahnya lebih dari satu.
+                Kolom yang dikosongkan tidak mengubah data lama.
+              </p>
 
               {plan.mode === 'replace' && plan.willDelete > 0 && (
                 <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">

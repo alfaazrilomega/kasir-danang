@@ -7,13 +7,14 @@ interface Props {
   onClose: () => void;
   title?: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 const sizeClass = {
   sm: 'max-w-md',
   md: 'max-w-xl',
   lg: 'max-w-3xl',
+  xl: 'max-w-6xl',
 };
 
 export function Modal({ open, onClose, title, children, size = 'md' }: Props) {

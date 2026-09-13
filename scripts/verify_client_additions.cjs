@@ -124,7 +124,7 @@ const record = (nama, ok, ket) => {
     // ================= 4.10: cetak faktur A4 terpisah dari thermal =================
     await page.goto(BASE + '/orders', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
-    await page.locator('tbody tr').first().locator('button[title="Cetak ulang struk thermal"]').count()
+    await page.locator('tbody tr').first().locator('button[title^="Cetak ulang struk thermal"]').count()
       .then((n) => record('Tombol cetak thermal tersedia di baris Riwayat Transaksi', n > 0));
     await page.locator('tbody tr').first().locator('button[title*="Cetak faktur A4"]').count()
       .then((n) => record('Tombol cetak Faktur A4 tersedia terpisah di baris Riwayat Transaksi', n > 0));

@@ -7,6 +7,7 @@ import {
   DollarSign,
   History,
   LayoutDashboard,
+  MessageSquareText,
   Percent,
   RotateCcw,
   Settings as SettingsIcon,
@@ -38,6 +39,7 @@ export type AdminModuleKey =
   | 'pos'
   | 'transactions'
   | 'returns'
+  | 'feedback'
   | 'promos'
   | 'expenses'
   | 'sales-report'
@@ -108,6 +110,7 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
       { key: 'pos', label: 'POS Kasir', icon: ShoppingBag, route: '/menu', description: 'Input pemesanan dan pembayaran.' },
       { key: 'transactions', label: 'Riwayat Transaksi', icon: History, route: '/orders', description: 'Order, status pembayaran, dan struk.' },
       { key: 'returns', label: 'Retur Barang', icon: Undo2, route: '/returns', capability: 'useCashier', description: 'Retur barang berbasis nomor pemesanan.' },
+      { key: 'feedback', label: 'Ulasan Produk', icon: MessageSquareText, route: '/feedback', description: 'Balas dan kelola ulasan pembeli toko online.' },
       { key: 'promos', label: 'Promo', icon: Percent, route: '/promos', description: 'Diskon, voucher, dan kampanye penjualan.' },
       { key: 'expenses', label: 'Pengeluaran', icon: WalletCards, route: '/expenses', capability: 'manageExpenses', description: 'Biaya operasional toko: sewa, gaji, listrik, dll.' },
     ],

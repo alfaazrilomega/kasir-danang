@@ -29,12 +29,14 @@ export interface PublicOrderResult {
 
 export async function submitPublicOrder(
   input: PublicOrderInput,
+  /** Token akun pembeli; pesanan dicatat atas nama akun ini. */
+  customerToken: string,
 ): Promise<{ data: PublicOrderResult | null; error: string | null }> {
   const { apiBaseUrl } = loadConfig();
   try {
     const response = await fetch(`${apiBaseUrl}/api/public/orders`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${customerToken}` },
       body: JSON.stringify(input),
     });
     const text = await response.text();

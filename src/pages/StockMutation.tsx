@@ -26,8 +26,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { pullInventoryReference, pullStockMovements } from '@/lib/sync';
+import { getBackendClient } from '@/lib/api';
+import { channelLabel } from '@/lib/channels';
 import { cn, formatDateTime, formatNumber } from '@/lib/format';
-import type { StockMovementType } from '@/types';
+import type { Order, StockMovementType } from '@/types';
 
 const TYPE_LABELS: Record<StockMovementType, string> = {
   sale: 'Penjualan',
@@ -49,9 +51,12 @@ export function StockMutation() {
   const { profile } = useAuth();
   const storeId = profile?.store_id ?? '';
 
-  const [from, setFrom] = useState(() => daysAgoIso(30));
+  // Dibuka dari tombol riwayat di halaman Produk (?q=SKU): tampilkan seluruh
+  // riwayat SKU itu, bukan hanya 30 hari terakhir.
+  const qAwal = new URLSearchParams(window.location.search).get('q') ?? '';
+  const [from, setFrom] = useState(() => (qAwal ? '2020-01-01' : daysAgoIso(30)));
   const [to, setTo] = useState(todayIso);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(qAwal);
   const [typeFilter, setTypeFilter] = useState<'all' | StockMovementType>('all');
 
   useEffect(() => {
@@ -69,6 +74,60 @@ export function StockMutation() {
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
 
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
+  const customers = useLiveQuery(() => db.customers.toArray(), []) ?? [];
+  const channelRows = useLiveQuery(() => db.sales_channels.toArray(), []) ?? [];
+
+  // Pesanan di balik tiap mutasi penjualan, supaya dari satu SKU bisa dilacak
+  // barangnya keluar ke siapa dan lewat channel apa. Cache perangkat hanya
+  // menyimpan 500 pesanan terbaru, jadi yang kurang ditarik dari server dan
+  // disimpan di state halaman ini saja (cache halaman lain tidak berubah).
+  const refIds = useMemo(
+    () => [...new Set(movements.map((m) => m.ref_order_id).filter((id): id is string => !!id))],
+    [movements],
+  );
+  const refKey = refIds.join(',');
+  const [refOrders, setRefOrders] = useState<Map<string, Order>>(() => new Map());
+  useEffect(() => {
+    if (!storeId || !refIds.length) return;
+    let batal = false;
+    (async () => {
+      const lokal = (await db.orders.bulkGet(refIds)).filter((o): o is Order => !!o);
+      const map = new Map(lokal.map((o) => [o.id, o]));
+      const kurang = refIds.filter((id) => !map.has(id));
+      if (kurang.length && navigator.onLine) {
+        const api = getBackendClient();
+        for (let i = 0; i < kurang.length; i += 200) {
+          const { data } = await api
+            .from('orders')
+            .select('*')
+            .eq('store_id', storeId)
+            .in('id', kurang.slice(i, i + 200));
+          for (const o of (data ?? []) as Order[]) map.set(o.id, o);
+        }
+      }
+      if (!batal) setRefOrders(map);
+    })();
+    return () => {
+      batal = true;
+    };
+    // refKey mewakili isi refIds; array-nya sendiri berganti identitas tiap render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, refKey]);
+
+  const pesananInfo = useMemo(() => {
+    const namaPelanggan = new Map(customers.map((c) => [c.id, c.name]));
+    const map = new Map<string, { nomor: string; pembeli: string; ext: string | null }>();
+    for (const o of refOrders.values()) {
+      const nama =
+        (o.customer_id ? namaPelanggan.get(o.customer_id) : null) ?? o.customer_name ?? 'Pembeli umum';
+      map.set(o.id, {
+        nomor: o.order_number,
+        pembeli: `${nama} · ${channelLabel(o.sales_channel, channelRows)}`,
+        ext: o.external_order_no,
+      });
+    }
+    return map;
+  }, [refOrders, customers, channelRows]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -84,15 +143,17 @@ export function StockMutation() {
       .filter((m) => {
         if (!term) return true;
         const p = m.product_id ? productById.get(m.product_id) : null;
+        const info = m.ref_order_id ? pesananInfo.get(m.ref_order_id) : undefined;
         return (
           (p?.name ?? '').toLowerCase().includes(term) ||
           (p?.sku ?? '').toLowerCase().includes(term) ||
           (p?.barcode ?? '').toLowerCase().includes(term) ||
-          (m.reason ?? '').toLowerCase().includes(term)
+          (m.reason ?? '').toLowerCase().includes(term) ||
+          (info ? `${info.nomor} ${info.pembeli} ${info.ext ?? ''}`.toLowerCase().includes(term) : false)
         );
       })
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [movements, from, to, typeFilter, q, productById]);
+  }, [movements, from, to, typeFilter, q, productById, pesananInfo]);
 
   const summary = useMemo(() => {
     let masuk = 0;
@@ -109,13 +170,58 @@ export function StockMutation() {
 
   const atLimit = movements.length >= PULL_LIMIT;
 
+  // Lacak satu SKU: stok awal periode, masuk, keluar, sisa, dan ke siapa saja
+  // barangnya terjual (contoh client: awal 10, terjual 4, sisa 6). Muncul saat
+  // pencarian mengerucut ke satu produk.
+  const lacak = useMemo(() => {
+    if (!q.trim()) return null;
+    const ids = new Set(filtered.map((m) => m.product_id).filter((id): id is string => !!id));
+    if (ids.size !== 1) return null;
+    const pid = [...ids][0] as string;
+    const p = productById.get(pid);
+    if (!p) return null;
+    const startMs = new Date(`${from}T00:00:00`).getTime();
+    const endMs = new Date(`${to}T23:59:59.999`).getTime();
+    let setelah = 0;
+    let masuk = 0;
+    let keluar = 0;
+    const pembeli = new Map<string, number>();
+    for (const m of movements) {
+      if (m.product_id !== pid) continue;
+      const ts = new Date(m.created_at).getTime();
+      const d = Number(m.qty_delta ?? 0);
+      if (ts > endMs) {
+        setelah += d;
+        continue;
+      }
+      if (ts < startMs) continue;
+      if (d > 0) masuk += d;
+      else keluar += d;
+      if (m.type === 'sale' && d < 0) {
+        const info = m.ref_order_id ? pesananInfo.get(m.ref_order_id) : undefined;
+        const kunci = info?.pembeli ?? 'Tanpa data pesanan';
+        pembeli.set(kunci, (pembeli.get(kunci) ?? 0) - d);
+      }
+    }
+    // Stok sekarang dikurangi mutasi setelah periode = sisa di akhir periode.
+    const akhir = Number(p.stock_qty ?? 0) - setelah;
+    return {
+      p,
+      awal: akhir - masuk - keluar,
+      masuk,
+      keluar,
+      akhir,
+      pembeli: [...pembeli.entries()].sort((a, b) => b[1] - a[1]),
+    };
+  }, [q, filtered, productById, from, to, movements, pesananInfo]);
+
   async function exportCsv() {
     if (!filtered.length) {
       toast.message('Tidak ada mutasi untuk diekspor pada filter ini.');
       return;
     }
     const { exportStockMovementsBySKU } = await import('@/lib/exportUtils');
-    const count = await exportStockMovementsBySKU(filtered);
+    const count = await exportStockMovementsBySKU(filtered, refOrders);
     toast.success(`${count} baris mutasi diekspor.`);
   }
 
@@ -231,6 +337,50 @@ export function StockMutation() {
           </div>
         )}
 
+        {lacak && (
+          <div className="mt-3 rounded-xl border border-ink-200 p-3 dark:border-ink-700">
+            <div className="text-sm font-semibold">
+              Lacak {lacak.p.name}
+              {lacak.p.sku && (
+                <span className="ml-1.5 font-mono text-xs font-normal text-ink-500">{lacak.p.sku}</span>
+              )}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-ink-500">Stok awal periode</div>
+                <div className="font-semibold tabular-nums">{formatNumber(lacak.awal)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-ink-500">Masuk</div>
+                <div className="font-semibold tabular-nums text-emerald-600">+{formatNumber(lacak.masuk)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-ink-500">Keluar</div>
+                <div className="font-semibold tabular-nums text-rose-600">{formatNumber(lacak.keluar)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-ink-500">Sisa akhir periode</div>
+                <div className="font-semibold tabular-nums">{formatNumber(lacak.akhir)}</div>
+              </div>
+            </div>
+            {lacak.pembeli.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs text-ink-500">Terjual ke</div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {lacak.pembeli.map(([nama, qty]) => (
+                    <span
+                      key={nama}
+                      className="rounded-full bg-ink-100 px-2.5 py-1 text-xs dark:bg-ink-800"
+                    >
+                      {nama} <strong>{formatNumber(qty)}</strong>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {atLimit && (
           <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
             Menampilkan {formatNumber(PULL_LIMIT)} mutasi terbaru saja. Riwayat lebih lama masih
@@ -253,13 +403,15 @@ export function StockMutation() {
                   <th className="pb-2">Produk</th>
                   <th className="pb-2">Jenis</th>
                   <th className="pb-2 pr-6 text-right">Perubahan</th>
-                  <th className="pb-2 w-1/3">Alasan</th>
+                  <th className="pb-2">Pesanan / Pembeli</th>
+                  <th className="pb-2 w-1/4">Alasan</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.slice(0, 300).map((m) => {
                   const p = m.product_id ? productById.get(m.product_id) : null;
                   const delta = Number(m.qty_delta ?? 0);
+                  const info = m.ref_order_id ? pesananInfo.get(m.ref_order_id) : undefined;
                   return (
                     <tr key={m.id} className="border-t border-ink-100 dark:border-ink-800">
                       <td className="py-2.5 whitespace-nowrap text-xs">
@@ -280,6 +432,19 @@ export function StockMutation() {
                       >
                         {delta > 0 ? '+' : ''}
                         {formatNumber(delta)}
+                      </td>
+                      <td className="py-2.5 text-xs">
+                        {info ? (
+                          <>
+                            <div className="font-medium">{info.nomor}</div>
+                            <div className="text-ink-500">
+                              {info.pembeli}
+                              {info.ext ? ` · ${info.ext}` : ''}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-ink-400">—</span>
+                        )}
                       </td>
                       <td className="py-2.5 text-xs text-ink-500">
                         <span className="line-clamp-2">{m.reason ?? '—'}</span>

@@ -14,7 +14,7 @@ import { db } from './db';
 import { buildCsv } from './csvFormat';
 import { getBackendClient } from './api';
 import { uuid } from './format';
-import type { Category, Product, ProductChannelMapping } from '@/types';
+import type { Category, Product, ProductChannelMapping, ProductComponent } from '@/types';
 
 /** Kolom berkas CSV produk, berurutan. Ini kontrak dengan client. */
 export const PRODUCT_COLUMNS = [
@@ -34,6 +34,18 @@ export const PRODUCT_COLUMNS = [
   'sku_tiktok',
   'sku_tokopedia',
   'sku_website',
+  // Opsional: berkas lama tanpa kolom di bawah ini tetap bisa diimpor.
+  'berat_gram',
+  'panjang_cm',
+  'lebar_cm',
+  'tinggi_cm',
+  // SKU isi set dipisah koma, akhiran " x2" untuk jumlah lebih dari satu.
+  // Koma dipilih karena SKU set client sendiri memakai tanda "+".
+  'isi_set',
+  // Opsional: tampilan toko online (merek, label variasi, harga coret).
+  'merek',
+  'nama_variasi',
+  'harga_coret',
 ] as const;
 
 /** Channel yang punya kolom SKU sendiri di CSV. */
@@ -61,6 +73,8 @@ export interface ImportPlan {
   rows: ParsedProduct[];
   /** Jumlah produk yang akan dihapus bila mode replace dijalankan. */
   willDelete: number;
+  /** Jumlah produk set (baris dengan isi_set). */
+  sets: number;
 }
 
 export interface ParsedProduct {
@@ -79,6 +93,17 @@ export interface ParsedProduct {
   trackStock: boolean;
   isActive: boolean;
   channelSkus: { code: string; sku: string }[];
+  /** null = kolom kosong: nilai lama dipertahankan saat mode gabung. */
+  weightGram: number | null;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+  /** null = isi set tidak diubah. Terisi = isi set diganti utuh. */
+  setItems: { sku: string; qty: number }[] | null;
+  /** null = kolom kosong: nilai lama dipertahankan saat mode gabung. */
+  brand: string | null;
+  variantName: string | null;
+  compareAtPrice: number | null;
 }
 
 // --- CSV primitif ----------------------------------------------------------
@@ -174,12 +199,13 @@ export function buildProductTemplate(): string {
     ['GD-WR155-13T', '8991234567890', 'Gear Depan WR155 520 13T', 'Gear & Rantai',
       'Gear depan racing 13 mata', 'https://contoh.com/foto/gd-wr155.jpg',
       '175000', '120000', '25', '5', 'ya', 'ya',
-      'SHP-GD-WR155-13T', 'TT-GD-WR155-13T', 'TKPD-GD-WR155-13T', 'WEB-GD-WR155-13T'],
+      'SHP-GD-WR155-13T', 'TT-GD-WR155-13T', 'TKPD-GD-WR155-13T', 'WEB-GD-WR155-13T',
+      '100', '', '', '', '', 'GNNK Racing', '13T', ''],
     ['SET-CRF-RED', '8991234567891', 'Gear Set Honda CRF150 520 Red', 'Gear & Rantai',
       '', 'https://contoh.com/foto/set-crf.jpg', '450000', '320000', '10', '2',
-      'ya', 'ya', 'SET-CRF-RED', '', '', ''],
+      'ya', 'ya', 'SET-CRF-RED', '', '', '', '', '', '', '', 'GD-WR155-13T', 'GNNK Racing', 'Red', '480000'],
     ['OLI-MPX-1L', '', 'Oli Mesin MPX 1 Liter', 'Pelumas', '', '', '55000', '42000',
-      '100', '20', 'ya', 'ya', '', '', '', ''],
+      '100', '20', 'ya', 'ya', '', '', '', '', '', '', '', '', '', 'MPX', '', ''],
   ];
   return toCsv([...PRODUCT_COLUMNS], examples);
 }
@@ -228,14 +254,14 @@ export async function planProductImport(
   const rows: ParsedProduct[] = [];
 
   if (!table.length) {
-    return { mode, toCreate: 0, toUpdate: 0, categories: [], channelSkus: 0, willDelete: 0,
+    return { mode, toCreate: 0, toUpdate: 0, categories: [], channelSkus: 0, willDelete: 0, sets: 0,
       issues: [{ row: 0, message: 'Berkas kosong.' }], rows: [] };
   }
 
   const header = table[0].map((h) => h.trim().toLowerCase());
   const missing = ['sku', 'nama_produk', 'harga_jual'].filter((c) => !header.includes(c));
   if (missing.length) {
-    return { mode, toCreate: 0, toUpdate: 0, categories: [], channelSkus: 0, willDelete: 0,
+    return { mode, toCreate: 0, toUpdate: 0, categories: [], channelSkus: 0, willDelete: 0, sets: 0,
       issues: [{ row: 1, message: `Kolom wajib tidak ada: ${missing.join(', ')}. Gunakan berkas template.` }],
       rows: [] };
   }
@@ -284,6 +310,56 @@ export async function planProductImport(
       if (v) { channelList.push({ code: c.code, sku: v }); channelSkus++; }
     }
 
+    const ukuran: Record<'berat_gram' | 'panjang_cm' | 'lebar_cm' | 'tinggi_cm', number | null> = {
+      berat_gram: null,
+      panjang_cm: null,
+      lebar_cm: null,
+      tinggi_cm: null,
+    };
+    let ukuranSalah = false;
+    for (const [kolom, label] of [
+      ['berat_gram', 'berat'],
+      ['panjang_cm', 'panjang'],
+      ['lebar_cm', 'lebar'],
+      ['tinggi_cm', 'tinggi'],
+    ] as const) {
+      const v = get(r, kolom);
+      if (!v) continue;
+      const n = parseNumber(v);
+      if (n === null || n < 0) {
+        issues.push({ row: lineNo, message: `SKU ${sku}: ${label} bukan angka.` });
+        ukuranSalah = true;
+      } else {
+        ukuran[kolom] = Math.round(n);
+      }
+    }
+    if (ukuranSalah) continue;
+
+    const isiText = get(r, 'isi_set');
+    let setItems: { sku: string; qty: number }[] | null = null;
+    if (isiText) {
+      setItems = [];
+      let isiSalah = false;
+      for (const bagian of isiText.split(',').map((x) => x.trim()).filter(Boolean)) {
+        const m = /^(.+?)\s+[x×]\s*(\d+(?:[.,]\d+)?)$/i.exec(bagian);
+        const qty = m ? Number(m[2].replace(',', '.')) : 1;
+        if (!(qty > 0)) {
+          issues.push({ row: lineNo, message: `SKU ${sku}: jumlah isi set "${bagian}" tidak valid.` });
+          isiSalah = true;
+          break;
+        }
+        setItems.push({ sku: (m ? m[1] : bagian).trim(), qty });
+      }
+      if (isiSalah) continue;
+    }
+
+    const coretText = get(r, 'harga_coret');
+    const hargaCoret = coretText ? parseNumber(coretText) : null;
+    if (coretText && (hargaCoret === null || hargaCoret < 0)) {
+      issues.push({ row: lineNo, message: `SKU ${sku}: harga coret bukan angka.` });
+      continue;
+    }
+
     rows.push({
       row: lineNo,
       sku,
@@ -299,12 +375,52 @@ export async function planProductImport(
       trackStock: parseBoolean(get(r, 'lacak_stok'), true),
       isActive: parseBoolean(get(r, 'aktif'), true),
       channelSkus: channelList,
+      weightGram: ukuran.berat_gram,
+      lengthCm: ukuran.panjang_cm,
+      widthCm: ukuran.lebar_cm,
+      heightCm: ukuran.tinggi_cm,
+      setItems,
+      brand: get(r, 'merek') || null,
+      variantName: get(r, 'nama_variasi') || null,
+      compareAtPrice: hargaCoret,
     });
   }
 
   // Bandingkan dengan isi sekarang untuk menghitung tambah vs perbarui.
   const existing = await db.products.where('store_id').equals(storeId).toArray();
   const bySku = new Map(existing.filter((p) => p.sku).map((p) => [p.sku!.toUpperCase(), p]));
+
+  // Isi set dicek terhadap produk di berkas dan produk yang sudah ada, dengan
+  // aturan yang sama seperti database (migrasi 019): isinya harus ada, bukan
+  // dirinya sendiri, dan hanya satu tingkat (set tidak berisi set).
+  const komponenLama = await db.product_components.where('store_id').equals(storeId).toArray();
+  const idSetLama = new Set(komponenLama.map((c) => c.parent_product_id));
+  const idIsiLama = new Set(komponenLama.map((c) => c.component_product_id));
+  const diBerkas = new Map(rows.map((r) => [r.sku.toUpperCase(), r]));
+  const setDiBerkas = new Set(rows.filter((r) => r.setItems?.length).map((r) => r.sku.toUpperCase()));
+  const sah: ParsedProduct[] = [];
+  for (const r of rows) {
+    if (r.setItems?.length) {
+      const salah: string[] = [];
+      const lamaInduk = bySku.get(r.sku.toUpperCase());
+      if (lamaInduk && idIsiLama.has(lamaInduk.id)) salah.push('produk ini sudah dipakai sebagai isi set lain');
+      for (const it of r.setItems) {
+        const key = it.sku.toUpperCase();
+        const lama = bySku.get(key);
+        if (key === r.sku.toUpperCase()) salah.push(`${it.sku} adalah produk ini sendiri`);
+        else if (!diBerkas.has(key) && !lama) salah.push(`${it.sku} tidak ada di katalog maupun di berkas`);
+        else if (setDiBerkas.has(key) || (lama && idSetLama.has(lama.id))) salah.push(`${it.sku} adalah produk set`);
+      }
+      if (salah.length) {
+        issues.push({ row: r.row, message: `SKU ${r.sku}: isi set tidak valid (${salah.join('; ')}).` });
+        continue;
+      }
+    }
+    sah.push(r);
+  }
+  rows.length = 0;
+  rows.push(...sah);
+
   let toUpdate = 0;
   for (const r of rows) if (bySku.has(r.sku.toUpperCase())) toUpdate++;
 
@@ -317,6 +433,7 @@ export async function planProductImport(
     issues,
     rows,
     willDelete: mode === 'replace' ? existing.length : 0,
+    sets: rows.filter((r) => r.setItems?.length).length,
   };
 }
 
@@ -327,6 +444,8 @@ export interface ImportResult {
   deleted: number;
   /** Produk lama yang masih dirujuk riwayat: dinonaktifkan, bukan dihapus. */
   archived: number;
+  /** Produk set yang isinya ditulis dari kolom isi_set. */
+  sets: number;
   serverErrors: string[];
 }
 
@@ -389,6 +508,14 @@ export async function runProductImport(
       stock_qty: r.stockQty,
       min_stock: r.minStock,
       track_stock: r.trackStock,
+      weight_gram: r.weightGram ?? prev?.weight_gram ?? 0,
+      length_cm: r.lengthCm ?? prev?.length_cm ?? 0,
+      width_cm: r.widthCm ?? prev?.width_cm ?? 0,
+      height_cm: r.heightCm ?? prev?.height_cm ?? 0,
+      brand: r.brand ?? prev?.brand ?? null,
+      variant_name: r.variantName ?? prev?.variant_name ?? null,
+      compare_at_price: r.compareAtPrice ?? prev?.compare_at_price ?? 0,
+      images: prev?.images ?? [],
     };
   });
 
@@ -424,9 +551,41 @@ export async function runProductImport(
     const referenced = new Set<string>();
     for (const it of orderItems) if (it.product_id) referenced.add(it.product_id);
     for (const it of purchaseItems) if (it.product_id) referenced.add(it.product_id);
+    // Barang yang dipakai sebagai isi set dijaga 'on delete restrict' oleh
+    // database, jadi harus diarsipkan, bukan dihapus.
+    const komponenSet = await db.product_components.where('store_id').equals(storeId).toArray();
+    for (const c of komponenSet) referenced.add(c.component_product_id);
 
     const keptIds = new Set(products.map((p) => p.id));
     const obsolete = existingProducts.filter((p) => !keptIds.has(p.id));
+
+    // Cache perangkat hanya memuat pesanan terbaru, jadi produk yang hanya
+    // terjual di pesanan lama tidak terlihat dipakai dan akan ikut terhapus.
+    // Saat online rujukan dicek ke server. Kalau pengecekan gagal, produknya
+    // dianggap masih dipakai (diarsipkan, bukan dihapus) supaya riwayat
+    // penjualan tidak pernah putus.
+    if (online && obsolete.length) {
+      const ids = obsolete.map((p) => p.id);
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        for (const table of ['order_items', 'purchase_items']) {
+          const { data, error } = await api.from(table).select('product_id').in('product_id', chunk);
+          if (error) {
+            for (const id of chunk) referenced.add(id);
+            continue;
+          }
+          for (const r of (data ?? []) as { product_id: string | null }[]) {
+            if (r.product_id) referenced.add(r.product_id);
+          }
+        }
+        const { data: isi, error: errIsi } = await api
+          .from('product_components')
+          .select('component_product_id')
+          .in('component_product_id', chunk);
+        if (errIsi) for (const id of chunk) referenced.add(id);
+        else for (const r of (isi ?? []) as { component_product_id: string }[]) referenced.add(r.component_product_id);
+      }
+    }
 
 
     for (const p of obsolete) {
@@ -483,12 +642,54 @@ export async function runProductImport(
   await push('product_channel_mappings', mappings);
   await db.product_channel_mappings.bulkPut(mappings);
 
+  // --- isi set: diganti utuh untuk tiap baris yang kolom isi_set-nya diisi ---
+  const semuaBySku = new Map(bySku);
+  for (const p of products) semuaBySku.set(p.sku!.toUpperCase(), p);
+  const komponenLama = await db.product_components.where('store_id').equals(storeId).toArray();
+  const komponenBaru: ProductComponent[] = [];
+  let sets = 0;
+  for (const r of plan.rows) {
+    if (!r.setItems?.length) continue;
+    const induk = productBySku.get(r.sku.toUpperCase());
+    if (!induk) continue;
+    for (const lama of komponenLama.filter((c) => c.parent_product_id === induk.id)) {
+      if (online) {
+        const { error } = await api.from('product_components').delete().eq('id', lama.id);
+        if (error) serverErrors.push(`hapus isi set ${r.sku}: ${error.message}`);
+      }
+      await db.product_components.delete(lama.id);
+    }
+    for (const it of r.setItems) {
+      const isi = semuaBySku.get(it.sku.toUpperCase());
+      if (!isi) continue;
+      komponenBaru.push({
+        id: uuid(),
+        store_id: storeId,
+        parent_product_id: induk.id,
+        component_product_id: isi.id,
+        qty: it.qty,
+      });
+    }
+    sets++;
+  }
+  if (online) {
+    for (let i = 0; i < komponenBaru.length; i += 200) {
+      const { error } = await api.from('product_components').insert(komponenBaru.slice(i, i + 200));
+      if (error) {
+        serverErrors.push(`isi set: ${error.message}`);
+        break;
+      }
+    }
+  }
+  await db.product_components.bulkPut(komponenBaru);
+
   return {
     products: products.length,
     categories: newCategories.length,
     channelSkus: mappings.length,
     deleted,
     archived,
+    sets,
     serverErrors,
   };
 }
@@ -501,6 +702,13 @@ export async function exportProductsCsv(storeId: string): Promise<number> {
   const categories = await db.categories.where('store_id').equals(storeId).toArray();
   const mappings = await db.product_channel_mappings.where('store_id').equals(storeId).toArray();
   const catName = new Map(categories.map((c) => [c.id, c.name]));
+  const komponen = await db.product_components.where('store_id').equals(storeId).toArray();
+  const skuById = new Map(products.map((p) => [p.id, p.sku ?? '']));
+  const isiSetText = (productId: string) =>
+    komponen
+      .filter((c) => c.parent_product_id === productId)
+      .map((c) => `${skuById.get(c.component_product_id) ?? ''}${Number(c.qty) !== 1 ? ` x${Number(c.qty)}` : ''}`)
+      .join(', ');
 
   const mapFor = (productId: string, code: string) =>
     mappings.find((m) => m.product_id === productId && m.channel_code === code)?.external_sku ?? '';
@@ -525,6 +733,14 @@ export async function exportProductsCsv(storeId: string): Promise<number> {
       mapFor(p.id, 'tiktok'),
       mapFor(p.id, 'tokopedia'),
       mapFor(p.id, 'website'),
+      p.weight_gram ?? 0,
+      p.length_cm ?? 0,
+      p.width_cm ?? 0,
+      p.height_cm ?? 0,
+      isiSetText(p.id),
+      p.brand ?? '',
+      p.variant_name ?? '',
+      p.compare_at_price ?? 0,
     ]);
 
   downloadFile(

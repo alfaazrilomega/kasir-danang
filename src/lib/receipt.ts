@@ -4,12 +4,42 @@
 
 import type { Order, OrderItem, Store } from '@/types';
 import { formatDateTime, formatMoney } from '@/lib/format';
+import { resolveFeatures } from '@/lib/industries';
 
 interface ReceiptInput {
   store: Store;
   order: Order;
   items: OrderItem[];
   customerName?: string | null;
+  /** SKU per product_id. order_items tidak menyimpan SKU, jadi dicari dari produk. */
+  skuByProductId?: Record<string, string>;
+  /** Orang yang mencetak; tampil di faktur A4. */
+  printedBy?: string | null;
+}
+
+/** Toko online tidak memakai Dine In / Take Away, jadi barisnya tidak dicetak. */
+function pakaiTipeOrder(store: Store): boolean {
+  return resolveFeatures(store.industry, store.features as Parameters<typeof resolveFeatures>[1])
+    .useOrderType;
+}
+
+/**
+ * Persentase pajak dihitung dari angka pesanan itu sendiri, bukan tarif toko
+ * saat ini: tarif bisa berubah, sedangkan cetak ulang pesanan lama harus sama
+ * dengan saat transaksi.
+ */
+function labelPajak(order: Order): string {
+  const dasar = order.tax_inclusive
+    ? Number(order.subtotal) - Number(order.discount) - Number(order.tax)
+    : Number(order.subtotal) - Number(order.discount);
+  if (dasar <= 0) return order.tax_inclusive ? 'Termasuk pajak' : 'Pajak';
+  const pct = Math.round((Number(order.tax) / dasar) * 1000) / 10;
+  return order.tax_inclusive ? `Termasuk pajak ${pct}%` : `Pajak (${pct}%)`;
+}
+
+/** Baris pajak hanya dicetak kalau ada pajaknya — "Pajak Rp 0" cuma mengganggu. */
+function adaPajak(order: Order): boolean {
+  return Number(order.tax) > 0;
 }
 
 export function buildReceiptHTML({ store, order, items, customerName }: ReceiptInput): string {
@@ -63,15 +93,16 @@ export function buildReceiptHTML({ store, order, items, customerName }: ReceiptI
   <div class="sep"></div>
   <div class="row"><span>${escapeHtml(order.order_number)}</span><span>${formatDateTime(order.created_at)}</span></div>
   ${customerName ? `<div class="row"><span>Customer</span><span>${escapeHtml(customerName)}</span></div>` : ''}
-  <div class="row"><span>Type</span><span>${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · ${escapeHtml(order.table_number)}` : ''}</span></div>
+  ${pakaiTipeOrder(store) ? `<div class="row"><span>Type</span><span>${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · ${escapeHtml(order.table_number)}` : ''}</span></div>` : ''}
   <div class="sep"></div>
   <table>${lines}</table>
   <div class="sep"></div>
   <div class="row"><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
   ${order.discount > 0 ? `<div class="row"><span>Diskon${order.promo_code ? ` (${escapeHtml(order.promo_code)})` : ''}</span><span>-${money(order.discount)}</span></div>` : ''}
-  <div class="row"><span>Pajak</span><span>${money(order.tax)}</span></div>
+  ${adaPajak(order) && !order.tax_inclusive ? `<div class="row"><span>${labelPajak(order)}</span><span>${money(order.tax)}</span></div>` : ''}
   ${Number(order.shipping_cost ?? 0) > 0 ? `<div class="row"><span>Ongkir</span><span>${money(Number(order.shipping_cost))}</span></div>` : ''}
   <div class="row total"><span>TOTAL</span><span>${money(order.total)}</span></div>
+  ${adaPajak(order) && order.tax_inclusive ? `<div class="row muted"><span>${labelPajak(order)}</span><span>${money(order.tax)}</span></div>` : ''}
   <div class="row"><span>Bayar (${order.payment_method.toUpperCase()})</span><span>${money(order.received_amount ?? order.total)}</span></div>
   ${order.change_amount && order.change_amount > 0 ? `<div class="row"><span>Kembali</span><span>${money(order.change_amount)}</span></div>` : ''}
   ${order.points_earned > 0 ? `<div class="row"><span>Poin diperoleh</span><span>+${order.points_earned}</span></div>` : ''}
@@ -97,12 +128,20 @@ export function buildReceiptHTML({ store, order, items, customerName }: ReceiptI
  * thermal mengejar hemat kertas gulung, faktur ini mengejar mudah dibaca satu
  * halaman penuh dengan tabel barang yang jelas.
  */
-export function buildInvoiceHTML({ store, order, items, customerName }: ReceiptInput): string {
+export function buildInvoiceHTML({
+  store,
+  order,
+  items,
+  customerName,
+  skuByProductId,
+  printedBy,
+}: ReceiptInput): string {
   const money = (n: number) => formatMoney(n, store.currency);
   const rows = items
     .map(
       (it) => `
         <tr>
+          <td class="sku">${escapeHtml((it.product_id && skuByProductId?.[it.product_id]) || '-')}</td>
           <td>${escapeHtml(it.name)}${it.size ? ` <span class="muted">(${escapeHtml(it.size)})</span>` : ''}${it.note ? `<div class="note">Catatan: ${escapeHtml(it.note)}</div>` : ''}</td>
           <td class="c">${it.qty}</td>
           <td class="r">${money(it.price)}</td>
@@ -141,6 +180,13 @@ export function buildInvoiceHTML({ store, order, items, customerName }: ReceiptI
   .totals { width: 320px; margin-left: auto; margin-top: 14px; font-size: 13px; }
   .totals .line { display: flex; justify-content: space-between; padding: 4px 0; }
   .totals .grand { border-top: 2px solid #111; margin-top: 6px; padding-top: 8px; font-size: 17px; font-weight: 700; }
+  .sku { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #333; white-space: nowrap; }
+  .totals .incl { color: #666; font-size: 12px; }
+  .sign { display: flex; justify-content: flex-end; margin-top: 36px; }
+  .sign-box { text-align: center; min-width: 200px; font-size: 12px; }
+  .sign-box img { display: block; height: 70px; max-width: 220px; object-fit: contain; margin: 6px auto; }
+  .sign-space { height: 70px; }
+  .sign-name { border-top: 1px solid #111; padding-top: 4px; font-weight: 700; }
   .footer { margin-top: 40px; text-align: center; color: #555; font-size: 12px; border-top: 1px solid #e5e5e5; padding-top: 14px; }
 </style>
 </head><body>
@@ -160,20 +206,28 @@ export function buildInvoiceHTML({ store, order, items, customerName }: ReceiptI
   </div>
   <div class="row2">
     <div>${customerName ? `<strong>Pelanggan:</strong> ${escapeHtml(customerName)}` : ''}</div>
-    <div><strong>Tipe:</strong> ${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · Meja ${escapeHtml(order.table_number)}` : ''}</div>
+    <div style="text-align:right">${pakaiTipeOrder(store) ? `<div><strong>Tipe:</strong> ${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · Meja ${escapeHtml(order.table_number)}` : ''}</div>` : ''}${printedBy ? `<div><strong>Kasir:</strong> ${escapeHtml(printedBy)}</div>` : ''}</div>
   </div>
   <table>
-    <thead><tr><th>Barang</th><th class="c">Qty</th><th class="r">Harga</th><th class="r">Subtotal</th></tr></thead>
+    <thead><tr><th>SKU</th><th>Barang</th><th class="c">Qty</th><th class="r">Harga Satuan</th><th class="r">Subtotal</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="totals">
     <div class="line"><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
     ${order.discount > 0 ? `<div class="line"><span>Diskon${order.promo_code ? ` (${escapeHtml(order.promo_code)})` : ''}</span><span>-${money(order.discount)}</span></div>` : ''}
-    <div class="line"><span>Pajak</span><span>${money(order.tax)}</span></div>
+    ${adaPajak(order) && !order.tax_inclusive ? `<div class="line"><span>${labelPajak(order)}</span><span>${money(order.tax)}</span></div>` : ''}
     ${Number(order.shipping_cost ?? 0) > 0 ? `<div class="line"><span>Ongkir</span><span>${money(Number(order.shipping_cost))}</span></div>` : ''}
     <div class="line grand"><span>TOTAL</span><span>${money(order.total)}</span></div>
+    ${adaPajak(order) && order.tax_inclusive ? `<div class="line incl"><span>${labelPajak(order)}</span><span>${money(order.tax)}</span></div>` : ''}
     <div class="line"><span>Bayar (${order.payment_method.toUpperCase()})</span><span>${money(order.received_amount ?? order.total)}</span></div>
     ${order.change_amount && order.change_amount > 0 ? `<div class="line"><span>Kembali</span><span>${money(order.change_amount)}</span></div>` : ''}
+  </div>
+  <div class="sign">
+    <div class="sign-box">
+      <div>Hormat kami,</div>
+      ${store.invoice_signature_url ? `<img src="${escapeHtml(store.invoice_signature_url)}" alt="" />` : '<div class="sign-space"></div>'}
+      <div class="sign-name">${escapeHtml(store.invoice_signer_name || printedBy || store.name)}</div>
+    </div>
   </div>
   <div class="footer">${store.receipt_footer ? escapeHtml(store.receipt_footer) : 'Terima kasih atas kunjungan Anda!'}</div>
 <script>window.addEventListener('load', () => { setTimeout(() => window.print(), 100); });</script>
@@ -218,7 +272,9 @@ export function buildReceiptText({ store, order, items, customerName }: ReceiptI
     `Order   : ${order.order_number}`,
     `Tanggal : ${formatDateTime(order.created_at)}`,
     customerName ? `Pelanggan: ${customerName}` : null,
-    `Tipe    : ${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · Meja ${order.table_number}` : ''}`,
+    pakaiTipeOrder(store)
+      ? `Tipe    : ${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · Meja ${order.table_number}` : ''}`
+      : null,
     '──────────────',
   ].filter(Boolean);
 
@@ -236,9 +292,10 @@ export function buildReceiptText({ store, order, items, customerName }: ReceiptI
     order.discount > 0
       ? `Diskon${order.promo_code ? ` (${order.promo_code})` : ''}  -${money(order.discount)}`
       : null,
-    `Pajak        ${money(order.tax)}`,
+    adaPajak(order) && !order.tax_inclusive ? `${labelPajak(order)}  ${money(order.tax)}` : null,
     Number(order.shipping_cost ?? 0) > 0 ? `Ongkir       ${money(Number(order.shipping_cost))}` : null,
     `*TOTAL       ${money(order.total)}*`,
+    adaPajak(order) && order.tax_inclusive ? `(${labelPajak(order)}: ${money(order.tax)})` : null,
     `Bayar (${order.payment_method.toUpperCase()})  ${money(order.received_amount ?? order.total)}`,
     order.change_amount && order.change_amount > 0
       ? `Kembali      ${money(order.change_amount)}`

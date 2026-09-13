@@ -4,9 +4,11 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  Barcode,
   BoxIcon,
   Copy,
   Download,
+  History,
   ImagePlus,
   Layers,
   Link2,
@@ -42,11 +44,15 @@ import {
   type SetComponentDraft,
 } from '@/components/products/ProductSetSection';
 import { findSkuConflict } from '@/lib/skuLookup';
+import { urutNamaSku } from '@/lib/sortProducts';
+import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
 import { CATEGORY_ICONS, getCategoryIcon } from '@/lib/categoryIcons';
 import { formatBytes, resizeImageToDataUrl } from '@/lib/imageUpload';
 import { resolveFeatures } from '@/lib/industries';
+import { BarcodeLabelModal } from '@/components/products/BarcodeLabelModal';
+import { useNavigate } from '@/lib/router';
 import type {
   Category,
   Product,
@@ -70,9 +76,26 @@ interface FormState {
   track_stock: boolean;
   stock_qty: number;
   min_stock: number;
+  weight_gram: number;
+  length_cm: number;
+  width_cm: number;
+  height_cm: number;
   sizes: ProductSize[];
   channelMappings: ChannelMappingDraft[];
   setComponents: SetComponentDraft[];
+  brand: string;
+  variant_name: string;
+  compare_at_price: number;
+  images: string[];
+  spec: { label: string; value: string }[];
+  variant_label: string;
+  warranty_type: string;
+  warranty_period: string;
+  box_contents: string;
+  highlights: string;
+  license_type: string;
+  license_code: string;
+  video_url: string;
 }
 
 const emptyForm: FormState = {
@@ -88,6 +111,10 @@ const emptyForm: FormState = {
   track_stock: true,
   stock_qty: 0,
   min_stock: 5,
+  weight_gram: 0,
+  length_cm: 0,
+  width_cm: 0,
+  height_cm: 0,
   sizes: [
     { label: 'S', price_modifier: 0 },
     { label: 'M', price_modifier: 5000 },
@@ -95,6 +122,19 @@ const emptyForm: FormState = {
   ],
   channelMappings: [],
   setComponents: [],
+  brand: '',
+  variant_name: '',
+  compare_at_price: 0,
+  images: [],
+  spec: [],
+  variant_label: '',
+  warranty_type: '',
+  warranty_period: '',
+  box_contents: '',
+  highlights: '',
+  license_type: '',
+  license_code: '',
+  video_url: '',
 };
 
 /**
@@ -120,6 +160,10 @@ export function Products() {
   const [open, setOpen] = useState(false);
   const [stockOpen, setStockOpen] = useState<Product | null>(null);
   const [catManagerOpen, setCatManagerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [labelOpen, setLabelOpen] = useState(false);
+  const [labelIds, setLabelIds] = useState<string[]>([]);
+  const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
 
@@ -179,15 +223,20 @@ export function Products() {
 
   const filtered = useMemo(
     () =>
-      products.filter((p) => {
-        if (!q) return true;
-        const t = q.toLowerCase();
-        return (
-          p.name.toLowerCase().includes(t) ||
-          (p.sku ?? '').toLowerCase().includes(t) ||
-          (p.barcode ?? '').toLowerCase().includes(t)
-        );
-      }),
+      products
+        .filter((p) => {
+          if (!q) return true;
+          const t = q.toLowerCase();
+          return (
+            p.name.toLowerCase().includes(t) ||
+            (p.sku ?? '').toLowerCase().includes(t) ||
+            (p.barcode ?? '').toLowerCase().includes(t)
+          );
+        })
+        // Urut nama (numeric: "Gear 12" sebelum "Gear 110"). Tanpa ini daftar
+        // mengikuti urutan produk dibuat, yang terlihat acak begitu produk
+        // sejenis ditambahkan di waktu berbeda.
+        .sort(urutNamaSku),
     [products, q],
   );
 
@@ -195,10 +244,12 @@ export function Products() {
     () =>
       products.filter(
         (p) =>
+          // Set tidak punya stok sendiri; yang menipis adalah isinya.
+          !produkSet.has(p.id) &&
           p.track_stock &&
           Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0),
       ),
-    [products],
+    [products, produkSet],
   );
 
   function startNew() {
@@ -226,6 +277,10 @@ export function Products() {
       track_stock: p.track_stock ?? false,
       stock_qty: Number(p.stock_qty ?? 0),
       min_stock: Number(p.min_stock ?? 0),
+      weight_gram: Number(p.weight_gram ?? 0),
+      length_cm: Number(p.length_cm ?? 0),
+      width_cm: Number(p.width_cm ?? 0),
+      height_cm: Number(p.height_cm ?? 0),
       sizes: p.sizes ?? [],
       channelMappings: dedupeMappings(channelMappings.filter((m) => m.product_id === p.id))
         .map((m) => ({
@@ -236,6 +291,19 @@ export function Products() {
           is_synced: m.is_synced,
           last_synced_at: m.last_synced_at,
         })),
+      brand: p.brand ?? '',
+      variant_name: p.variant_name ?? '',
+      compare_at_price: Number(p.compare_at_price ?? 0),
+      images: p.images ?? [],
+      spec: p.spec ?? [],
+      variant_label: p.variant_label ?? '',
+      warranty_type: p.warranty_type ?? '',
+      warranty_period: p.warranty_period ?? '',
+      box_contents: p.box_contents ?? '',
+      highlights: p.highlights ?? '',
+      license_type: p.license_type ?? '',
+      license_code: p.license_code ?? '',
+      video_url: p.video_url ?? '',
       setComponents: (isiByParent.get(p.id) ?? []).map((c, i) => ({
         key: `isi-${c.id}-${i}`,
         component_product_id: c.component_product_id,
@@ -274,8 +342,27 @@ export function Products() {
       track_stock: p.track_stock ?? false,
       stock_qty: 0,
       min_stock: Number(p.min_stock ?? 0),
+      weight_gram: Number(p.weight_gram ?? 0),
+      length_cm: Number(p.length_cm ?? 0),
+      width_cm: Number(p.width_cm ?? 0),
+      height_cm: Number(p.height_cm ?? 0),
       sizes: p.sizes ?? [],
       channelMappings: [],
+      // Salinan biasanya variasi baru dari produk yang sama: merek, harga coret,
+      // dan foto ikut, tapi label variasinya diisi ulang.
+      brand: p.brand ?? '',
+      variant_name: '',
+      compare_at_price: Number(p.compare_at_price ?? 0),
+      images: p.images ?? [],
+      spec: p.spec ?? [],
+      variant_label: p.variant_label ?? '',
+      warranty_type: p.warranty_type ?? '',
+      warranty_period: p.warranty_period ?? '',
+      box_contents: p.box_contents ?? '',
+      highlights: p.highlights ?? '',
+      license_type: p.license_type ?? '',
+      license_code: p.license_code ?? '',
+      video_url: p.video_url ?? '',
       // Kalau produk asalnya sebuah set, susunan isinya ikut tersalin — itu
       // bagian yang paling lama diketik ulang. Kalau bukan set, biarkan kosong.
       setComponents: isiSet.map((c, i) => ({
@@ -417,10 +504,27 @@ export function Products() {
       is_active: form.is_active,
       sku: form.sku || null,
       barcode: form.barcode || null,
-      cost_price: form.cost_price,
+      cost_price: isiSet.length ? modalDariIsi(isiSet, products) : form.cost_price,
       stock_qty: form.stock_qty,
       min_stock: form.min_stock,
+      weight_gram: form.weight_gram,
+      length_cm: form.length_cm,
+      width_cm: form.width_cm,
+      height_cm: form.height_cm,
       track_stock: form.track_stock,
+      brand: form.brand.trim() || null,
+      variant_name: form.variant_name.trim() || null,
+      compare_at_price: form.compare_at_price,
+      images: form.images,
+      spec: form.spec.filter((s) => s.label.trim() && s.value.trim()).map((s) => ({ label: s.label.trim(), value: s.value.trim() })),
+      variant_label: form.variant_label.trim() || null,
+      warranty_type: form.warranty_type.trim() || null,
+      warranty_period: form.warranty_period.trim() || null,
+      box_contents: form.box_contents.trim() || null,
+      highlights: form.highlights.trim() || null,
+      license_type: form.license_type.trim() || null,
+      license_code: form.license_code.trim() || null,
+      video_url: form.video_url.trim() || null,
     };
     try {
       // writeThrough: kalau offline, perubahan masuk antrean dan dikirim saat
@@ -481,6 +585,18 @@ export function Products() {
             variant="onBrand"
           >
             <Layers size={16} /> Kategori ({categories.length})
+          </Button>
+          <Button
+            onClick={() => {
+              setLabelIds([]);
+              setLabelOpen(true);
+            }}
+            variant="onBrand"
+          >
+            <Barcode size={16} /> Cetak Label
+          </Button>
+          <Button onClick={() => setImportOpen(true)} variant="onBrand">
+            <Upload size={16} /> Impor Produk
           </Button>
           <Button
             onClick={async () => {
@@ -557,7 +673,9 @@ export function Products() {
                 {filtered.map((p) => {
                   const low = p.track_stock && Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0);
                   const price = Number(p.base_price);
-                  const cost = Number(p.cost_price ?? 0);
+                  const cost = produkSet.has(p.id)
+                    ? modalDariIsi(isiByParent.get(p.id) ?? [], products)
+                    : Number(p.cost_price ?? 0);
                   const marginAbs = price - cost;
                   const marginPct = price > 0 ? (marginAbs / price) * 100 : 0;
                   const marginTone =
@@ -630,6 +748,23 @@ export function Products() {
                       </td>
                       <td className="py-3">
                         <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => navigate(`/stock-mutation?q=${encodeURIComponent(p.sku || p.name)}`)}
+                            className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                            title="Riwayat keluar-masuk"
+                          >
+                            <History size={14} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setLabelIds([p.id]);
+                              setLabelOpen(true);
+                            }}
+                            className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                            title="Cetak label barcode"
+                          >
+                            <Barcode size={14} />
+                          </button>
                           <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Edit">
                             <Pencil size={14} />
                           </button>
@@ -669,6 +804,21 @@ export function Products() {
       </Modal>
 
       <StockAdjustModal product={stockOpen} onClose={() => setStockOpen(null)} storeId={storeId} />
+      <BarcodeLabelModal
+        open={labelOpen}
+        onClose={() => setLabelOpen(false)}
+        products={products}
+        initialIds={labelIds}
+        currency={store?.currency}
+      />
+      <ImportExportModal
+        open={importOpen}
+        storeId={storeId}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          if (storeId) void pullInventoryReference(storeId);
+        }}
+      />
       <CategoryManagerModal
         open={catManagerOpen}
         onClose={() => setCatManagerOpen(false)}
@@ -677,6 +827,21 @@ export function Products() {
         products={products}
       />
     </div>
+  );
+}
+
+/**
+ * Modal satu set = jumlah (modal isi x takaran). Modal isi sendiri ikut harga
+ * beli terakhir di Pembelian, jadi modal set ikut bergerak tanpa diisi manual.
+ */
+function modalDariIsi(
+  isi: { component_product_id: string; qty: string | number }[],
+  products: Product[],
+): number {
+  const byId = new Map(products.map((p) => [p.id, p]));
+  return isi.reduce(
+    (sum, d) => sum + Number(byId.get(d.component_product_id)?.cost_price ?? 0) * Number(d.qty || 0),
+    0,
   );
 }
 
@@ -699,7 +864,18 @@ function ProductForm({
   busy: boolean;
 }) {
   const price = Number(form.base_price);
-  const cost = Number(form.cost_price);
+  const isiTerpilih = form.setComponents.filter((d) => d.component_product_id);
+  const adalahSet = isiTerpilih.length > 0;
+  const modalSet = modalDariIsi(isiTerpilih, products);
+  const cost = adalahSet ? modalSet : Number(form.cost_price);
+  // Set tidak punya stok sendiri: pratinjau menampilkan berapa set yang bisa
+  // dirakit dari stok isinya, sama seperti di POS.
+  const stokPreview = adalahSet
+    ? hitungStokSet(
+        isiTerpilih.map((d) => ({ component_product_id: d.component_product_id, qty: Number(d.qty || 0) })),
+        new Map(products.map((p) => [p.id, p])),
+      )
+    : Number(form.stock_qty);
   const marginAbs = price - cost;
   const marginPct = price > 0 ? (marginAbs / price) * 100 : 0;
   const marginTone =
@@ -780,6 +956,21 @@ function ProductForm({
               placeholder="Scan / ketik"
             />
             <Input
+              name="brand"
+              label="Merek"
+              value={form.brand}
+              onChange={(e) => setForm({ ...form, brand: e.target.value })}
+              placeholder="cth. GNNK Racing"
+            />
+            <Input
+              name="variant_name"
+              label="Nama variasi"
+              value={form.variant_name}
+              onChange={(e) => setForm({ ...form, variant_name: e.target.value })}
+              placeholder="cth. 13T / Merah"
+              hint="Produk bernama sama tampil sebagai satu produk dengan pilihan variasi di toko online."
+            />
+            <Input
               label="Deskripsi"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -791,6 +982,8 @@ function ProductForm({
                 value={form.image_url}
                 onChange={(v) => setForm({ ...form, image_url: v })}
               />
+              <GaleriFoto value={form.images} onChange={(v) => setForm({ ...form, images: v })} />
+              <DetailTokoOnline form={form} setForm={setForm} />
             </div>
           </div>
         </section>
@@ -823,15 +1016,33 @@ function ProductForm({
               label={`Harga jual (${currency})`}
               type="number"
               step="0.01"
-              value={form.base_price}
+              placeholder="0"
+              value={form.base_price || ''}
               onChange={(e) => setForm({ ...form, base_price: parseFloat(e.target.value) || 0 })}
             />
             <Input
               label={`Harga modal (${currency})`}
               type="number"
               step="0.01"
-              value={form.cost_price}
+              placeholder="0"
+              value={adalahSet ? modalSet : form.cost_price || ''}
+              disabled={adalahSet}
+              hint={
+                adalahSet
+                  ? 'Otomatis: jumlah harga modal isi set, mengikuti harga beli terakhir di Pembelian.'
+                  : undefined
+              }
               onChange={(e) => setForm({ ...form, cost_price: parseFloat(e.target.value) || 0 })}
+            />
+            <Input
+              name="compare_at_price"
+              label={`Harga coret (${currency}, opsional)`}
+              type="number"
+              step="0.01"
+              placeholder="0"
+              value={form.compare_at_price || ''}
+              hint="Harga sebelum diskon. Toko online menampilkannya dicoret beserta persen diskon."
+              onChange={(e) => setForm({ ...form, compare_at_price: parseFloat(e.target.value) || 0 })}
             />
           </div>
           <div className="mt-2 flex items-center justify-between rounded-xl bg-ink-50 dark:bg-ink-900 px-3 py-2 text-sm">
@@ -846,34 +1057,73 @@ function ProductForm({
 
         <section className="rounded-xl border border-ink-100 dark:border-ink-800 p-3">
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-brand-600"
-                checked={form.track_stock}
-                onChange={(e) => setForm({ ...form, track_stock: e.target.checked })}
-              />
-              <Package size={14} className="text-ink-500" /> Lacak stok
-            </label>
+            {adalahSet ? (
+              <span className="flex items-center gap-2 text-sm text-ink-500">
+                <Package size={14} /> Set tidak punya stok sendiri. Stoknya mengikuti stok isi set.
+              </span>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-brand-600"
+                    checked={form.track_stock}
+                    onChange={(e) => setForm({ ...form, track_stock: e.target.checked })}
+                  />
+                  <Package size={14} className="text-ink-500" /> Lacak stok
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-ink-500">Stok awal</span>
+                  <input
+                    disabled={!form.track_stock}
+                    className="input !w-24 !py-1.5"
+                    type="number"
+                    placeholder="0"
+                    value={form.stock_qty || ''}
+                    onChange={(e) => setForm({ ...form, stock_qty: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-ink-500">Min. stok</span>
+                  <input
+                    disabled={!form.track_stock}
+                    className="input !w-24 !py-1.5"
+                    type="number"
+                    value={form.min_stock}
+                    onChange={(e) => setForm({ ...form, min_stock: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+              </>
+            )}
+            {/* Ongkir dihitung dari berat, jadi produk tanpa berat tidak bisa
+                dihitung ongkirnya saat integrasi ekspedisi dipasang. */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-ink-500">Stok awal</span>
+              <span className="text-xs text-ink-500">Berat (gram)</span>
               <input
-                disabled={!form.track_stock}
-                className="input !w-24 !py-1.5"
+                className="input !w-28 !py-1.5"
                 type="number"
-                value={form.stock_qty}
-                onChange={(e) => setForm({ ...form, stock_qty: parseFloat(e.target.value) || 0 })}
+                min="0"
+                placeholder="0"
+                value={form.weight_gram}
+                onChange={(e) => setForm({ ...form, weight_gram: parseInt(e.target.value, 10) || 0 })}
               />
             </div>
+            {/* Ekspedisi memakai berat volumetrik (P x L x T / 6000) kalau lebih
+                besar dari berat timbangan, jadi ukuran paket ikut dibutuhkan. */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-ink-500">Min. stok</span>
-              <input
-                disabled={!form.track_stock}
-                className="input !w-24 !py-1.5"
-                type="number"
-                value={form.min_stock}
-                onChange={(e) => setForm({ ...form, min_stock: parseFloat(e.target.value) || 0 })}
-              />
+              <span className="text-xs text-ink-500">Ukuran P×L×T (cm)</span>
+              {(['length_cm', 'width_cm', 'height_cm'] as const).map((k) => (
+                <input
+                  key={k}
+                  aria-label={k === 'length_cm' ? 'Panjang (cm)' : k === 'width_cm' ? 'Lebar (cm)' : 'Tinggi (cm)'}
+                  className="input !w-16 !py-1.5"
+                  type="number"
+                  min="0"
+                  placeholder={k === 'length_cm' ? 'P' : k === 'width_cm' ? 'L' : 'T'}
+                  value={form[k] || ''}
+                  onChange={(e) => setForm({ ...form, [k]: parseInt(e.target.value, 10) || 0 })}
+                />
+              ))}
             </div>
           </div>
         </section>
@@ -952,18 +1202,18 @@ function ProductForm({
                 <CategoryIcon size={28} />
               </div>
             )}
-            {form.track_stock && (
+            {(adalahSet || form.track_stock) && (
               <div className="absolute top-2 left-2">
                 <Badge
                   tone={
-                    Number(form.stock_qty) <= 0
+                    stokPreview <= 0
                       ? 'danger'
-                      : Number(form.stock_qty) <= Number(form.min_stock)
+                      : !adalahSet && stokPreview <= Number(form.min_stock)
                       ? 'warning'
                       : 'neutral'
                   }
                 >
-                  Stok {Number(form.stock_qty)}
+                  {adalahSet ? 'Set siap' : 'Stok'} {stokPreview}
                 </Badge>
               </div>
             )}
@@ -1498,5 +1748,234 @@ function CategoryManagerModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Foto tambahan untuk galeri halaman produk toko online (thumbnail di bawah
+ * foto utama, seperti marketplace). Maksimal 8 foto; upload dikecilkan dulu.
+ */
+function GaleriFoto({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const penuh = value.length >= 8;
+
+  async function tambahFile(files: FileList | null) {
+    if (!files) return;
+    setBusy(true);
+    const baru: string[] = [];
+    for (const f of Array.from(files).slice(0, 8 - value.length)) {
+      try {
+        baru.push((await resizeImageToDataUrl(f, { maxDim: 900, quality: 0.82 })).dataUrl);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Gagal memproses gambar.');
+      }
+    }
+    setBusy(false);
+    onChange([...value, ...baru].slice(0, 8));
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="mb-1.5 text-sm font-medium">Foto tambahan (galeri, maks. 8)</div>
+      <div className="flex flex-wrap gap-2">
+        {value.map((src, i) => (
+          <span key={i} className="relative h-16 w-16 overflow-hidden rounded-lg ring-1 ring-ink-200 dark:ring-ink-700">
+            <img src={src} alt="" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              aria-label="Hapus foto"
+              onClick={() => onChange(value.filter((_, j) => j !== i))}
+              className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white"
+            >
+              <X size={11} />
+            </button>
+          </span>
+        ))}
+        {!penuh && (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-ink-300 text-ink-400 hover:border-brand-400 hover:text-brand-600 dark:border-ink-700"
+            aria-label="Tambah foto"
+          >
+            {busy ? <Loader2 size={18} className="animate-spin" /> : <ImagePlus size={20} />}
+          </button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void tambahFile(e.target.files);
+            e.target.value = '';
+          }}
+        />
+      </div>
+      {!penuh && (
+        <div className="mt-2 flex gap-1.5">
+          <input
+            className="input !py-1.5 text-xs"
+            placeholder="Atau tempel URL gambar https://…"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!/^https?:\/\//i.test(url.trim())}
+            onClick={() => {
+              onChange([...value, url.trim()].slice(0, 8));
+              setUrl('');
+            }}
+          >
+            <Plus size={12} /> Tambah
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Isian halaman produk toko online yang disamakan dengan Lazada: nama
+ * atribut variasi, spesifikasi, garansi, isi kotak, kualifikasi, sorotan,
+ * dan video. Semua opsional; yang kosong tidak ditampilkan di toko.
+ */
+function DetailTokoOnline({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+  const ubahSpec = (i: number, kunci: 'label' | 'value', nilai: string) =>
+    setForm({ ...form, spec: form.spec.map((s, j) => (j === i ? { ...s, [kunci]: nilai } : s)) });
+
+  return (
+    <div className="mt-4 space-y-3 rounded-xl border border-ink-100 p-3 dark:border-ink-800">
+      <div className="text-xs font-semibold uppercase tracking-wide text-ink-500">Detail halaman toko online</div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          name="variant_label"
+          label="Nama atribut variasi"
+          placeholder="cth. Ukuran / Warna"
+          value={form.variant_label}
+          onChange={(e) => setForm({ ...form, variant_label: e.target.value })}
+        />
+        <Input
+          name="video_url"
+          label="Video produk (tautan)"
+          placeholder="https://youtu.be/…"
+          value={form.video_url}
+          onChange={(e) => setForm({ ...form, video_url: e.target.value })}
+        />
+        <Input
+          name="warranty_type"
+          label="Jenis garansi"
+          placeholder="cth. Garansi toko"
+          value={form.warranty_type}
+          onChange={(e) => setForm({ ...form, warranty_type: e.target.value })}
+        />
+        <Input
+          name="warranty_period"
+          label="Periode garansi"
+          placeholder="cth. 1 Tahun"
+          value={form.warranty_period}
+          onChange={(e) => setForm({ ...form, warranty_period: e.target.value })}
+        />
+        <Input
+          name="license_type"
+          label="Tipe lisensi"
+          placeholder="cth. Standar Nasional Indonesia (SNI)"
+          value={form.license_type}
+          onChange={(e) => setForm({ ...form, license_type: e.target.value })}
+        />
+        <Input
+          name="license_code"
+          label="Kode lisensi"
+          value={form.license_code}
+          onChange={(e) => setForm({ ...form, license_code: e.target.value })}
+        />
+      </div>
+      <div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <span className="text-sm font-medium">Spesifikasi</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setForm({ ...form, spec: [...form.spec, { label: '', value: '' }] })}
+          >
+            <Plus size={12} /> Tambah baris
+          </Button>
+        </div>
+        {form.spec.length === 0 ? (
+          <p className="text-xs text-ink-500">Contoh: Bahan: Baja, Model: 415, Warna: Hitam. Merek dan SKU sudah otomatis tampil.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {form.spec.map((s, i) => (
+              <div key={i} className="flex gap-1.5">
+                <input
+                  className="input !py-1.5 text-sm"
+                  aria-label={`Label spesifikasi ${i + 1}`}
+                  placeholder="Label (cth. Bahan)"
+                  value={s.label}
+                  onChange={(e) => ubahSpec(i, 'label', e.target.value)}
+                />
+                <input
+                  className="input !py-1.5 text-sm"
+                  aria-label={`Nilai spesifikasi ${i + 1}`}
+                  placeholder="Nilai (cth. Baja)"
+                  value={s.value}
+                  onChange={(e) => ubahSpec(i, 'value', e.target.value)}
+                />
+                <button
+                  type="button"
+                  aria-label="Hapus baris spesifikasi"
+                  onClick={() => setForm({ ...form, spec: form.spec.filter((_, j) => j !== i) })}
+                  className="grid w-9 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <TextAreaSederhana
+        label="Apa yang ada di dalam kotak"
+        placeholder="cth. 1 gear depan, 1 kartu garansi"
+        value={form.box_contents}
+        onChange={(v) => setForm({ ...form, box_contents: v })}
+      />
+      <TextAreaSederhana
+        label="Sorotan (satu poin per baris)"
+        placeholder={'Baja karbon tahan aus\nPresisi untuk rantai 415'}
+        value={form.highlights}
+        onChange={(v) => setForm({ ...form, highlights: v })}
+      />
+    </div>
+  );
+}
+
+function TextAreaSederhana({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="block text-sm font-medium">{label}</span>
+      <textarea
+        className="input min-h-[64px] w-full text-sm"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
   );
 }

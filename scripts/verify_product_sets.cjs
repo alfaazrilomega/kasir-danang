@@ -109,7 +109,8 @@ const record = (nama, ok, ket) => {
     await page.locator('main input[type="text"], input[placeholder*="Cari"]')
       .last().fill(SKU_SET);
     await page.waitForTimeout(2000);
-    await page.locator('tbody tr').first().locator('button.rounded-full').first().click();
+    // Baris produk kini juga punya ikon riwayat & label, jadi tombol Edit dipilih lewat judulnya.
+    await page.locator('tbody tr').first().locator('button[title="Edit"]').click();
     await page.waitForTimeout(2000);
 
     const form = modal();
@@ -121,17 +122,19 @@ const record = (nama, ok, ket) => {
     await form.getByRole('button', { name: /Tambah isi set/i }).click();
     await page.waitForTimeout(700);
 
-    const pilihan = form.locator('select').filter({ hasText: 'pilih barang' });
-    await pilihan.nth(0).selectOption({ label: new RegExp(SKU_A) }).catch(async () => {
-      const opsi = await pilihan.nth(0).locator('option').allTextContents();
-      const cocok = opsi.find((t) => t.includes(SKU_A));
-      if (cocok) await pilihan.nth(0).selectOption({ label: cocok });
-    });
+    // Isi set dipilih lewat kolom cari (nama/SKU), bukan dropdown biasa.
+    // Setelah terpilih, placeholder berganti jadi nama produknya, jadi kolom
+    // yang masih kosong selalu yang terakhir cocok dengan placeholder ini.
+    const cariIsi = () => form.getByPlaceholder(/Cari barang isi set/i);
+    await cariIsi().first().click();
+    await cariIsi().first().fill(SKU_A);
+    await page.waitForTimeout(500);
+    await form.locator('button').filter({ hasText: SKU_A }).first().click();
     await page.waitForTimeout(600);
-    const pilihan2 = form.locator('select').filter({ hasText: 'pilih barang' });
-    const opsi2 = await pilihan2.last().locator('option').allTextContents();
-    const cocok2 = opsi2.find((t) => t.includes(SKU_B));
-    if (cocok2) await pilihan2.last().selectOption({ label: cocok2 });
+    await cariIsi().last().click();
+    await cariIsi().last().fill(SKU_B);
+    await page.waitForTimeout(500);
+    await form.locator('button').filter({ hasText: SKU_B }).first().click();
     await page.waitForTimeout(600);
 
     // Takaran isi kedua: 2 batang per set.

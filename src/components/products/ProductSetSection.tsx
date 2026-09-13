@@ -11,6 +11,7 @@
 
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ProductPicker } from '@/components/data/ProductPicker';
 import { formatNumber } from '@/lib/format';
 import type { Product } from '@/types';
 
@@ -122,22 +123,15 @@ export function ProductSetSection({
       <div className="space-y-2">
         {value.map((baris) => (
           <div key={baris.key} className="flex items-center gap-2">
-            <select
-              className="input !py-1.5 flex-1"
+            <ProductPicker
+              className="flex-1"
+              products={products.filter(bolehJadiIsi)}
               value={baris.component_product_id}
-              onChange={(e) => ubah(baris.key, { component_product_id: e.target.value })}
-            >
-              <option value="">— pilih barang —</option>
-              {products
-                .filter((p) => bolehJadiIsi(p) && (!terpakai.has(p.id) || p.id === baris.component_product_id))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                    {p.sku ? ` · ${p.sku}` : ''}
-                    {p.track_stock ? ` · stok ${formatNumber(Number(p.stock_qty ?? 0))}` : ''}
-                  </option>
-                ))}
-            </select>
+              onChange={(id) => ubah(baris.key, { component_product_id: id })}
+              excludeIds={[...terpakai].filter((id) => id !== baris.component_product_id)}
+              placeholder="Cari barang isi set (nama atau SKU)..."
+              showStock
+            />
             <input
               type="number"
               min={1}

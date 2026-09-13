@@ -54,6 +54,7 @@ type Preset = 'today' | '7d' | '30d' | 'this-month' | 'last-month' | 'custom';
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash: 'Tunai',
   card: 'Kartu',
+  transfer: 'Transfer',
   ewallet: 'E-wallet',
   qris: 'QRIS',
   other: 'Lainnya',
@@ -61,6 +62,7 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
 const PAYMENT_COLORS: Record<PaymentMethod, string> = {
   cash: '#10b981',
   card: '#0ea5e9',
+  transfer: '#ec4899',
   ewallet: '#f59e0b',
   qris: '#7c4dff',
   other: '#94a3b8',
@@ -1694,7 +1696,7 @@ function buildCashierRows({
       margin: 0,
       aov: 0,
       qty: 0,
-      byMethod: { cash: 0, card: 0, ewallet: 0, qris: 0, other: 0 },
+      byMethod: { cash: 0, card: 0, ewallet: 0, qris: 0, transfer: 0, other: 0 },
       shifts: 0,
       openShift: false,
       variance: 0,

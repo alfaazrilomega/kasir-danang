@@ -122,6 +122,7 @@ const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
   '/shifts': ['manageShifts'],
   '/stock-mutation': ['manageInventory'],
   '/stock-opname': ['manageInventory'],
+  '/feedback': ['manageStoreSettings'],
   '/expenses': ['manageExpenses'],
   '/reports': ['viewSalesReports'],
   '/users': ['manageUsers'],
