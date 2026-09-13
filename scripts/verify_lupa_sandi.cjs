@@ -124,22 +124,21 @@ function kodeTerbaru(sebelum) {
     await t.waitForTimeout(600);
     record('Tautan "Lupa Kata Sandi?" membuka halaman reset dengan nomor terisi',
       t.url().includes('/toko/lupa-sandi') && (await t.getByLabel('No. Handphone/Email').inputValue()) === HP);
-    record('Halaman reset tanpa navbar dan footer',
-      (await t.locator('header').count()) === 0 && (await t.locator('footer').count()) === 0);
+    record('Reset kata sandi tampil sebagai pop-up (layar lebar)', (await t.locator('[role="dialog"]').count()) === 1);
     const sebelum = isiOutbox();
     await t.getByRole('button', { name: /Berikutnya/i }).click();
-    await t.getByLabel('Kode verifikasi').waitFor({ timeout: 10000 });
+    await t.getByLabel('Kode verifikasi', { exact: true }).waitFor({ timeout: 10000 });
     await t.waitForTimeout(500);
     const kode = kodeTerbaru(sebelum);
     record('Kode 6 digit dikirim ke email akun', !!kode, kode ? 'kode diterima' : 'tidak ada email');
     record('Kirim ulang kode menunggu hitung mundur', /Kirim ulang kode dalam \d+ detik/.test(await t.locator('body').innerText()));
     await t.screenshot({ path: path.join(__dirname, 'screenshots', 'lupa_kode.png') }).catch(() => {});
 
-    await t.getByLabel('Kode verifikasi').fill(kode === '000000' ? '111111' : '000000');
+    await t.getByLabel('Kode verifikasi', { exact: true }).fill(kode === '000000' ? '111111' : '000000');
     await t.getByRole('button', { name: /Berikutnya/i }).click();
     await t.waitForTimeout(1000);
     record('Kode salah ditolak dengan sisa percobaan', /Sisa 4 percobaan/.test(await t.locator('body').innerText()));
-    await t.getByLabel('Kode verifikasi').fill(kode || '');
+    await t.getByLabel('Kode verifikasi', { exact: true }).fill(kode || '');
     await t.getByRole('button', { name: /Berikutnya/i }).click();
     await t.getByLabel('Kata sandi baru', { exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
     record('Kode benar lanjut ke kata sandi baru', (await t.getByLabel('Kata sandi baru', { exact: true }).count()) === 1);
