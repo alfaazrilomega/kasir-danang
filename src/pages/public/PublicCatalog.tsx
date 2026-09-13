@@ -481,17 +481,17 @@ function MotifBendera() {
 }
 
 /**
- * Banner promo tampil utuh di atas salinannya yang diburamkan: slide terisi
- * penuh tanpa memotong logo, judul, dan produk di banner (rasio banner ≠ slide).
+ * Banner promo memenuhi slide. Rasio banner (±1,8:1) lebih tinggi dari slide
+ * (±2,9:1), jadi tepi atas & bawahnya terpotong; titik fokus 40% menjaga judul
+ * dan produk tetap terlihat. Banner 2400×800 akan tampil tanpa terpotong.
  */
 function SlideBanner({ src }: { src: string }) {
   return (
     <div className="relative h-full overflow-hidden bg-ink-950">
-      <img src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl brightness-[.35] saturate-50" />
       <img
         src={src}
         alt="Promo toko"
-        className="relative h-full w-full scale-[1.03] object-contain transition-transform duration-[6000ms] ease-out group-data-[aktif=true]/slide:scale-100"
+        className="h-full w-full scale-105 object-cover object-[center_40%] transition-transform duration-[6000ms] ease-out group-data-[aktif=true]/slide:scale-100"
       />
     </div>
   );
