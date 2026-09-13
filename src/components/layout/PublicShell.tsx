@@ -139,9 +139,16 @@ export function PublicShell({
 
         {/* Baris logo, pencarian, keranjang. */}
         <div className={cn(LEBAR, 'flex items-center gap-3 py-3 lg:h-[78px] lg:gap-0 lg:py-0')}>
-          <Link to="/toko" className="flex shrink-0 items-center gap-2 lg:w-[204px]">
-            {logo('h-9 w-9', 18)}
-            <span className="hidden max-w-[150px] truncate text-lg font-bold text-brand-700 sm:block dark:text-brand-200">{namaToko}</span>
+          <Link to="/toko" aria-label={namaToko} className="flex shrink-0 items-center gap-2 lg:w-[204px]">
+            {store?.logo_url ? (
+              // Logo toko sudah memuat namanya: tampil utuh (tidak dipotong) tanpa teks tambahan.
+              <img src={store.logo_url} alt={namaToko} className="h-11 w-auto max-w-[180px] object-contain" />
+            ) : (
+              <>
+                {logo('h-9 w-9', 18)}
+                <span className="hidden max-w-[150px] truncate text-lg font-bold text-brand-700 sm:block dark:text-brand-200">{namaToko}</span>
+              </>
+            )}
           </Link>
           <div className="min-w-0 flex-1 lg:max-w-[686px]">
             <form
@@ -313,13 +320,22 @@ export function PublicShell({
                 ))}
               </ul>
             </div>
-            <div className="flex items-start gap-3">
-              {logo('h-12 w-12', 22)}
-              <div>
-                <div className="text-sm font-semibold text-brand-600">{namaToko}</div>
+            {store?.logo_url ? (
+              <div className="space-y-2">
+                <span className="inline-flex rounded-lg bg-white p-2">
+                  <img src={store.logo_url} alt={namaToko} className="h-12 w-auto max-w-[220px] object-contain" />
+                </span>
                 <div className="text-ink-600 dark:text-ink-300">Belanja online, dikirim ke alamatmu.</div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                {logo('h-12 w-12', 22)}
+                <div>
+                  <div className="text-sm font-semibold text-brand-600">{namaToko}</div>
+                  <div className="text-ink-600 dark:text-ink-300">Belanja online, dikirim ke alamatmu.</div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="bg-white py-6 dark:bg-ink-950">

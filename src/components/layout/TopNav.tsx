@@ -77,7 +77,7 @@ export function TopNav() {
           <div className="flex items-center gap-2 font-bold uppercase tracking-tight">
             <span className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-white/15">
               {store?.logo_url ? (
-                <img src={store.logo_url} alt="" className="h-full w-full object-cover" />
+                <img src={store.logo_url} alt="" className="h-full w-full bg-white object-contain p-0.5" />
               ) : (
                 <Store size={18} />
               )}

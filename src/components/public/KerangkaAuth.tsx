@@ -86,17 +86,34 @@ export function KerangkaAuth({ children, panelMerek = true }: { children: ReactN
       >
         {panelMerek && (
           <Link to="/toko" aria-label={`Kembali ke ${nama}`} className="hidden w-[440px] flex-col items-center text-center text-white lg:flex">
-            {logo('h-[160px] w-[160px] rounded-[28px] shadow-lg', 84)}
-            <span className="mt-6 text-5xl font-semibold tracking-tight">{nama}</span>
-            <span className="mt-4 text-2xl font-medium">Belanja Mudah, Dikirim ke Rumah</span>
+            {toko?.logo_url ? (
+              // Logo toko sudah memuat namanya: tampil utuh di kartu putih, tanpa judul teks.
+              <span className="rounded-3xl bg-white px-10 py-8 shadow-lg">
+                <img src={toko.logo_url} alt={nama} className="h-[110px] w-auto max-w-[360px] object-contain" />
+              </span>
+            ) : (
+              <>
+                {logo('h-[160px] w-[160px] rounded-[28px] shadow-lg', 84)}
+                <span className="mt-6 text-5xl font-semibold tracking-tight">{nama}</span>
+              </>
+            )}
+            <span className="mt-6 text-2xl font-medium">Belanja Mudah, Dikirim ke Rumah</span>
           </Link>
         )}
         <Link
           to="/toko"
           className={cn('flex items-center gap-2 text-lg font-bold', panelMerek ? 'text-white lg:hidden' : 'text-brand-700 dark:text-brand-200')}
         >
-          {logo('h-9 w-9 rounded-lg', 18)}
-          {nama}
+          {toko?.logo_url ? (
+            <span className="rounded-lg bg-white px-2 py-1">
+              <img src={toko.logo_url} alt={nama} className="h-8 w-auto max-w-[160px] object-contain" />
+            </span>
+          ) : (
+            <>
+              {logo('h-9 w-9 rounded-lg', 18)}
+              {nama}
+            </>
+          )}
         </Link>
         {children}
       </div>

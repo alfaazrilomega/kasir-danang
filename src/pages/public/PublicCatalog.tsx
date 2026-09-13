@@ -216,10 +216,18 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
           <Karosel slides={slides} />
         </div>
         <aside className="hidden w-[188px] shrink-0 flex-col items-center bg-gradient-to-b from-brand-600 to-brand-400 px-3 py-4 text-center text-white lg:flex">
-          <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-xl bg-white text-brand-600">
-            {store?.logo_url ? <img src={store.logo_url} alt="" className="h-full w-full object-cover" /> : <Store size={26} />}
-          </span>
-          <div className="mt-2 line-clamp-2 text-sm font-bold">{store?.name ?? 'TokoKu'}</div>
+          {store?.logo_url ? (
+            <span className="flex h-16 w-full items-center justify-center rounded-xl bg-white p-2">
+              <img src={store.logo_url} alt={store.name} className="max-h-full max-w-full object-contain" />
+            </span>
+          ) : (
+            <>
+              <span className="grid h-14 w-14 place-items-center overflow-hidden rounded-xl bg-white text-brand-600">
+                <Store size={26} />
+              </span>
+              <div className="mt-2 line-clamp-2 text-sm font-bold">{store?.name ?? 'TokoKu'}</div>
+            </>
+          )}
           <ul className="mt-3 w-full space-y-2 text-left text-xs">
             {(
               [

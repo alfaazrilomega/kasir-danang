@@ -980,9 +980,15 @@ export function PublicProductDetail() {
         {/* ---------- Kartu penjual ---------- */}
         <Blok className="flex flex-wrap items-center gap-4 p-4 lg:p-5">
           <div className="flex min-w-0 flex-1 items-center gap-3">
-            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 text-white">
-              {store.logo_url ? <img src={store.logo_url} alt="" className="h-full w-full object-cover" /> : <Store size={20} />}
+            {store.logo_url ? (
+              <span className="flex h-12 w-24 shrink-0 items-center justify-center rounded-md bg-white p-1 ring-1 ring-ink-100 dark:ring-ink-800">
+                <img src={store.logo_url} alt={store.name} className="max-h-full max-w-full object-contain" />
+              </span>
+            ) : (
+              <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 text-white">
+              <Store size={20} />
             </span>
+            )}
             <div className="min-w-0">
               <div className="truncate font-semibold">{store.name}</div>
               <div className="text-xs text-ink-500">{umurTahun >= 1 ? `Toko ${umurTahun}-Tahun` : 'Toko Baru'}</div>
