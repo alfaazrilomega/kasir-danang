@@ -93,7 +93,7 @@ const svg = (warna) =>
     await t.goto(BASE + '/toko/masuk?next=/toko/akun', { waitUntil: 'networkidle' });
     await t.getByLabel('No. Handphone/Email').fill(EMAIL);
     await t.getByLabel('Kata sandi').fill('rahasia123');
-    await t.locator('main form button[type="submit"]').click();
+    await t.locator('form[data-auth] button[type="submit"]').click();
     await t.waitForURL((u) => u.pathname.includes('/toko/akun'), { timeout: 15000 }).catch(() => {});
     await t.waitForTimeout(1200);
     await t.getByRole('button', { name: /^Ulasan/ }).click();

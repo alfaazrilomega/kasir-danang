@@ -36,6 +36,7 @@ import {
 } from '@/lib/publicCatalog';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { useCustomer } from '@/lib/customerAccount';
+import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 
 const EMPTY: PublicCatalogData = { store: null, categories: [], products: [] };
 
@@ -143,6 +144,7 @@ export function PublicCatalog() {
 function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompok: KelompokProduk[]; loading: boolean }) {
   const { store, categories } = data;
   const token = useCustomer((s) => s.token);
+  const klikMasuk = useKlikMasuk();
   const [jfy, setJfy] = useState(JFY_LANGKAH);
 
   const terlaris = useMemo(() => urutkan(kelompok, 'terlaris').slice(0, 6), [kelompok]);
@@ -245,6 +247,7 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
           </ul>
           <Link
             to={token ? '/toko/akun' : '/toko/masuk'}
+            onClick={token ? undefined : klikMasuk('masuk', '/toko/akun')}
             className="mt-auto flex h-8 w-full items-center justify-center rounded-sm bg-white text-xs font-bold uppercase text-brand-700 transition-opacity duration-300 hover:opacity-90"
           >
             {token ? 'Pesanan Saya' : 'Masuk / Daftar'}

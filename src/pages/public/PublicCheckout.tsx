@@ -12,6 +12,7 @@ import { usePublicCart, type PublicCartLine } from '@/stores/publicCart';
 import { submitPublicOrder } from '@/lib/publicOrders';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { updateCustomerMe, useCustomer } from '@/lib/customerAccount';
+import { useBukaMasuk } from '@/components/public/KerangkaAuth';
 
 type PayOption = 'cash' | 'qris';
 
@@ -43,6 +44,7 @@ export function PublicCheckout() {
   // Keputusan client: belanja memakai akun. Keranjang boleh diisi tanpa masuk,
   // checkout wajib masuk supaya pesanan tercatat di akun pembeli.
   const token = useCustomer((s) => s.token);
+  const bukaMasuk = useBukaMasuk();
   const me = useCustomer((s) => s.me);
   const setMe = useCustomer((s) => s.setMe);
   useEffect(() => {
@@ -81,10 +83,10 @@ export function PublicCheckout() {
             tetap tersimpan.
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="secondary" onClick={() => navigate(`/toko/masuk?tab=daftar&next=${kembali}`)}>
+            <Button variant="secondary" onClick={() => bukaMasuk('daftar', decodeURIComponent(kembali))}>
               Daftar
             </Button>
-            <Button onClick={() => navigate(`/toko/masuk?next=${kembali}`)}>Masuk</Button>
+            <Button onClick={() => bukaMasuk('masuk', decodeURIComponent(kembali))}>Masuk</Button>
           </div>
         </Card>
       </PublicShell>

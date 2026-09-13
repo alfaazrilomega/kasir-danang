@@ -7,6 +7,7 @@ import { Link, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import { useCustomer } from '@/lib/customerAccount';
+import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { usePublicCart } from '@/stores/publicCart';
 import { useWishlist } from '@/stores/wishlist';
 
@@ -26,6 +27,7 @@ export function PublicCart() {
   const favorit = useWishlist((s) => s.ids);
   const toggleFavorit = useWishlist((s) => s.toggle);
   const token = useCustomer((s) => s.token);
+  const klikMasuk = useKlikMasuk();
   const me = useCustomer((s) => s.me);
   const [namaToko, setNamaToko] = useState('');
   const [pilih, setPilih] = useState<string[]>(() => lines.map((l) => l.product_id));
@@ -79,6 +81,7 @@ export function PublicCart() {
             {!token && (
               <Link
                 to={`/toko/masuk?next=${encodeURIComponent('/toko/keranjang')}`}
+                onClick={klikMasuk('masuk', '/toko/keranjang')}
                 className="flex h-10 items-center justify-center rounded-sm bg-brand-600 text-sm text-white transition-opacity duration-300 ease-out hover:opacity-90"
               >
                 Masuk/Daftar

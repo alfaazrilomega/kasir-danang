@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowLeft, Eye, EyeOff, QrCode, Store, Truck, Wallet } from 'lucide-react';
+import { useEffect, useRef, useState, type InputHTMLAttributes, type MouseEvent, type ReactNode } from 'react';
+import { ArrowLeft, Eye, EyeOff, Store, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from '@/lib/router';
+import { Link, useNavigate } from '@/lib/router';
 import { cn } from '@/lib/format';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { fetchPublicCatalog, type PublicCatalogStore } from '@/lib/publicCatalog';
+import { useModalMasuk, type ModeMasuk } from '@/stores/modalMasuk';
 
 declare global {
   interface Window {
@@ -19,18 +20,8 @@ declare global {
   }
 }
 
-export const LABEL_AUTH = 'text-[13px] font-medium text-black/70';
-
-export const KOLOM_AUTH =
-  'h-11 w-full rounded-xl border border-black/[0.12] bg-white px-3.5 text-sm text-[#0b0c1a] outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-black/30 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15';
-
-export const KOLOM_GALAT = 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/15';
-
 export const TOMBOL_AUTH =
-  'h-11 w-full rounded-xl bg-brand-500 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-600 active:bg-brand-700 disabled:cursor-not-allowed disabled:bg-black/[0.06] disabled:text-black/35';
-
-/** Huruf condensed miring yang sama dengan hero beranda toko. */
-const HURUF_BALAP = "font-['Barlow_Condensed',ui-sans-serif,sans-serif] italic";
+  'h-12 w-full rounded-md bg-brand-600 text-[15px] font-semibold text-white transition-colors duration-150 hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-brand-600';
 
 /** Tujuan setelah masuk hanya boleh halaman toko, bukan alamat sembarang. */
 export function tujuanAman(v: string | null): string {
@@ -39,7 +30,7 @@ export function tujuanAman(v: string | null): string {
 
 let janjiToko: Promise<PublicCatalogStore | null> | null = null;
 
-/** Nama, logo & banner toko untuk halaman masuk (diambil sekali per kunjungan). */
+/** Nama & logo toko untuk halaman masuk (diambil sekali per kunjungan). */
 export function useTokoPublik(): PublicCatalogStore | null {
   const [toko, setToko] = useState<PublicCatalogStore | null>(null);
   useEffect(() => {
@@ -55,46 +46,61 @@ export function useTokoPublik(): PublicCatalogStore | null {
   return toko;
 }
 
-function LogoToko({ toko, kecil = false }: { toko: PublicCatalogStore | null; kecil?: boolean }) {
-  const nama = toko?.name ?? 'TokoKu';
-  return (
-    <Link to="/toko" aria-label={`Beranda ${nama}`} className="inline-flex items-center rounded-lg bg-white px-3 py-2 shadow-sm">
-      {toko?.logo_url ? (
-        <img src={toko.logo_url} alt={nama} className={cn('w-auto object-contain', kecil ? 'h-6' : 'h-7')} />
-      ) : (
-        <span className="flex items-center gap-1.5 text-sm font-bold text-[#0b0c1a]">
-          <Store size={16} /> {nama}
-        </span>
-      )}
-    </Link>
-  );
+/* ------------------------------------------------------------------ */
+/* Pop-up (layar lebar) atau halaman penuh (HP)                        */
+/* ------------------------------------------------------------------ */
+
+/** Mulai lebar ini masuk/daftar tampil sebagai pop-up; di bawahnya halaman penuh. */
+const MEDIA_POPUP = '(min-width: 768px)';
+
+export function pakaiModal(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia(MEDIA_POPUP).matches;
 }
 
-const MOTIF_BENDERA =
-  'pointer-events-none absolute opacity-[0.06] [background:repeating-conic-gradient(#fff_0_25%,transparent_0_50%)_0_0/22px_22px]';
+export function useLayarLebar(): boolean {
+  const [lebar, setLebar] = useState(pakaiModal);
+  useEffect(() => {
+    const mq = window.matchMedia(MEDIA_POPUP);
+    const ubah = () => setLebar(mq.matches);
+    mq.addEventListener('change', ubah);
+    return () => mq.removeEventListener('change', ubah);
+  }, []);
+  return lebar;
+}
+
+function alamatMasuk(mode: ModeMasuk, next: string | null): string {
+  if (mode === 'lupa') return '/toko/lupa-sandi';
+  const q = new URLSearchParams();
+  if (mode === 'daftar') q.set('tab', 'daftar');
+  if (next) q.set('next', next);
+  return `/toko/masuk${q.toString() ? `?${q}` : ''}`;
+}
+
+/** Buka masuk/daftar: pop-up di layar lebar, halaman masuk di HP. */
+export function useBukaMasuk() {
+  const navigate = useNavigate();
+  const bukaModal = useModalMasuk((s) => s.bukaModal);
+  return (mode: ModeMasuk = 'masuk', next: string | null = null) => {
+    if (pakaiModal()) bukaModal(mode, next);
+    else navigate(alamatMasuk(mode, next));
+  };
+}
 
 /**
- * Kerangka halaman masuk/daftar/lupa sandi: tanpa navbar & footer toko,
- * memenuhi layar dan tidak bisa digulir. Desktop dibelah dua: panel visual
- * gelap (banner toko + judul balap + jaminan COD/QRIS) di kiri dan panel
- * formulir putih di kanan. Di HP panel visual menyusut jadi pita gelap berisi
- * logo, dan formulir tampil sebagai lembar putih di bawahnya.
+ * Pengendali klik untuk tautan ke halaman masuk yang sudah ada: di layar lebar
+ * perpindahan halaman dibatalkan dan pop-up dibuka; di HP tautan jalan biasa.
  */
-export function KerangkaAuth({
-  children,
-  kaki,
-  label = 'Akun Pembeli',
-  kembali = { to: '/toko', teks: 'Kembali ke toko' },
-}: {
-  children: ReactNode;
-  /** Baris kecil di dasar panel formulir (mis. persetujuan syarat). */
-  kaki?: ReactNode;
-  /** Label kecil di atas judul besar panel visual. */
-  label?: string;
-  kembali?: { to: string; teks: string };
-}) {
-  const toko = useTokoPublik();
+export function useKlikMasuk() {
+  const bukaModal = useModalMasuk((s) => s.bukaModal);
+  return (mode: ModeMasuk = 'masuk', next: string | null = null) =>
+    (e: MouseEvent<HTMLAnchorElement>) => {
+      if (!pakaiModal()) return;
+      e.preventDefault();
+      bukaModal(mode, next);
+    };
+}
 
+function useKunciGulir() {
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -106,111 +112,180 @@ export function KerangkaAuth({
       body.style.overflow = lama[1];
     };
   }, []);
+}
 
-  const tautanKembali = (terang: boolean) => (
-    <Link
-      to={kembali.to}
-      className={cn(
-        'inline-flex items-center gap-1.5 text-sm transition-colors duration-150',
-        terang ? 'text-white/70 hover:text-white' : 'text-black/55 hover:text-black',
+export function LogoToko({ toko }: { toko: PublicCatalogStore | null }) {
+  const nama = toko?.name ?? 'TokoKu';
+  return (
+    <Link to="/toko" aria-label={`Beranda ${nama}`} className="inline-flex items-center">
+      {toko?.logo_url ? (
+        <img src={toko.logo_url} alt={nama} className="h-10 w-auto max-w-[200px] object-contain" />
+      ) : (
+        <span className="flex items-center gap-2 text-xl font-bold text-brand-700">
+          <Store size={24} /> {nama}
+        </span>
       )}
-    >
-      <ArrowLeft size={16} /> {kembali.teks}
     </Link>
   );
+}
+
+/**
+ * Pop-up masuk di layar lebar: halaman di belakangnya tetap, hanya diburamkan.
+ * Tutup lewat tombol X, klik di luar kartu, atau tombol Esc.
+ */
+export function DialogMasuk({ onTutup, children }: { onTutup: () => void; children: ReactNode }) {
+  const toko = useTokoPublik();
+  const tutupTerbaru = useRef(onTutup);
+  tutupTerbaru.current = onTutup;
+  useKunciGulir();
+
+  useEffect(() => {
+    const tekan = (e: KeyboardEvent) => e.key === 'Escape' && tutupTerbaru.current();
+    window.addEventListener('keydown', tekan);
+    return () => window.removeEventListener('keydown', tekan);
+  }, []);
 
   return (
-    <main className="fixed inset-0 overflow-hidden bg-[#0b0c1a] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(480px,44%)]">
-      {/* ---------- Panel visual (desktop) ---------- */}
-      <section className="relative hidden overflow-hidden text-white lg:block">
-        {toko?.pdp_banner_url && (
-          <img
-            src={toko.pdp_banner_url}
-            alt=""
-            // Diperbesar ke deretan sprocket di kanan banner: teks promo bawaan banner
-            // ("GEAR TYPE 520") keluar dari bingkai supaya tidak bersaing dengan judul.
-            className="absolute inset-0 h-full w-full origin-[78%_55%] scale-[1.35] object-cover object-[82%_50%] [mask-image:linear-gradient(to_bottom,#000_50%,transparent_82%)]"
-          />
-        )}
-        {/* Sisa teks banner di tepi atas & kiri digelapkan ke warna panel. */}
-        <div aria-hidden className="absolute inset-0 bg-[linear-gradient(to_bottom,#0b0c1a_0%,transparent_32%),linear-gradient(to_right,#0b0c1a_0%,transparent_28%)]" />
-        <div aria-hidden className={cn(MOTIF_BENDERA, 'bottom-0 left-0 h-56 w-80 [mask-image:linear-gradient(to_top_right,black,transparent_70%)]')} />
-        <div className="absolute left-10 top-8">
+    <div
+      className="tanpa-bilah fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm [animation:latar-muncul_150ms_ease-out]"
+      onMouseDown={(e) => e.target === e.currentTarget && onTutup()}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="judul-auth"
+        className="relative w-full max-w-[440px] rounded-lg bg-white px-10 pb-8 pt-9 shadow-[0_16px_48px_rgba(0,0,0,0.2)] [animation:dialog-muncul_180ms_ease-out]"
+      >
+        <button
+          type="button"
+          aria-label="Tutup"
+          onClick={onTutup}
+          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full text-black/45 transition-colors duration-150 hover:bg-black/[0.05] hover:text-black"
+        >
+          <X size={18} />
+        </button>
+        <div className="flex justify-center">
           <LogoToko toko={toko} />
         </div>
-        <div className="absolute inset-x-10 bottom-10">
-          <div className={cn(HURUF_BALAP, 'text-base font-bold uppercase tracking-wide text-brand-400')}>{label}</div>
-          <p className={cn(HURUF_BALAP, 'mt-1 text-[56px] font-extrabold uppercase leading-[0.9] tracking-tight 2xl:text-[64px]')}>
-            Gear Set Presisi.
-            <br />
-            Dikirim ke Garasi Anda.
-          </p>
-          <p className="mt-3 max-w-[440px] text-sm text-white/65">
-            Masuk untuk checkout lebih cepat, melacak pesanan, dan menyimpan alamat pengiriman.
-          </p>
-          <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/10 pt-5 text-xs text-white/70">
-            <li className="flex items-center gap-1.5">
-              <Wallet size={14} /> Bayar di tempat (COD)
-            </li>
-            <li className="flex items-center gap-1.5">
-              <QrCode size={14} /> QRIS
-            </li>
-            <li className="flex items-center gap-1.5">
-              <Truck size={14} /> Dikirim ke alamat Anda
-            </li>
-          </ul>
-        </div>
+        {children}
       </section>
+    </div>
+  );
+}
 
-      {/* ---------- Panel formulir ---------- */}
-      <div className="flex h-dvh flex-col lg:h-full lg:p-3">
-        <div className="relative flex h-16 shrink-0 items-center justify-between overflow-hidden px-5 lg:hidden">
-          <div aria-hidden className={cn(MOTIF_BENDERA, 'inset-y-0 right-0 w-48 [mask-image:linear-gradient(to_left,black,transparent)]')} />
-          <LogoToko toko={toko} kecil />
-          <span className="relative">{tautanKembali(true)}</span>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col rounded-t-[20px] bg-white px-5 pb-[max(16px,env(safe-area-inset-bottom))] pt-2 lg:rounded-[24px] lg:px-12 lg:py-5">
-          <div className="hidden h-9 shrink-0 items-center justify-end lg:flex">{tautanKembali(false)}</div>
-          {/* Gulir di sini hanya cadangan untuk layar yang sangat pendek. */}
-          <div className="tanpa-bilah flex min-h-0 flex-1 flex-col overflow-y-auto py-4">
-            <div className="mx-auto mt-4 w-full max-w-[400px] lg:my-auto">{children}</div>
+/** Halaman masuk di HP: layar penuh, ringkas, tanpa navbar & footer toko. */
+export function KerangkaAuth({ children, kembali = '/toko' }: { children: ReactNode; kembali?: string }) {
+  const toko = useTokoPublik();
+  useKunciGulir();
+  return (
+    <main className="fixed inset-0 overflow-hidden bg-white">
+      <div className="tanpa-bilah h-full overflow-y-auto px-6 pb-6 pt-3">
+        <div className="mx-auto w-full max-w-[400px]">
+          <div className="relative flex h-12 items-center justify-center">
+            <Link
+              to={kembali}
+              aria-label="Kembali"
+              className="absolute left-0 -ml-2 grid h-10 w-10 place-items-center rounded-full text-black/60 transition-colors duration-150 hover:bg-black/[0.05]"
+            >
+              <ArrowLeft size={22} />
+            </Link>
+            <LogoToko toko={toko} />
           </div>
-          {kaki && <div className="shrink-0 pt-2 text-center text-xs leading-relaxed text-black/45">{kaki}</div>}
+          {children}
         </div>
       </div>
     </main>
   );
 }
 
-/** Label di atas kolom, slot opsional di kanan label, dan tempat pesan galat setinggi tetap. */
-export function Bidang({
+/* ------------------------------------------------------------------ */
+/* Kontrol formulir                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Kolom dengan label mengambang: di tengah kolom saat kosong, pindah ke garis
+ * tepi atas saat kolom difokus atau terisi.
+ */
+export function KolomApung({
   id,
   label,
+  galat = false,
   kanan,
-  galat,
-  slotGalat = true,
   className,
-  children,
+  ...input
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'id' | 'placeholder'> & {
+  id: string;
+  label: string;
+  galat?: boolean;
+  kanan?: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <input
+        {...input}
+        id={id}
+        aria-label={label}
+        placeholder=" "
+        className={cn(
+          'peer h-[52px] w-full rounded-md border bg-white px-3.5 text-[15px] text-[#1a1a1a] outline-none transition-[border-color,box-shadow] duration-150',
+          kanan && 'pr-12',
+          galat
+            ? 'border-rose-500 focus:ring-1 focus:ring-rose-500'
+            : 'border-black/25 hover:border-black/40 focus:border-brand-600 focus:ring-1 focus:ring-brand-600',
+          className,
+        )}
+      />
+      <label
+        htmlFor={id}
+        className={cn(
+          'pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 bg-white px-1 text-[15px] text-black/50 transition-all duration-150',
+          'peer-focus:top-0 peer-focus:text-xs peer-[:not(:placeholder-shown)]:top-0 peer-[:not(:placeholder-shown)]:text-xs',
+          galat ? 'text-rose-600 peer-focus:text-rose-600' : 'peer-focus:text-brand-600',
+        )}
+      >
+        {label}
+      </label>
+      {kanan && <div className="absolute inset-y-0 right-0 flex items-center">{kanan}</div>}
+    </div>
+  );
+}
+
+export function KolomSandi({
+  id,
+  label,
+  value,
+  onChange,
+  autoComplete,
+  galat = false,
 }: {
   id: string;
   label: string;
-  kanan?: ReactNode;
-  galat?: string;
-  slotGalat?: boolean;
-  className?: string;
-  children: ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete?: string;
+  galat?: boolean;
 }) {
+  const [lihat, setLihat] = useState(false);
   return (
-    <div className={className}>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <label htmlFor={id} className={LABEL_AUTH}>
-          {label}
-        </label>
-        {kanan}
-      </div>
-      {children}
-      {slotGalat && <PesanGalat teks={galat} />}
-    </div>
+    <KolomApung
+      id={id}
+      label={label}
+      type={lihat ? 'text' : 'password'}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      autoComplete={autoComplete}
+      galat={galat}
+      kanan={
+        <button
+          type="button"
+          onClick={() => setLihat(!lihat)}
+          aria-label={lihat ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+          className="grid h-full w-12 place-items-center text-black/45 transition-colors duration-150 hover:text-black/75"
+        >
+          {lihat ? <Eye size={18} /> : <EyeOff size={18} />}
+        </button>
+      }
+    />
   );
 }
 
@@ -223,66 +298,17 @@ export function PesanGalat({ teks }: { teks?: string }) {
   );
 }
 
-export function KolomSandi({
-  id,
-  label,
-  value,
-  onChange,
-  placeholder,
-  autoComplete,
-  galat = false,
-}: {
-  id?: string;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  autoComplete?: string;
-  galat?: boolean;
-}) {
-  const [lihat, setLihat] = useState(false);
-  return (
-    <div
-      className={cn(
-        'flex h-11 items-center rounded-xl border bg-white transition-[border-color,box-shadow] duration-150 focus-within:ring-4',
-        galat
-          ? 'border-rose-500 focus-within:ring-rose-500/15'
-          : 'border-black/[0.12] focus-within:border-brand-500 focus-within:ring-brand-500/15',
-      )}
-    >
-      <input
-        id={id}
-        aria-label={label}
-        type={lihat ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        className="h-full min-w-0 flex-1 rounded-xl bg-transparent px-3.5 text-sm text-[#0b0c1a] outline-none placeholder:text-black/30"
-      />
-      <button
-        type="button"
-        onClick={() => setLihat(!lihat)}
-        aria-label={lihat ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
-        className="grid h-full w-11 shrink-0 place-items-center text-black/40 transition-colors duration-150 hover:text-black/70"
-      >
-        {lihat ? <Eye size={17} /> : <EyeOff size={17} />}
-      </button>
-    </div>
-  );
-}
-
 export function PemisahAtau() {
   return (
-    <div className="flex items-center gap-3 py-4 text-xs text-black/35">
-      <span className="h-px flex-1 bg-black/10" /> atau <span className="h-px flex-1 bg-black/10" />
+    <div className="flex items-center gap-4 py-5 text-[11px] font-medium uppercase tracking-wider text-black/40">
+      <span className="h-px flex-1 bg-black/10" /> Atau <span className="h-px flex-1 bg-black/10" />
     </div>
   );
 }
 
 function LogoGoogle() {
   return (
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+    <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden>
       <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z" />
       <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
       <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
@@ -328,7 +354,7 @@ export function TombolGoogle({ googleId, onKredensial }: { googleId: string | nu
         onClick={() => {
           if (!googleId) toast.error('Masuk dengan Google belum diaktifkan toko.');
         }}
-        className="flex h-11 w-full items-center justify-center gap-2.5 rounded-xl border border-black/[0.12] bg-white text-sm font-medium text-[#0b0c1a] transition-colors duration-150 hover:bg-black/[0.03]"
+        className="flex h-12 w-full items-center gap-4 rounded-md border border-black/20 bg-white px-4 text-left text-[15px] text-[#1a1a1a] transition-colors duration-150 hover:bg-black/[0.03]"
       >
         <LogoGoogle /> Lanjutkan dengan Google
       </button>

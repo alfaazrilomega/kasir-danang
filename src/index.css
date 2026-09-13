@@ -94,3 +94,7 @@
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
+
+/* Pop-up masuk: latar memudar masuk, kartu naik sedikit. */
+@keyframes latar-muncul { from { opacity: 0; } }
+@keyframes dialog-muncul { from { opacity: 0; transform: translateY(8px) scale(0.98); } }

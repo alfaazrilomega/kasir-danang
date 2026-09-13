@@ -148,8 +148,8 @@ const record = (nama, ok, ket) => {
     await guest.getByLabel('Email', { exact: true }).fill(EMAIL_PEMBELI);
     await guest.getByLabel('Nomor HP / WhatsApp', { exact: true }).fill('0812' + CAP + '03');
     await guest.getByLabel('Kata sandi').fill('rahasia123');
-    await guest.locator('main form input[type="checkbox"]').check();
-    await guest.locator('main form button[type="submit"]').click();
+    await guest.locator('form[data-auth] input[type="checkbox"]').check();
+    await guest.locator('form[data-auth] button[type="submit"]').click();
     await guest.waitForURL((u) => u.pathname.includes('/toko/checkout'), { timeout: 15000 }).catch(() => {});
     record('Setelah daftar kembali ke checkout yang sama',
       guest.url().includes('/toko/checkout') && new URL(guest.url()).searchParams.get('mode') === 'direct',

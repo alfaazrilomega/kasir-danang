@@ -37,6 +37,7 @@ import { PUBLIC_STORE_ID } from '@/lib/config';
 import { usePublicCart } from '@/stores/publicCart';
 import { useWishlist } from '@/stores/wishlist';
 import { useCustomer } from '@/lib/customerAccount';
+import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 
 const PER_HALAMAN = 5;
 const KUNCI_HELPFUL = 'tokoku.helpful.v1';
@@ -135,6 +136,7 @@ export function PublicProductDetail() {
   const add = usePublicCart((s) => s.add);
   const setBuyNow = usePublicCart((s) => s.setBuyNow);
   const token = useCustomer((s) => s.token);
+  const klikMasuk = useKlikMasuk();
   const me = useCustomer((s) => s.me);
   const favorit = useWishlist((s) => s.ids.includes(productId));
   const toggleFavorit = useWishlist((s) => s.toggle);
@@ -428,7 +430,7 @@ export function PublicProductDetail() {
         <span className="min-w-0 flex-1">
           {me?.address || (token ? 'Alamat belum diisi di akun.' : 'Masuk untuk memakai alamat pengirimanmu.')}
         </span>
-        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} className="shrink-0 text-xs font-semibold text-brand-600">
+        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 text-xs font-semibold text-brand-600">
           UBAH
         </Link>
       </div>

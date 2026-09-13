@@ -6,6 +6,8 @@ import { cn } from '@/lib/format';
 import { fetchPublicCatalog, type PublicCatalogCategory, type PublicCatalogStore } from '@/lib/publicCatalog';
 import { usePublicCart } from '@/stores/publicCart';
 import { useCustomer } from '@/lib/customerAccount';
+import { useKlikMasuk } from '@/components/public/KerangkaAuth';
+import { ModalMasuk } from '@/components/public/ModalMasuk';
 
 /** Nomor toko menjadi tautan WhatsApp (0812… → 62812…). */
 export function tautanWhatsApp(nomor: string | null | undefined, pesan?: string): string | null {
@@ -95,6 +97,8 @@ export function PublicShell({
   const namaToko = store?.name ?? 'TokoKu';
   const wa = tautanWhatsApp(store?.shop_phone, 'Halo, saya mau bertanya.');
   const tautanPesanan = token ? '/toko/akun?tab=pesanan' : `/toko/masuk?next=${encodeURIComponent('/toko/akun?tab=pesanan')}`;
+  // Di layar lebar tautan masuk/daftar membuka pop-up, bukan pindah halaman.
+  const klikMasuk = useKlikMasuk();
   // Tautan atas yang menunjuk halaman yang sedang dibuka diberi warna tema.
   // Di halaman akun, tab Pesanan = "Lacak Pesanan"; tab lain = "Akun".
   const diAkun = pathname === '/toko/akun';
@@ -123,7 +127,7 @@ export function PublicShell({
                 Layanan Pelanggan
               </a>
             )}
-            <Link to={tautanPesanan} aria-current={aktifLacak ? 'page' : undefined} className={cn(TAUTAN_KECIL, aktifLacak && 'text-brand-600')}>
+            <Link to={tautanPesanan} onClick={token ? undefined : klikMasuk('masuk', '/toko/akun?tab=pesanan')} aria-current={aktifLacak ? 'page' : undefined} className={cn(TAUTAN_KECIL, aktifLacak && 'text-brand-600')}>
               Lacak Pesanan
             </Link>
             {token ? (
@@ -132,10 +136,10 @@ export function PublicShell({
               </Link>
             ) : (
               <>
-                <Link to="/toko/masuk" className={TAUTAN_KECIL}>
+                <Link to="/toko/masuk" onClick={klikMasuk('masuk')} className={TAUTAN_KECIL}>
                   Masuk
                 </Link>
-                <Link to="/toko/masuk?tab=daftar" className={TAUTAN_KECIL}>
+                <Link to="/toko/masuk?tab=daftar" onClick={klikMasuk('daftar')} className={TAUTAN_KECIL}>
                   Daftar
                 </Link>
               </>
@@ -196,6 +200,7 @@ export function PublicShell({
           </div>
           <Link
             to={token ? '/toko/akun' : '/toko/masuk'}
+            onClick={token ? undefined : klikMasuk('masuk', '/toko/akun')}
             aria-label={token ? 'Akun saya' : 'Masuk'}
             className="grid h-10 w-10 place-items-center text-ink-700 lg:hidden dark:text-ink-200"
           >
@@ -260,6 +265,7 @@ export function PublicShell({
       <main className={cn('flex-1', latar === 'putih' && 'bg-white dark:bg-ink-900')}>
         <div className={cn('mx-auto w-full px-4 py-4 xl:px-0', wide ? 'max-w-[1188px]' : 'max-w-[1000px]')}>{children}</div>
       </main>
+      <ModalMasuk />
 
       <footer className="text-[12px]">
         <div className="border-t border-ink-100 bg-[#f5f5f5] py-6 dark:border-ink-800 dark:bg-ink-900">
@@ -268,7 +274,7 @@ export function PublicShell({
               <h3 className="mb-2 text-sm text-ink-800 dark:text-ink-100">Layanan Pelanggan</h3>
               <ul className="space-y-1 text-ink-600 dark:text-ink-300">
                 <li>
-                  <Link to={tautanPesanan} className={TAUTAN_KECIL}>
+                  <Link to={tautanPesanan} onClick={token ? undefined : klikMasuk('masuk', '/toko/akun?tab=pesanan')} className={TAUTAN_KECIL}>
                     Lacak Pesanan
                   </Link>
                 </li>
@@ -278,7 +284,8 @@ export function PublicShell({
                   </Link>
                 </li>
                 <li>
-                  <Link to={token ? '/toko/akun' : '/toko/masuk'} className={TAUTAN_KECIL}>
+                  <Link to={token ? '/toko/akun' : '/toko/masuk'}
+            onClick={token ? undefined : klikMasuk('masuk', '/toko/akun')} className={TAUTAN_KECIL}>
                     {token ? 'Akun Saya' : 'Akun Pembeli'}
                   </Link>
                 </li>

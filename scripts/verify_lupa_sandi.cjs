@@ -70,8 +70,8 @@ function kodeTerbaru(sebelum) {
     // ---------- Tampilan halaman masuk ----------
     await t.reload({ waitUntil: 'networkidle' });
     await t.waitForTimeout(800);
-    record('Halaman masuk tanpa navbar dan footer',
-      (await t.locator('header').count()) === 0 && (await t.locator('footer').count()) === 0);
+    record('Masuk tampil sebagai pop-up di atas halaman toko (layar lebar)',
+      (await t.locator('[role="dialog"]').count()) === 1);
     const gulir = await t.evaluate(() => {
       window.scrollTo(0, 600);
       return {
@@ -85,7 +85,7 @@ function kodeTerbaru(sebelum) {
     const teks = await t.locator('body').innerText();
     record('Opsi masuk hanya No. HP/Email dan Google (tanpa Facebook)',
       (await t.getByLabel('No. Handphone/Email').count()) === 1 && /Google/.test(teks) && !/Facebook/i.test(teks));
-    const tombol = t.locator('main form button[type="submit"]');
+    const tombol = t.locator('form[data-auth] button[type="submit"]');
     record('Tombol MASUK nonaktif selama kolom kosong', await tombol.isDisabled());
     await t.screenshot({ path: path.join(__dirname, 'screenshots', 'lupa_masuk.png') }).catch(() => {});
 
@@ -110,8 +110,8 @@ function kodeTerbaru(sebelum) {
     await t.getByLabel('Email', { exact: true }).fill(`uji.sandi.${TS}b@contoh.id`);
     await t.getByLabel('Nomor HP / WhatsApp').fill(HP);
     await t.getByLabel('Kata sandi').fill('rahasia1');
-    await t.locator('main form input[type="checkbox"]').check();
-    await t.locator('main form button[type="submit"]').click();
+    await t.locator('form[data-auth] input[type="checkbox"]').check();
+    await t.locator('form[data-auth] button[type="submit"]').click();
     await t.waitForTimeout(1200);
     record('Daftar dengan nomor HP yang sudah dipakai ditolak',
       /sudah terdaftar/i.test((await t.locator('[role="alert"]').allInnerTexts()).join(' ')));
