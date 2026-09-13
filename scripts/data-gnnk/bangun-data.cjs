@@ -428,7 +428,9 @@ async function hapusKafe(db) {
        select o.id from public.orders o
         where o.store_id = $1
           and exists (select 1 from public.order_items i where i.order_id = o.id and i.product_id in (select id from kafe_produk))
-          and not exists (select 1 from public.order_items i where i.order_id = o.id and (i.product_id is null or i.product_id not in (select id from kafe_produk)))`,
+          -- Baris tanpa produk di pesanan kafe adalah barang kafe yang produknya sudah terhapus;
+          -- pesanan tetap milik client bila ada SATU saja baris yang menunjuk produk bukan kafe.
+          and not exists (select 1 from public.order_items i where i.order_id = o.id and i.product_id is not null and i.product_id not in (select id from kafe_produk))`,
     [STORE],
   );
   await db.query(
