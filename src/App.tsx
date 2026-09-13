@@ -31,6 +31,7 @@ import { PublicCheckout } from '@/pages/public/PublicCheckout';
 import { PublicOrderDone } from '@/pages/public/PublicOrderDone';
 import { PublicLogin } from '@/pages/public/PublicLogin';
 import { PublicResetPassword } from '@/pages/public/PublicResetPassword';
+import { PublicKebijakanPrivasi, PublicSyaratKetentuan } from '@/pages/public/PublicKebijakan';
 import { PublicAccount } from '@/pages/public/PublicAccount';
 import { useAuth } from '@/stores/auth';
 import { applyTheme, useUI } from '@/stores/ui';
@@ -87,6 +88,8 @@ export default function App() {
         <Route path="/toko/selesai" element={<PublicOrderDone />} />
         <Route path="/toko/masuk" element={<PublicLogin />} />
         <Route path="/toko/lupa-sandi" element={<PublicResetPassword />} />
+        <Route path="/toko/kebijakan-privasi" element={<PublicKebijakanPrivasi />} />
+        <Route path="/toko/syarat-ketentuan" element={<PublicSyaratKetentuan />} />
         <Route path="/toko/akun" element={<PublicAccount />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

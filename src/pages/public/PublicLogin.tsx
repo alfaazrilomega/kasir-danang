@@ -222,7 +222,15 @@ export function PublicLogin() {
         <TombolGoogle googleId={googleId} onKredensial={masukGoogle} />
 
         <p className="mt-[30px] text-center text-xs text-black/60 dark:text-ink-400">
-          Data pribadimu hanya dipakai untuk memproses dan mengirim pesanan.
+          Dengan {tab === 'masuk' ? 'masuk' : 'mendaftar'}, kamu menyetujui{' '}
+          <Link to="/toko/syarat-ketentuan" className="text-brand-600 hover:underline">
+            Syarat &amp; Ketentuan
+          </Link>{' '}
+          serta{' '}
+          <Link to="/toko/kebijakan-privasi" className="text-brand-600 hover:underline">
+            Kebijakan Privasi
+          </Link>{' '}
+          {namaToko}.
         </p>
         <p className="mt-4 text-center text-sm text-black/25 dark:text-ink-500">
           {tab === 'masuk' ? `Baru di ${namaToko}? ` : 'Punya akun? '}

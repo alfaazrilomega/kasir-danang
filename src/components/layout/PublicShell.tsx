@@ -269,6 +269,16 @@ export function PublicShell({
                     {token ? 'Akun Saya' : 'Akun Pembeli'}
                   </Link>
                 </li>
+                <li>
+                  <Link to="/toko/kebijakan-privasi" className={TAUTAN_KECIL}>
+                    Kebijakan Privasi
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/toko/syarat-ketentuan" className={TAUTAN_KECIL}>
+                    Syarat &amp; Ketentuan
+                  </Link>
+                </li>
               </ul>
               {wa && (
                 <a
