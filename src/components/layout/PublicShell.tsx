@@ -107,7 +107,7 @@ export function PublicShell({
         {/* Baris tautan kecil: tingginya menyusut 0,25 dtk saat halaman digulir. */}
         <div
           className={cn(
-            'hidden overflow-hidden bg-[#f5f5f5] transition-[height] duration-[250ms] ease-linear lg:block dark:bg-ink-950',
+            'hidden overflow-hidden bg-white transition-[height] duration-[250ms] ease-linear lg:block dark:bg-ink-900',
             digulir ? 'h-0' : 'h-[25px]',
           )}
         >
