@@ -135,6 +135,13 @@ const record = (nama, ok, ket) => {
 
     await guest.getByRole('button', { name: 'Beli Sekarang' }).click();
     await guest.waitForURL((u) => u.pathname.includes('/toko/checkout'), { timeout: 10000 }).catch(() => {});
+    // Alamat yang sudah tersimpan tampil sebagai kartu ringkas; buka formulirnya dulu.
+    const bukaFormAlamat = async () => {
+      const ubah = guest.getByRole('button', { name: 'Ubah', exact: true });
+      if (await ubah.count()) await ubah.first().click();
+      await guest.waitForTimeout(300);
+    };
+
     record('Beli Sekarang membawa ke checkout mode direct',
       new URL(guest.url()).searchParams.get('mode') === 'direct', guest.url());
 
@@ -155,9 +162,11 @@ const record = (nama, ok, ket) => {
       guest.url().includes('/toko/checkout') && new URL(guest.url()).searchParams.get('mode') === 'direct',
       guest.url());
     await guest.waitForTimeout(1200);
+    await bukaFormAlamat();
     record('Nama & HP terisi otomatis dari akun',
       (await guest.getByLabel('Nama Penerima').inputValue()) === 'Uji Pembeli ' + CAP,
       await guest.getByLabel('Nama Penerima').inputValue());
+    await bukaFormAlamat();
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu BuyNow ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '03');
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 3, ' + CAP);
@@ -173,6 +182,7 @@ const record = (nama, ok, ket) => {
 
     // ---- 3. Checkout, bayar cash ----
     await guest.goto(BASE_URL + '/toko/checkout', { waitUntil: 'networkidle' });
+    await bukaFormAlamat();
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu Cash ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '01');
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 1, ' + CAP);
@@ -187,6 +197,7 @@ const record = (nama, ok, ket) => {
     await waitForApiIdle(guest, { idleMs: 2000, minWaitMs: 1500 });
     await tambahDariKartu(1);
     await guest.goto(BASE_URL + '/toko/checkout', { waitUntil: 'networkidle' });
+    await bukaFormAlamat();
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu QRIS ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '02');
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 2, ' + CAP);

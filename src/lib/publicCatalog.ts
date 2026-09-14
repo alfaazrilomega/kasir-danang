@@ -42,6 +42,10 @@ export interface PublicCatalogStore {
   shop_phone?: string | null;
   pdp_banner_url?: string | null;
   shop_city?: string | null;
+  bank_name?: string | null;
+  bank_account_number?: string | null;
+  bank_account_name?: string | null;
+  qris_image_url?: string | null;
 }
 
 export interface PublicCatalogData {

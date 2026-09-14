@@ -200,9 +200,15 @@ const record = (nama, ok, ket) => {
       'utf8',
     );
 
-    await page.goto(BASE + '/customers', { waitUntil: 'networkidle' });
-    await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
-    await page.getByRole('button', { name: /Impor Massal/i }).click();
+    // Impor pelanggan ada di Dashboard > Impor / Ekspor Data > Pelanggan.
+    const bukaImporPelanggan = async () => {
+      await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+      await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
+      await page.getByRole('button', { name: /Impor \/ Ekspor Data/i }).click();
+      await page.waitForTimeout(800);
+      await modal().getByRole('button', { name: 'Pelanggan', exact: true }).click();
+    };
+    await bukaImporPelanggan();
     await page.waitForTimeout(1200);
     await page.locator('input[type="file"]').first().setInputFiles(berkasPelanggan);
     await page.waitForTimeout(2500);
@@ -231,7 +237,7 @@ const record = (nama, ok, ket) => {
       ].join(NL),
       'utf8',
     );
-    await page.getByRole('button', { name: /Impor Massal/i }).click();
+    await bukaImporPelanggan();
     await page.waitForTimeout(1200);
     await page.locator('input[type="file"]').first().setInputFiles(berkasPelanggan);
     await page.waitForTimeout(2500);

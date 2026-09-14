@@ -33,6 +33,11 @@ export interface Store {
   shop_phone?: string | null;
   return_policy?: string | null;
   warranty_info?: string | null;
+  /** Tujuan pembayaran manual toko online (Tripay belum terintegrasi). */
+  bank_name?: string | null;
+  bank_account_number?: string | null;
+  bank_account_name?: string | null;
+  qris_image_url?: string | null;
   /** Banner promo di halaman produk toko online. */
   pdp_banner_url?: string | null;
   /** Kota toko, tampil di kartu produk toko online. */
@@ -191,6 +196,10 @@ export interface Order {
   customer_name: string | null;
   /** Diisi hanya untuk pesanan tamu dari storefront publik (checkout tanpa login). */
   customer_phone?: string | null;
+  /** Kanal & jejak transaksi payment gateway (Tripay); kosong untuk bayar manual. */
+  payment_channel?: string | null;
+  payment_reference?: string | null;
+  payment_url?: string | null;
   /** Alamat kirim, teks polos — belum ada perhitungan ongkir (KiriminAja belum terintegrasi). */
   delivery_address?: string | null;
   /**

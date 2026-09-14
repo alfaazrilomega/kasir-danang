@@ -24,6 +24,7 @@ const REQUIRED_COLUMNS = {
     'id', 'name', 'address', 'currency', 'tax_rate', 'logo_url', 'receipt_header',
     'receipt_footer', 'points_per_amount', 'low_stock_threshold', 'industry',
     'features', 'created_at', 'invoice_signature_url', 'invoice_signer_name', 'shop_phone', 'return_policy', 'warranty_info', 'pdp_banner_url', 'shop_city',
+    'bank_name', 'bank_account_number', 'bank_account_name', 'qris_image_url',
   ],
   profiles: ['id', 'store_id', 'full_name', 'email', 'role', 'avatar_url', 'created_at'],
   categories: ['id', 'store_id', 'name', 'icon', 'sort_order', 'created_at'],
@@ -61,6 +62,7 @@ const REQUIRED_COLUMNS = {
     'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
     'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
     'delivery_address', 'shipping_cost', 'tax_inclusive',
+    'payment_channel', 'payment_reference', 'payment_url',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',

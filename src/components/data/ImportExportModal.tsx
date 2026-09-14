@@ -32,6 +32,7 @@ import {
   type ImportMode,
   type ImportPlan,
 } from '@/lib/dataTransfer';
+import { ImporPelanggan } from '@/components/data/CustomerImportModal';
 
 type Tab = 'pilih' | 'impor' | 'ekspor';
 
@@ -45,6 +46,8 @@ interface Props {
 
 export function ImportExportModal({ open, storeId, onClose, onImported }: Props) {
   const [tab, setTab] = useState<Tab>('pilih');
+  // Produk (katalog) atau pelanggan (butir 5.1 sheet client), dalam satu pintu di dashboard.
+  const [jenis, setJenis] = useState<'produk' | 'pelanggan'>('produk');
   // Default GABUNG, bukan ganti total: mengunggah beberapa SKU baru saja
   // dengan mode ganti total akan mengarsipkan semua produk lain.
   const [mode, setMode] = useState<ImportMode>('merge');
@@ -55,6 +58,7 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
 
   function reset() {
     setTab('pilih');
+    setJenis('produk');
     setPlan(null);
     setFileName('');
     setBusy(false);
@@ -149,7 +153,33 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
   const blocking = plan?.issues.length ? plan.issues : [];
 
   return (
-    <Modal open={open} onClose={close} title="Impor / Ekspor Data Produk" size="lg">
+    <Modal open={open} onClose={close} title="Impor / Ekspor Data" size="lg">
+      {(tab === 'pilih' || jenis === 'pelanggan') && (
+        <div className="mb-4 flex gap-1 rounded-full bg-ink-100 p-1 text-xs font-semibold dark:bg-ink-800">
+          {([
+            ['produk', 'Produk'],
+            ['pelanggan', 'Pelanggan'],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={jenis === value}
+              onClick={() => setJenis(value)}
+              className={cn(
+                'flex-1 rounded-full px-3 py-1.5 transition',
+                jenis === value ? 'bg-brand-600 text-white' : 'text-ink-600 dark:text-ink-300',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {jenis === 'pelanggan' ? (
+        <ImporPelanggan storeId={storeId} onSelesai={close} onBatal={close} />
+      ) : (
+      <>
       {tab === 'pilih' && (
         <div className="space-y-3">
           <p className="text-sm text-ink-500 dark:text-ink-400">
@@ -354,6 +384,8 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
             </Button>
           </div>
         </div>
+      )}
+      </>
       )}
     </Modal>
   );

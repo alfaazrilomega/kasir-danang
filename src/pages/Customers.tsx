@@ -11,7 +11,6 @@ import {
   Search,
   Sparkles,
   Trash2,
-  Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
@@ -20,7 +19,6 @@ import { Button } from '@/components/ui/Button';
 import { Input, TextArea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { CustomerImportModal } from '@/components/data/CustomerImportModal';
 import { exportCustomersCsv } from '@/lib/customerImport';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
@@ -60,7 +58,6 @@ export function Customers() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [detail, setDetail] = useState<Customer | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
   const canDeleteCustomers = hasCapability(profile?.role, 'manageStoreSettings');
 
   useEffect(() => {
@@ -240,22 +237,11 @@ export function Customers() {
           >
             <Download size={16} /> Export CSV
           </Button>
-          <Button onClick={() => setImportOpen(true)} variant="onBrandSoft">
-            <Upload size={16} /> Impor Massal
-          </Button>
           <Button onClick={startNew} variant="onBrand">
             <Plus size={16} /> Add Customer
           </Button>
         </div>
       </div>
-
-      <CustomerImportModal
-        open={importOpen}
-        storeId={storeId}
-        existing={customers}
-        onClose={() => setImportOpen(false)}
-        onDone={() => {}}
-      />
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-3">

@@ -17,14 +17,30 @@ export interface PublicOrderInput {
   customer_name: string;
   customer_phone: string;
   delivery_address: string;
-  payment_method: Extract<PaymentMethod, 'cash' | 'qris'>;
+  /** Transfer & QRIS masih manual (dicek staff); kanal otomatis menunggu Tripay. */
+  payment_method: Extract<PaymentMethod, 'cash' | 'qris' | 'transfer'>;
+  /** Kode kanal Tripay (mis. BRIVA, QRIS). Bila diisi, metode manual di atas diabaikan server. */
+  payment_channel?: string;
   notes?: string;
   items: PublicOrderItemInput[];
+}
+
+export interface PublicOrderPayment {
+  channel: string;
+  channel_name?: string;
+  reference?: string | null;
+  checkout_url?: string | null;
+  pay_code?: string | null;
+  qr_url?: string | null;
+  expired_time?: number | null;
+  error?: string;
 }
 
 export interface PublicOrderResult {
   order_id: string;
   order_number: string;
+  /** Terisi bila pesanan dibayar lewat kanal otomatis Tripay. */
+  payment?: PublicOrderPayment | null;
 }
 
 export async function submitPublicOrder(

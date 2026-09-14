@@ -83,6 +83,10 @@ interface FormState {
   returnPolicy: string;
   warrantyInfo: string;
   pdpBanner: string | null;
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountName: string;
+  qrisImage: string | null;
 }
 
 function snapshot(store: Store | null): FormState {
@@ -105,6 +109,10 @@ function snapshot(store: Store | null): FormState {
     returnPolicy: store?.return_policy ?? '',
     warrantyInfo: store?.warranty_info ?? '',
     pdpBanner: store?.pdp_banner_url ?? null,
+    bankName: store?.bank_name ?? '',
+    bankAccountNumber: store?.bank_account_number ?? '',
+    bankAccountName: store?.bank_account_name ?? '',
+    qrisImage: store?.qris_image_url ?? null,
   };
 }
 
@@ -239,6 +247,10 @@ export function Settings() {
       return_policy: form.returnPolicy.trim() || null,
       warranty_info: form.warrantyInfo.trim() || null,
       pdp_banner_url: form.pdpBanner,
+      bank_name: form.bankName.trim() || null,
+      bank_account_number: form.bankAccountNumber.trim() || null,
+      bank_account_name: form.bankAccountName.trim() || null,
+      qris_image_url: form.qrisImage,
     };
     setBusy(true);
     const api = getBackendClient();
@@ -699,6 +711,73 @@ export function Settings() {
                 value={form.warrantyInfo}
                 onChange={(e) => patch('warrantyInfo', e.target.value)}
               />
+              <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 text-sm font-semibold dark:border-ink-800">
+                Tujuan pembayaran checkout
+                <p className="mt-0.5 text-xs font-normal text-ink-500">
+                  Tampil di halaman checkout saat pembeli memilih Transfer Bank atau QRIS. Kosongkan bila pembayaran
+                  selalu dikabari admin lewat WhatsApp.
+                </p>
+              </div>
+              <Input
+                name="bank_name"
+                label="Nama bank"
+                placeholder="cth. BCA"
+                value={form.bankName}
+                onChange={(e) => patch('bankName', e.target.value)}
+              />
+              <Input
+                name="bank_account_number"
+                label="Nomor rekening"
+                placeholder="cth. 7712345678"
+                value={form.bankAccountNumber}
+                onChange={(e) => patch('bankAccountNumber', e.target.value)}
+              />
+              <Input
+                name="bank_account_name"
+                label="Rekening atas nama"
+                placeholder="cth. GNNK Racing"
+                value={form.bankAccountName}
+                onChange={(e) => patch('bankAccountName', e.target.value)}
+              />
+              <div>
+                <div className="mb-1.5 text-sm font-medium">Gambar QRIS toko</div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {form.qrisImage ? (
+                    <img src={form.qrisImage} alt="QRIS" className="max-h-20 rounded-lg ring-1 ring-ink-100 dark:ring-ink-800" />
+                  ) : (
+                    <span className="text-xs text-ink-400">Belum ada QRIS.</span>
+                  )}
+                  <label className="cursor-pointer rounded-lg border border-ink-200 px-3 py-1.5 text-xs font-medium hover:bg-ink-50 dark:border-ink-700 dark:hover:bg-ink-800">
+                    <Upload size={12} className="mr-1 inline" /> {form.qrisImage ? 'Ganti' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        try {
+                          const hasil = await resizeImageToDataUrl(file, { maxDim: 900, quality: 0.9 });
+                          patch('qrisImage', hasil.dataUrl);
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Gagal memproses gambar.');
+                        }
+                      }}
+                    />
+                  </label>
+                  {form.qrisImage && (
+                    <button
+                      type="button"
+                      onClick={() => patch('qrisImage', null)}
+                      className="rounded-lg border border-ink-200 px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:border-ink-700"
+                      aria-label="Hapus QRIS"
+                    >
+                      <X size={12} className="inline" />
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="md:col-span-2">
                 <div className="mb-1.5 text-sm font-medium">Banner promo halaman produk</div>
                 <p className="mb-2 text-xs text-ink-500">
@@ -1226,7 +1305,11 @@ function shallowEqualForm(a: FormState, b: FormState): boolean {
     a.shopPhone === b.shopPhone &&
     a.returnPolicy === b.returnPolicy &&
     a.warrantyInfo === b.warrantyInfo &&
-    a.pdpBanner === b.pdpBanner
+    a.pdpBanner === b.pdpBanner &&
+    a.bankName === b.bankName &&
+    a.bankAccountNumber === b.bankAccountNumber &&
+    a.bankAccountName === b.bankAccountName &&
+    a.qrisImage === b.qrisImage
   );
 }
 
