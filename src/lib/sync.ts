@@ -34,6 +34,20 @@ import type {
 let syncing = false;
 let onlineListenerBound = false;
 
+/**
+ * Hanya pelanggan. Dipakai impor pelanggan massal: menarik seluruh data
+ * referensi (ratusan produk) cuma untuk mencocokkan nomor HP terlalu lambat.
+ */
+export async function pullCustomers(storeId: string) {
+  const api = getBackendClient();
+  if (!navigator.onLine) return;
+  const res = await api.from('customers').select('*').eq('store_id', storeId);
+  if (res.data) {
+    await db.customers.where('store_id').equals(storeId).delete();
+    if (res.data.length) await db.customers.bulkPut(res.data);
+  }
+}
+
 export async function pullReference(storeId: string) {
   const api = getBackendClient();
   if (!navigator.onLine) return;

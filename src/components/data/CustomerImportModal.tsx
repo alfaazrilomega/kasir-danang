@@ -16,7 +16,7 @@ import { AlertTriangle, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { db } from '@/lib/db';
-import { pullReference } from '@/lib/sync';
+import { pullCustomers } from '@/lib/sync';
 import { downloadFile } from '@/lib/dataTransfer';
 import { formatNumber, errorMessage } from '@/lib/format';
 import {
@@ -33,7 +33,7 @@ export function ImporPelanggan({ storeId, onSelesai, onBatal }: { storeId: strin
   // Dashboard belum tentu pernah menarik daftar pelanggan; tanpa ini pencocokan
   // nomor HP menganggap semua baris pelanggan baru dan membuat duplikat.
   useEffect(() => {
-    if (storeId) void pullReference(storeId).catch(() => {});
+    if (storeId) void pullCustomers(storeId).catch(() => {});
   }, [storeId]);
 
   const [plan, setPlan] = useState<CustomerImportPlan | null>(null);
@@ -47,7 +47,7 @@ export function ImporPelanggan({ storeId, onSelesai, onBatal }: { storeId: strin
     try {
       // Daftar pelanggan ditarik ulang tepat sebelum dicocokkan: dashboard bisa
       // saja belum pernah memuatnya, dan data bisa berubah sejak modal dibuka.
-      await pullReference(storeId).catch(() => {});
+      await pullCustomers(storeId).catch(() => {});
       const daftar = await db.customers.where('store_id').equals(storeId).toArray();
       setTerbaru(daftar);
       const hasil = await planCustomerImportFromFile(file, daftar);

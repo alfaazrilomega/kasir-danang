@@ -211,7 +211,9 @@ const record = (nama, ok, ket) => {
     await bukaImporPelanggan();
     await page.waitForTimeout(1200);
     await page.locator('input[type="file"]').first().setInputFiles(berkasPelanggan);
-    await page.waitForTimeout(2500);
+    // Tunggu rencana impor tampil, bukan menebak lamanya menarik data.
+    await modal().getByText(/Baris terbaca/i).waitFor({ timeout: 40000 }).catch(() => {});
+    await page.waitForTimeout(500);
 
     const teksImporPelanggan = await modal().innerText();
     record('Berkas pelanggan terbaca', /Pelanggan baru/i.test(teksImporPelanggan));
@@ -240,7 +242,9 @@ const record = (nama, ok, ket) => {
     await bukaImporPelanggan();
     await page.waitForTimeout(1200);
     await page.locator('input[type="file"]').first().setInputFiles(berkasPelanggan);
-    await page.waitForTimeout(2500);
+    // Tunggu rencana impor tampil, bukan menebak lamanya menarik data.
+    await modal().getByText(/Baris terbaca/i).waitFor({ timeout: 40000 }).catch(() => {});
+    await page.waitForTimeout(500);
     const teksUpdate = (await modal().innerText()).replace(/\s+/g, ' ');
     record('Nomor HP yang sama dikenali sebagai pembaruan, bukan duplikat',
       /Diperbarui\s*1/.test(teksUpdate), teksUpdate.slice(0, 120));
