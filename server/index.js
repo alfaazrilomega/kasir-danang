@@ -1361,11 +1361,7 @@ async function kirimEmail({ to, subject, text, html }) {
     }
   }
   const transport = ambilPengirimEmail();
-  if (!transport) {
-    // Sementara: sebutkan sebab teknisnya supaya kegagalan di produksi bisa ditelusuri.
-    const sebab = galatEmailTerakhir ? ` [diagnosa: ${galatEmailTerakhir.pesan}]` : ' [diagnosa: layanan email tidak dicoba]';
-    throw new HttpError(503, `Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.${sebab}`);
-  }
+  if (!transport) throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
   const info = await transport.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@tokoku.local',
     to,
@@ -1414,7 +1410,10 @@ app.post('/api/customer/password/forgot', asyncHandler(async (req, res) => {
   const identifier = String(req.body?.identifier ?? '').trim();
   if (!identifier) throw new HttpError(400, 'Isi nomor HP atau email akunmu.');
   await assertStoreExists(storeId);
-  if (!ambilPengirimEmail()) throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
+  // Email bisa lewat Mailketing atau SMTP; salah satu saja sudah cukup.
+  if (!mailketingAktif() && !ambilPengirimEmail()) {
+    throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
+  }
 
   // Jawabannya sama untuk akun yang ada maupun tidak, supaya daftar akun tidak bisa ditebak.
   const akun = await cariAkunPembeli(storeId, identifier);
