@@ -165,6 +165,13 @@ export function PublicProductDetail() {
 
   useEffect(() => setHalaman(1), [bintang, urutan, chip]);
 
+  // Halaman ini juga punya bilah aksi menempel di bawah layar HP, jadi kaki
+  // halaman perlu ruang yang sama seperti di checkout.
+  useEffect(() => {
+    document.body.classList.add('ada-bilah-bawah');
+    return () => document.body.classList.remove('ada-bilah-bawah');
+  }, []);
+
   // Seperti Lazada: tab menempel di bawah header dan menandai bagian yang sedang
   // dibaca; panel beli ringkas di kanan muncul setelah tombol beli utama lewat.
   useEffect(() => {
@@ -430,7 +437,7 @@ export function PublicProductDetail() {
         <span className="min-w-0 flex-1">
           {me?.address || (token ? 'Alamat belum diisi di akun.' : 'Masuk untuk memakai alamat pengirimanmu.')}
         </span>
-        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 -my-2 py-2 text-xs font-semibold text-brand-600">
+        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 -my-[11px] py-[11px] text-xs font-semibold text-brand-600">
           UBAH
         </Link>
       </div>
@@ -915,11 +922,11 @@ export function PublicProductDetail() {
                   type="button"
                   onClick={() => toast.success(toggleFavorit(product.id) ? 'Masuk ke Favorit.' : 'Dihapus dari Favorit.')}
                   aria-label="Favorit"
-                  className={cn('-m-2 p-2', favorit && 'text-rose-500')}
+                  className={cn('-m-[10px] p-[10px]', favorit && 'text-rose-500')}
                 >
                   <Heart size={20} className={favorit ? 'fill-rose-500' : ''} />
                 </button>
-                <button type="button" onClick={bagikan} aria-label="Bagikan" className="-m-2 p-2">
+                <button type="button" onClick={bagikan} aria-label="Bagikan" className="-m-[10px] p-[10px]">
                   <Share2 size={20} />
                 </button>
               </div>

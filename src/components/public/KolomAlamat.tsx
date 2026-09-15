@@ -14,9 +14,10 @@ import { PROVINSI, kotaDari } from '@/lib/wilayah';
 /**
  * Tinggi select ditentukan di sini, bukan diwarisi dari kelas kolom pemanggil:
  * halaman akun memberi kelas tanpa tinggi sehingga select-nya pernah gepeng
- * 20px. 2.75rem = 44px, ambang sasaran sentuh di HP.
+ * 20px. Nilainya px, bukan rem: huruf dasar aplikasi 14px, jadi h-11 hanya
+ * jadi 38,5px — di bawah ambang sasaran sentuh 44px.
  */
-const TINGGI_PILIH = 'h-11';
+const TINGGI_PILIH = 'h-[44px]';
 
 export interface NilaiAlamat {
   provinsi: string;

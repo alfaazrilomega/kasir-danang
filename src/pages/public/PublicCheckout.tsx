@@ -20,7 +20,7 @@ type PayOption = 'cash' | 'transfer' | 'qris';
 type Galat = Partial<Record<'name' | 'phone' | 'address' | 'provinsi' | 'kota', string>>;
 
 const KOLOM =
-  'h-11 w-full rounded-lg border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100';
+  'h-[44px] w-full rounded-lg border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100';
 const KOLOM_GALAT = 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/15';
 
 /**

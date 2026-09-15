@@ -44,6 +44,8 @@ const HURUF_BALAP = "font-['Barlow_Condensed',ui-sans-serif,sans-serif] italic";
 const PANEL = 'rounded-lg bg-white shadow-card dark:bg-ink-900';
 const KOLOM =
   'w-full rounded-md border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition-colors duration-150 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100';
+/** Tinggi kolom isian, px: huruf dasar 14px membuat h-11 cuma 38,5px. */
+const TINGGI_KOLOM = 'h-[44px]';
 const TOMBOL_UTAMA =
   'inline-flex h-10 items-center justify-center rounded-md bg-brand-500 px-5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50';
 const TOMBOL_GARIS =
@@ -468,7 +470,7 @@ export function PublicAccount() {
                     <h2 className="text-sm font-semibold">Data Diri</h2>
                     <div className="mt-3 grid gap-4 sm:grid-cols-2">
                       <Kolom label="Nama">
-                        <input name="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={cn(KOLOM, 'h-10')} />
+                        <input name="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={cn(KOLOM, TINGGI_KOLOM)} />
                       </Kolom>
                       <Kolom label="Nomor HP / WhatsApp">
                         <input
@@ -476,11 +478,11 @@ export function PublicAccount() {
                           inputMode="tel"
                           value={form.phone}
                           onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                          className={cn(KOLOM, 'h-10')}
+                          className={cn(KOLOM, TINGGI_KOLOM)}
                         />
                       </Kolom>
                       <Kolom label="Email" bantuan="Email dipakai untuk masuk dan tidak dapat diubah." className="sm:col-span-2">
-                        <input value={me.email} readOnly className={cn(KOLOM, 'h-10 bg-ink-50 text-ink-500 dark:bg-ink-800')} />
+                        <input value={me.email} readOnly className={cn(KOLOM, TINGGI_KOLOM, 'bg-ink-50 text-ink-500 dark:bg-ink-800')} />
                       </Kolom>
                     </div>
                   </section>

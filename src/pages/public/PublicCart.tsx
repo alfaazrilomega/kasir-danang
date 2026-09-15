@@ -12,8 +12,9 @@ import { usePublicCart } from '@/stores/publicCart';
 import { useWishlist } from '@/stores/wishlist';
 
 // Sasaran sentuh di HP: 16px terlalu kecil untuk jari, jadi ukurannya ikut
-// lebar layar dan berhenti di 20px.
-const KOTAK = 'h-[clamp(1.125rem,5vw,1.25rem)] w-[clamp(1.125rem,5vw,1.25rem)] shrink-0 cursor-pointer accent-brand-600';
+// lebar layar dan berhenti di 20px. Batasnya px karena huruf dasar aplikasi
+// 14px — clamp berbasis rem akan menyusut jadi 15,75-17,5px.
+const KOTAK = 'h-[clamp(18px,5vw,20px)] w-[clamp(18px,5vw,20px)] shrink-0 cursor-pointer accent-brand-600';
 
 /**
  * Keranjang dengan susunan keranjang Lazada: baris "Pilih semua" + Hapus,
@@ -164,7 +165,7 @@ export function PublicCart() {
                           type="button"
                           aria-label={fav ? 'Hapus dari favorit' : 'Tambah ke favorit'}
                           onClick={() => toast.success(toggleFavorit(line.product_id) ? 'Masuk ke Favorit.' : 'Dihapus dari Favorit.')}
-                          className={cn('-m-2 p-2 transition-colors duration-300', fav ? 'text-rose-500' : 'hover:text-rose-500')}
+                          className={cn('-m-[10px] p-[10px] transition-colors duration-300', fav ? 'text-rose-500' : 'hover:text-rose-500')}
                         >
                           <Heart size={17} className={fav ? 'fill-rose-500' : ''} />
                         </button>
@@ -172,7 +173,7 @@ export function PublicCart() {
                           type="button"
                           aria-label="Hapus"
                           onClick={() => remove(line.product_id)}
-                          className="-m-2 p-2 transition-colors duration-300 hover:text-brand-600"
+                          className="-m-[10px] p-[10px] transition-colors duration-300 hover:text-brand-600"
                         >
                           <Trash2 size={17} />
                         </button>

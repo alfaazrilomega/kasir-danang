@@ -46,7 +46,7 @@ import type {
   PaymentMethod,
 } from '@/types';
 import { useNavigate } from '@/lib/router';
-import { countsAsSale } from '@/lib/orderStatus';
+import { countsAsSale, isAwaitingConfirmation } from '@/lib/orderStatus';
 import { buildReceiptText, printInvoice, printReceipt, whatsappLink } from '@/lib/receipt';
 import { skuMapFor } from '@/lib/printSupport';
 
@@ -303,12 +303,18 @@ export function Orders() {
   const summary = useMemo(() => {
     let sales = 0;
     let canceled = 0;
+    // Pesanan web yang belum dikonfirmasi memang tidak dihitung sebagai
+    // penjualan, tapi menyebutnya "dibatalkan" keliru: staf justru membuka tab
+    // ini untuk memprosesnya. Jadi dihitung sendiri.
+    let menunggu = 0;
     for (const o of filtered) {
       if (countsAsSale(o)) sales += o.total;
+      else if (isAwaitingConfirmation(o)) menunggu++;
       else canceled++;
     }
-    const avg = filtered.length > 0 ? sales / Math.max(1, filtered.length - canceled) : 0;
-    return { sales, count: filtered.length, avg, canceled };
+    const terhitung = filtered.length - canceled - menunggu;
+    const avg = terhitung > 0 ? sales / terhitung : 0;
+    return { sales, count: filtered.length, avg, canceled, menunggu };
   }, [filtered]);
 
   // Payment breakdown for the filtered range.
@@ -547,6 +553,9 @@ export function Orders() {
             {summary.count} order · {formatMoney(summary.sales, store?.currency)}
             {summary.count > 0 && (
               <span className="opacity-70"> · rata-rata {formatMoney(summary.avg, store?.currency)}</span>
+            )}
+            {summary.menunggu > 0 && (
+              <span className="opacity-70"> · {summary.menunggu} menunggu konfirmasi</span>
             )}
             {summary.canceled > 0 && (
               <span className="opacity-70"> · {summary.canceled} dibatalkan</span>

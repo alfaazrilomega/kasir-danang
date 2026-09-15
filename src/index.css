@@ -100,11 +100,13 @@
 @keyframes dialog-muncul { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
 
 
-/* Halaman dengan bilah aksi menempel di bawah (checkout di HP) menandai dirinya
-   lewat kelas di <body>, supaya kaki halaman tidak tertutup bilah itu. */
+/* Halaman dengan bilah aksi menempel di bawah (checkout & detail produk di HP)
+   menandai dirinya lewat kelas di <body>, supaya kaki halaman tidak tertutup.
+   Ruangnya harus melewati bilah DAN tombol "Pesan" yang melayang di atasnya,
+   karena keduanya sama-sama menempel di tepi bawah layar. */
 @media (max-width: 1023px) {
   body.ada-bilah-bawah .kaki-toko {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 122px);
   }
 }
 
