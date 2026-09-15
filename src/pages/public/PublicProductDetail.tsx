@@ -430,7 +430,7 @@ export function PublicProductDetail() {
         <span className="min-w-0 flex-1">
           {me?.address || (token ? 'Alamat belum diisi di akun.' : 'Masuk untuk memakai alamat pengirimanmu.')}
         </span>
-        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 text-xs font-semibold text-brand-600">
+        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 -my-2 py-2 text-xs font-semibold text-brand-600">
           UBAH
         </Link>
       </div>
@@ -915,11 +915,11 @@ export function PublicProductDetail() {
                   type="button"
                   onClick={() => toast.success(toggleFavorit(product.id) ? 'Masuk ke Favorit.' : 'Dihapus dari Favorit.')}
                   aria-label="Favorit"
-                  className={favorit ? 'text-rose-500' : ''}
+                  className={cn('-m-2 p-2', favorit && 'text-rose-500')}
                 >
                   <Heart size={20} className={favorit ? 'fill-rose-500' : ''} />
                 </button>
-                <button type="button" onClick={bagikan} aria-label="Bagikan">
+                <button type="button" onClick={bagikan} aria-label="Bagikan" className="-m-2 p-2">
                   <Share2 size={20} />
                 </button>
               </div>

@@ -11,6 +11,13 @@ import { useId } from 'react';
 import { cn } from '@/lib/format';
 import { PROVINSI, kotaDari } from '@/lib/wilayah';
 
+/**
+ * Tinggi select ditentukan di sini, bukan diwarisi dari kelas kolom pemanggil:
+ * halaman akun memberi kelas tanpa tinggi sehingga select-nya pernah gepeng
+ * 20px. 2.75rem = 44px, ambang sasaran sentuh di HP.
+ */
+const TINGGI_PILIH = 'h-11';
+
 export interface NilaiAlamat {
   provinsi: string;
   kota: string;
@@ -51,7 +58,7 @@ export function KolomAlamat({
             aria-label="Provinsi"
             value={nilai.provinsi}
             onChange={(e) => onChange({ ...nilai, provinsi: e.target.value, kota: '' })}
-            className={cn(kelasKolom, galat?.provinsi && kelasGalat)}
+            className={cn(kelasKolom, TINGGI_PILIH, galat?.provinsi && kelasGalat)}
           >
             <option value="">Pilih provinsi…</option>
             {PROVINSI.map((p) => (
@@ -60,7 +67,7 @@ export function KolomAlamat({
               </option>
             ))}
           </select>
-          {galat?.provinsi && <p className="mt-1 text-xs text-rose-600">{galat.provinsi}</p>}
+          {galat?.provinsi && <p data-galat className="mt-1 text-xs text-rose-600">{galat.provinsi}</p>}
         </div>
 
         <div>
@@ -74,7 +81,7 @@ export function KolomAlamat({
             value={nilai.kota}
             disabled={!nilai.provinsi}
             onChange={(e) => onChange({ ...nilai, kota: e.target.value })}
-            className={cn(kelasKolom, 'disabled:cursor-not-allowed disabled:opacity-60', galat?.kota && kelasGalat)}
+            className={cn(kelasKolom, TINGGI_PILIH, 'disabled:cursor-not-allowed disabled:opacity-60', galat?.kota && kelasGalat)}
           >
             <option value="">{nilai.provinsi ? 'Pilih kota/kabupaten…' : 'Pilih provinsi dulu'}</option>
             {daftarKota.map((k) => (
@@ -83,7 +90,7 @@ export function KolomAlamat({
               </option>
             ))}
           </select>
-          {galat?.kota && <p className="mt-1 text-xs text-rose-600">{galat.kota}</p>}
+          {galat?.kota && <p data-galat className="mt-1 text-xs text-rose-600">{galat.kota}</p>}
         </div>
       </div>
 
@@ -102,7 +109,7 @@ export function KolomAlamat({
           className={cn(kelasKolom, 'h-auto resize-none py-2.5', galat?.alamat && kelasGalat)}
         />
         {galat?.alamat ? (
-          <p className="mt-1 text-xs text-rose-600">{galat.alamat}</p>
+          <p data-galat className="mt-1 text-xs text-rose-600">{galat.alamat}</p>
         ) : (
           bantuan && <p className="mt-1 text-xs text-ink-500">{bantuan}</p>
         )}

@@ -90,6 +90,13 @@ export function PublicCheckout() {
     void fetchKanalBayar().then((r) => setKanal({ active: r.active, channels: r.channels }));
   }, []);
 
+  // Bilah total menempel di bawah layar HP; kaki halaman di kerangka toko perlu
+  // ruang tambahan supaya tidak tertimbun (lihat .ada-bilah-bawah di index.css).
+  useEffect(() => {
+    document.body.classList.add('ada-bilah-bawah');
+    return () => document.body.classList.remove('ada-bilah-bawah');
+  }, []);
+
   const grupKanal = useMemo(() => {
     const peta = new Map<string, KanalBayar[]>();
     for (const k of kanal.channels) {
@@ -154,7 +161,14 @@ export function PublicCheckout() {
     if (!wilayah.kota) g.kota = 'Pilih kota/kabupaten.';
     if (!wilayah.alamat.trim()) g.address = 'Alamat pengiriman wajib diisi.';
     setGalat(g);
-    if (Object.keys(g).length) setUbahAlamat(true);
+    if (Object.keys(g).length) {
+      setUbahAlamat(true);
+      // Di HP pesan galat sering jatuh persis di balik bilah total yang menempel,
+      // jadi galat pertama dibawa ke tengah layar setelah dirender.
+      requestAnimationFrame(() => {
+        document.querySelector('[data-galat]')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
     return Object.keys(g).length === 0;
   }
 
@@ -542,7 +556,7 @@ function Kolom({
       </label>
       {children}
       {galat ? (
-        <p className="mt-1 text-xs text-rose-600">{galat}</p>
+        <p data-galat className="mt-1 text-xs text-rose-600">{galat}</p>
       ) : (
         bantuan && <p className="mt-1 text-xs text-ink-500">{bantuan}</p>
       )}

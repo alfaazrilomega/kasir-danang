@@ -98,3 +98,23 @@
 /* Pop-up masuk: latar memudar masuk, kartu naik sedikit. */
 @keyframes latar-muncul { from { opacity: 0; } }
 @keyframes dialog-muncul { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+
+/* Halaman dengan bilah aksi menempel di bawah (checkout di HP) menandai dirinya
+   lewat kelas di <body>, supaya kaki halaman tidak tertutup bilah itu. */
+@media (max-width: 1023px) {
+  body.ada-bilah-bawah .kaki-toko {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4.5rem);
+  }
+}
+
+/* Safari iOS memperbesar halaman saat kolom berhuruf < 16px difokuskan, dan
+   ukuran dasar aplikasi 14px. Pemilih memakai [class] supaya menang atas
+   utilitas text-sm bawaan Tailwind, bukan lewat !important. */
+@media (max-width: 767px) {
+  input[class]:not([type='checkbox']):not([type='radio']),
+  select[class],
+  textarea[class] {
+    font-size: max(16px, 1em);
+  }
+}

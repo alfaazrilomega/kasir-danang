@@ -1878,7 +1878,12 @@ function Row({
 }
 
 function isoDate(d: Date) {
-  return d.toISOString().slice(0, 10);
+  // Tanggal kalender LOKAL, bukan UTC. toISOString() di WIB (UTC+7) masih
+  // menunjuk hari kemarin sampai pukul 07.00, sehingga rentang bawaan yang
+  // berakhir "hari ini" ikut membuang transaksi yang dibuat dini hari —
+  // pesanan website tengah malam sempat hilang dari antrian staf karenanya.
+  const lokal = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return lokal.toISOString().slice(0, 10);
 }
 
 function presetRange(p: Preset): { from: string; to: string } | null {

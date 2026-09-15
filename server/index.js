@@ -1983,7 +1983,16 @@ app.get('/api/public/payment-channels', asyncHandler(async (_req, res) => {
     res.json({ data: { active: false, mode: null, channels: [] } });
     return;
   }
-  const kanal = await tripay.daftarKanal();
+  let kanal;
+  try {
+    kanal = await tripay.daftarKanal();
+  } catch (err) {
+    // Gangguan atau kunci ditolak di sisi Tripay tidak boleh membuat halaman
+    // checkout gagal dimuat: pembeli tetap bisa memakai metode bayar manual.
+    console.error('[tripay] daftar kanal gagal:', err?.message || err);
+    res.json({ data: { active: false, mode: tripay.konfigurasi().mode, channels: [] } });
+    return;
+  }
   res.json({
     data: {
       active: true,

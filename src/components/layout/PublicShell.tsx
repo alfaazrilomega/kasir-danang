@@ -267,7 +267,7 @@ export function PublicShell({
       </main>
       <ModalMasuk />
 
-      <footer className="text-[12px]">
+      <footer className="kaki-toko text-[12px]">
         <div className="border-t border-ink-100 bg-[#f5f5f5] py-6 dark:border-ink-800 dark:bg-ink-900">
           <div className={cn(LEBAR, 'grid gap-8 sm:grid-cols-2 lg:grid-cols-[297px_297px_1fr]')}>
             <div>

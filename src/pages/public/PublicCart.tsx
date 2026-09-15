@@ -11,7 +11,9 @@ import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { usePublicCart } from '@/stores/publicCart';
 import { useWishlist } from '@/stores/wishlist';
 
-const KOTAK = 'h-4 w-4 shrink-0 cursor-pointer accent-brand-600';
+// Sasaran sentuh di HP: 16px terlalu kecil untuk jari, jadi ukurannya ikut
+// lebar layar dan berhenti di 20px.
+const KOTAK = 'h-[clamp(1.125rem,5vw,1.25rem)] w-[clamp(1.125rem,5vw,1.25rem)] shrink-0 cursor-pointer accent-brand-600';
 
 /**
  * Keranjang dengan susunan keranjang Lazada: baris "Pilih semua" + Hapus,
@@ -162,7 +164,7 @@ export function PublicCart() {
                           type="button"
                           aria-label={fav ? 'Hapus dari favorit' : 'Tambah ke favorit'}
                           onClick={() => toast.success(toggleFavorit(line.product_id) ? 'Masuk ke Favorit.' : 'Dihapus dari Favorit.')}
-                          className={cn('transition-colors duration-300', fav ? 'text-rose-500' : 'hover:text-rose-500')}
+                          className={cn('-m-2 p-2 transition-colors duration-300', fav ? 'text-rose-500' : 'hover:text-rose-500')}
                         >
                           <Heart size={17} className={fav ? 'fill-rose-500' : ''} />
                         </button>
@@ -170,7 +172,7 @@ export function PublicCart() {
                           type="button"
                           aria-label="Hapus"
                           onClick={() => remove(line.product_id)}
-                          className="transition-colors duration-300 hover:text-brand-600"
+                          className="-m-2 p-2 transition-colors duration-300 hover:text-brand-600"
                         >
                           <Trash2 size={17} />
                         </button>
