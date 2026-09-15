@@ -33,6 +33,7 @@ import {
   type ImportPlan,
 } from '@/lib/dataTransfer';
 import { ImporPelanggan } from '@/components/data/CustomerImportModal';
+import { ImporPengeluaran } from '@/components/data/ExpenseImportPanel';
 
 type Tab = 'pilih' | 'impor' | 'ekspor';
 
@@ -47,7 +48,7 @@ interface Props {
 export function ImportExportModal({ open, storeId, onClose, onImported }: Props) {
   const [tab, setTab] = useState<Tab>('pilih');
   // Produk (katalog) atau pelanggan (butir 5.1 sheet client), dalam satu pintu di dashboard.
-  const [jenis, setJenis] = useState<'produk' | 'pelanggan'>('produk');
+  const [jenis, setJenis] = useState<'produk' | 'pelanggan' | 'pengeluaran'>('produk');
   // Default GABUNG, bukan ganti total: mengunggah beberapa SKU baru saja
   // dengan mode ganti total akan mengarsipkan semua produk lain.
   const [mode, setMode] = useState<ImportMode>('merge');
@@ -154,11 +155,12 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
 
   return (
     <Modal open={open} onClose={close} title="Impor / Ekspor Data" size="lg">
-      {(tab === 'pilih' || jenis === 'pelanggan') && (
+      {(tab === 'pilih' || jenis !== 'produk') && (
         <div className="mb-4 flex gap-1 rounded-full bg-ink-100 p-1 text-xs font-semibold dark:bg-ink-800">
           {([
             ['produk', 'Produk'],
             ['pelanggan', 'Pelanggan'],
+            ['pengeluaran', 'Pengeluaran'],
           ] as const).map(([value, label]) => (
             <button
               key={value}
@@ -178,6 +180,8 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
 
       {jenis === 'pelanggan' ? (
         <ImporPelanggan storeId={storeId} onSelesai={close} onBatal={close} />
+      ) : jenis === 'pengeluaran' ? (
+        <ImporPengeluaran storeId={storeId} onSelesai={close} onBatal={close} />
       ) : (
       <>
       {tab === 'pilih' && (
