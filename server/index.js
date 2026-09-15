@@ -525,6 +525,24 @@ const DEMO_ACCOUNTS = {
   'customer@example.com': { id: 'usr-customer-001', role: 'customer', name: 'Pelanggan Toko', password: 'customer12345' },
 };
 
+/**
+ * Ringkasan integrasi luar untuk diagnosa deploy: cuma menyebut sebuah kunci
+ * terpasang atau tidak (dan panjangnya), tidak pernah nilainya.
+ */
+function statusIntegrasi() {
+  const panjang = (v) => (v ? String(v).trim().length : 0);
+  return {
+    tripay: { aktif: tripay.tripayAktif(), mode: tripay.konfigurasi().mode, panjang_api_key: panjang(process.env.TRIPAY_API_KEY) },
+    kiriminaja: { aktif: kiriminaja.kiriminAjaAktif(), mode: kiriminaja.konfigurasi().mode },
+    mailketing: {
+      aktif: mailketingAktif(),
+      panjang_token: panjang(process.env.MAILKETING_API_TOKEN),
+      pengirim: process.env.MAILKETING_FROM_EMAIL || null,
+    },
+    smtp: !!process.env.SMTP_HOST,
+  };
+}
+
 app.get('/api/health', asyncHandler(async (_req, res) => {
   try {
     await pool.query('select 1');
@@ -543,7 +561,7 @@ app.get('/api/health', asyncHandler(async (_req, res) => {
       return res.json({ ok: true, database: 'postgres', status: 'partial_schema', missing_tables: missing });
     }
 
-    res.json({ ok: true, database: 'postgres' });
+    res.json({ ok: true, database: 'postgres', integrasi: statusIntegrasi() });
   } catch (error) {
     res.json({
       ok: true,
