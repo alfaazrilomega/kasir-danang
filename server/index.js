@@ -1325,10 +1325,16 @@ function ambilPengirimEmail() {
 }
 
 async function kirimEmail({ to, subject, text, html }) {
-  // Domain pengirim client sudah terverifikasi di Mailketing, jadi dipakai lebih dulu.
+  // Domain pengirim client sudah terverifikasi di Mailketing, jadi dipakai lebih
+  // dulu. Kalau layanannya menolak (token salah, kredit habis), pengiriman
+  // jatuh ke SMTP: reset kata sandi tidak boleh ikut mati karena satu layanan.
   if (mailketingAktif()) {
-    await kirimEmailMailketing({ to, subject, html: html || text });
-    return;
+    try {
+      await kirimEmailMailketing({ to, subject, html: html || text });
+      return;
+    } catch (error) {
+      console.error('[mailketing] gagal, beralih ke SMTP:', error.message);
+    }
   }
   const transport = ambilPengirimEmail();
   if (!transport) throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
