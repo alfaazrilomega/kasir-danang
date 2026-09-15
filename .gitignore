@@ -20,3 +20,6 @@ audit_screenshots
 .vercel
 .env*
 server/.outbox/
+
+# Tangkapan layar hasil uji, bukan bagian aplikasi
+scripts/screenshots/
