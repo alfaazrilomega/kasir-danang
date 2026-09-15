@@ -382,7 +382,11 @@ export function PublicShell({
           href={wa}
           target="_blank"
           rel="noreferrer"
-          className="fixed bottom-0 right-[50px] z-30 hidden h-10 w-[160px] items-center gap-2 rounded-t-md border border-b-0 border-ink-200 bg-white px-3 text-sm text-ink-800 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] transition-colors duration-300 hover:text-brand-600 lg:flex dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
+          // Di HP tombolnya melayang di atas bilah bawah (checkout punya total + tombol
+          // di dasar layar) dan menghormati area aman iPhone; di layar lebar kembali
+          // menempel di tepi bawah seperti tab chat marketplace. Ukuran memakai clamp()
+          // supaya ikut lebar layar, bukan melompat di titik breakpoint.
+          className="fixed right-[clamp(0.75rem,3vw,3.25rem)] bottom-[calc(env(safe-area-inset-bottom,0px)+clamp(5rem,14vw,6rem))] z-30 flex items-center gap-2 rounded-full border border-ink-200 bg-white px-[clamp(0.9rem,3.2vw,1.1rem)] py-[clamp(0.6rem,2.4vw,0.75rem)] text-[clamp(0.8rem,2.8vw,0.9rem)] text-ink-800 shadow-[0_6px_18px_rgba(15,18,34,0.18)] transition-colors duration-300 hover:text-brand-600 lg:bottom-0 lg:h-10 lg:w-[160px] lg:rounded-b-none lg:rounded-t-md lg:border-b-0 lg:px-3 lg:py-0 lg:shadow-[0_-2px_8px_rgba(0,0,0,0.08)] dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100"
         >
           <MessageCircle size={18} className="text-brand-600" /> Pesan
         </a>

@@ -18,6 +18,8 @@ import {
   type PublicCatalogData,
 } from '@/lib/publicCatalog';
 import { useWishlist } from '@/stores/wishlist';
+import { KolomAlamat, type NilaiAlamat } from '@/components/public/KolomAlamat';
+import { provinsiDariKota } from '@/lib/wilayah';
 import {
   fetchCustomerOrders,
   fetchReviewable,
@@ -104,6 +106,7 @@ export function PublicAccount() {
   const [reviewable, setReviewable] = useState<ReviewableItem[] | null>(null);
   const [catalog, setCatalog] = useState<PublicCatalogData | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', address: '' });
+  const [wilayah, setWilayah] = useState<NilaiAlamat>({ provinsi: '', kota: '', alamat: '' });
   const [busy, setBusy] = useState(false);
   const [menilai, setMenilai] = useState<ReviewableItem | null>(null);
   const [subUlasan, setSubUlasan] = useState<'belum' | 'riwayat'>('belum');
@@ -117,7 +120,11 @@ export function PublicAccount() {
   }, [token, me, muat]);
 
   useEffect(() => {
-    if (me) setForm({ name: me.name, phone: me.phone ?? '', address: me.address ?? '' });
+    if (me) {
+      setForm({ name: me.name, phone: me.phone ?? '', address: me.address ?? '' });
+      const kota = me.city ?? '';
+      setWilayah({ provinsi: me.province || provinsiDariKota(kota), kota, alamat: me.address ?? '' });
+    }
   }, [me]);
 
   function muatUlasan() {
@@ -161,7 +168,13 @@ export function PublicAccount() {
   }, [orders]);
   const pesananTampil = (orders ?? []).filter((o) => status === 'semua' || kunciStatus(o) === status);
 
-  const berubah = !!me && (form.name !== me.name || form.phone !== (me.phone ?? '') || form.address !== (me.address ?? ''));
+  const berubah =
+    !!me &&
+    (form.name !== me.name ||
+      form.phone !== (me.phone ?? '') ||
+      wilayah.alamat !== (me.address ?? '') ||
+      wilayah.provinsi !== (me.province ?? '') ||
+      wilayah.kota !== (me.city ?? ''));
 
   async function simpan() {
     if (!token) return;
@@ -170,7 +183,9 @@ export function PublicAccount() {
     const { data, error } = await updateCustomerMe(token, {
       name: form.name.trim(),
       phone: form.phone.trim(),
-      address: form.address.trim(),
+      address: wilayah.alamat.trim(),
+      province: wilayah.provinsi,
+      city: wilayah.kota,
     });
     setBusy(false);
     if (error || !data) {
@@ -472,16 +487,13 @@ export function PublicAccount() {
                   <section>
                     <h2 className="text-sm font-semibold">Alamat Pengiriman Utama</h2>
                     <div className="mt-3">
-                      <Kolom label="Alamat lengkap" bantuan="Otomatis terisi saat checkout.">
-                        <textarea
-                          name="address"
-                          rows={4}
-                          placeholder="Jalan, nomor rumah, kelurahan, kecamatan, kota, kode pos"
-                          value={form.address}
-                          onChange={(e) => setForm({ ...form, address: e.target.value })}
-                          className={cn(KOLOM, 'resize-none py-2.5')}
-                        />
-                      </Kolom>
+                      <KolomAlamat
+                        nilai={wilayah}
+                        onChange={setWilayah}
+                        kelasKolom={KOLOM}
+                        label="Alamat lengkap"
+                        bantuan="Otomatis terisi saat checkout."
+                      />
                     </div>
                   </section>
                 </div>

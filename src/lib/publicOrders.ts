@@ -17,6 +17,9 @@ export interface PublicOrderInput {
   customer_name: string;
   customer_phone: string;
   delivery_address: string;
+  /** Wilayah tujuan; dipakai menghitung ongkir saat KiriminAja aktif. */
+  delivery_province?: string;
+  delivery_city?: string;
   /** Transfer & QRIS masih manual (dicek staff); kanal otomatis menunggu Tripay. */
   payment_method: Extract<PaymentMethod, 'cash' | 'qris' | 'transfer'>;
   /** Kode kanal Tripay (mis. BRIVA, QRIS). Bila diisi, metode manual di atas diabaikan server. */

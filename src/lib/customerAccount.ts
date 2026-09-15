@@ -14,6 +14,9 @@ export interface CustomerMe {
   name: string;
   phone: string | null;
   address: string | null;
+  /** Provinsi & kota alamat utama; dipakai checkout dan perhitungan ongkir. */
+  province?: string | null;
+  city?: string | null;
 }
 
 export interface CustomerOrderItem {
@@ -159,7 +162,10 @@ export function fetchCustomerConfig() {
   return panggil<{ google_client_id: string | null }>('/api/customer/config');
 }
 
-export function updateCustomerMe(token: string, input: { name: string; phone: string; address: string }) {
+export function updateCustomerMe(
+  token: string,
+  input: { name: string; phone: string; address: string; province?: string; city?: string },
+) {
   return panggil<CustomerMe>('/api/customer/me', { method: 'PATCH', body: input, token });
 }
 

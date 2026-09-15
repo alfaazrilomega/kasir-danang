@@ -169,6 +169,8 @@ const record = (nama, ok, ket) => {
     await bukaFormAlamat();
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu BuyNow ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '03');
+    await guest.getByLabel('Provinsi').selectOption({ label: 'Jawa Timur' });
+    await guest.getByLabel('Kota/Kabupaten').selectOption({ label: 'Kota Surabaya' });
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 3, ' + CAP);
     await guest.getByRole('button', { name: /Buat Pesanan/i }).click();
     await guest.waitForURL((u) => u.pathname.includes('/toko/selesai'), { timeout: 15000 }).catch(() => {});
@@ -185,6 +187,8 @@ const record = (nama, ok, ket) => {
     await bukaFormAlamat();
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu Cash ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '01');
+    await guest.getByLabel('Provinsi').selectOption({ label: 'Jawa Timur' });
+    await guest.getByLabel('Kota/Kabupaten').selectOption({ label: 'Kota Surabaya' });
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 1, ' + CAP);
     await guest.getByRole('button', { name: /Buat Pesanan/i }).click();
     await guest.waitForURL((u) => u.pathname.includes('/toko/selesai'), { timeout: 15000 }).catch(() => {});
@@ -200,6 +204,8 @@ const record = (nama, ok, ket) => {
     await bukaFormAlamat();
     await guest.getByLabel('Nama Penerima').fill('Uji Tamu QRIS ' + CAP);
     await guest.getByLabel(/Nomor HP/i).fill('0812' + CAP + '02');
+    await guest.getByLabel('Provinsi').selectOption({ label: 'Jawa Timur' });
+    await guest.getByLabel('Kota/Kabupaten').selectOption({ label: 'Kota Surabaya' });
     await guest.getByLabel('Alamat Pengiriman').fill('Jl. Uji Tamu No. 2, ' + CAP);
     await guest.getByRole('button', { name: /QRIS/i }).click();
     await guest.getByRole('button', { name: /Buat Pesanan/i }).click();

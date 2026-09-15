@@ -98,6 +98,7 @@ const TABLES = {
     columns: [
       'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
       'is_active', 'points', 'created_at', 'address',
+      'address_province', 'address_city',
     ],
     tenantColumn: 'store_id',
   },
@@ -145,6 +146,7 @@ const TABLES = {
       'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
       'delivery_address', 'shipping_cost', 'tax_inclusive',
       'payment_channel', 'payment_reference', 'payment_url',
+      'delivery_province', 'delivery_city',
     ],
     tenantColumn: 'store_id',
   },
@@ -1080,12 +1082,20 @@ async function assertStoreExists(storeId) {
 }
 
 function customerMeRow(row) {
-  return { email: row.email, name: row.name, phone: row.phone ?? null, address: row.address ?? null };
+  return {
+    email: row.email,
+    name: row.name,
+    phone: row.phone ?? null,
+    address: row.address ?? null,
+    // Wilayah disimpan terpisah karena ongkir dihitung dari sini, bukan dari alamat teks.
+    province: row.address_province ?? null,
+    city: row.address_city ?? null,
+  };
 }
 
 async function loadCustomerForUser(userId, storeId) {
   const found = await pool.query(
-    `select c.id, c.name, c.phone, c.address, u.email
+    `select c.id, c.name, c.phone, c.address, c.address_province, c.address_city, u.email
        from public.customers c
        join public.app_users u on u.id = c.user_id
       where c.user_id = $1 and c.store_id = $2
@@ -1481,12 +1491,15 @@ app.patch('/api/customer/me', requireCustomer, asyncHandler(async (req, res) => 
   const name = String(req.body?.name ?? '').trim().slice(0, 120);
   const phone = String(req.body?.phone ?? '').trim().slice(0, 20);
   const address = String(req.body?.address ?? '').trim().slice(0, 500);
+  const province = String(req.body?.province ?? '').trim().slice(0, 80);
+  const city = String(req.body?.city ?? '').trim().slice(0, 80);
   if (!name) throw new HttpError(400, 'Nama wajib diisi.');
   const updated = await pool.query(
-    `update public.customers set name = $3, phone = $4, address = $5
+    `update public.customers
+        set name = $3, phone = $4, address = $5, address_province = $6, address_city = $7
       where user_id = $1 and store_id = $2
       returning id`,
-    [req.user.id, req.user.store_id, name, phone || null, address || null],
+    [req.user.id, req.user.store_id, name, phone || null, address || null, province || null, city || null],
   );
   if (!updated.rowCount) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
   await pool.query('update public.profiles set full_name = $2 where id = $1', [req.user.id, name]);
@@ -1786,6 +1799,8 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   const customerName = String(body.customer_name ?? '').trim();
   const customerPhone = String(body.customer_phone ?? '').trim();
   const deliveryAddress = String(body.delivery_address ?? '').trim();
+  const deliveryProvince = String(body.delivery_province ?? '').trim().slice(0, 80);
+  const deliveryCity = String(body.delivery_city ?? '').trim().slice(0, 80);
   const paymentMethod = String(body.payment_method ?? '').trim();
   const notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
   const items = Array.isArray(body.items) ? body.items : [];
@@ -1894,15 +1909,18 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         subtotal, tax, discount, total, payment_method, payment_status,
         order_status, order_type, table_number, notes, created_at,
         sales_channel, payment_term, due_date, paid_amount, settled_at,
-        customer_name, customer_phone, delivery_address, points_earned
+        customer_name, customer_phone, delivery_address, points_earned,
+        delivery_province, delivery_city
       ) values (
         $1, $2, $11, null, null, $3,
         $4, 0, 0, $4, $5, 'unpaid',
         'awaiting_confirmation', 'take_away', null, $6, $7,
         'website', 'cash', null, 0, null,
-        $8, $9, $10, 0
+        $8, $9, $10, 0,
+        $12, $13
       )`,
-      [orderId, storeId, orderNumber, total, metodeTercatat, notes, nowIso, customerName, customerPhone, deliveryAddress, pembeli.id],
+      [orderId, storeId, orderNumber, total, metodeTercatat, notes, nowIso, customerName, customerPhone, deliveryAddress, pembeli.id,
+       deliveryProvince || null, deliveryCity || null],
     );
     for (const item of orderItems) {
       await client.query(

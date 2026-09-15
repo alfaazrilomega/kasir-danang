@@ -51,6 +51,7 @@ const REQUIRED_COLUMNS = {
   customers: [
     'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
     'is_active', 'points', 'created_at', 'address', 'user_id', 'privacy_accepted_at',
+    'address_province', 'address_city',
   ],
   promos: ['id', 'store_id', 'code', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'created_at'],
   orders: [
@@ -63,6 +64,7 @@ const REQUIRED_COLUMNS = {
     'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
     'delivery_address', 'shipping_cost', 'tax_inclusive',
     'payment_channel', 'payment_reference', 'payment_url',
+    'delivery_province', 'delivery_city',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',

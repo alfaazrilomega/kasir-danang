@@ -125,6 +125,9 @@ export interface Customer {
   points: number;
   /** Alamat utama; diisi pembeli dari akun storefront. */
   address?: string | null;
+  /** Wilayah alamat utama; dipisah dari teks alamat supaya ongkir bisa dihitung. */
+  address_province?: string | null;
+  address_city?: string | null;
 }
 
 export interface Promo {
@@ -197,6 +200,9 @@ export interface Order {
   /** Diisi hanya untuk pesanan tamu dari storefront publik (checkout tanpa login). */
   customer_phone?: string | null;
   /** Kanal & jejak transaksi payment gateway (Tripay); kosong untuk bayar manual. */
+  /** Wilayah tujuan kirim, dipakai perhitungan ongkir. */
+  delivery_province?: string | null;
+  delivery_city?: string | null;
   payment_channel?: string | null;
   payment_reference?: string | null;
   payment_url?: string | null;

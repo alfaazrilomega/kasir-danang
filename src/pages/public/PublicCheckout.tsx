@@ -13,9 +13,11 @@ import { PUBLIC_STORE_ID } from '@/lib/config';
 import { updateCustomerMe, useCustomer } from '@/lib/customerAccount';
 import { useBukaMasuk, useTokoPublik } from '@/components/public/KerangkaAuth';
 import { biayaKanal, fetchKanalBayar, type KanalBayar } from '@/lib/publicPayments';
+import { KolomAlamat, type NilaiAlamat } from '@/components/public/KolomAlamat';
+import { alamatLengkap as alamatSatuBaris, provinsiDariKota } from '@/lib/wilayah';
 
 type PayOption = 'cash' | 'transfer' | 'qris';
-type Galat = Partial<Record<'name' | 'phone' | 'address', string>>;
+type Galat = Partial<Record<'name' | 'phone' | 'address' | 'provinsi' | 'kota', string>>;
 
 const KOLOM =
   'h-11 w-full rounded-lg border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100';
@@ -51,7 +53,7 @@ export function PublicCheckout() {
   const toko = useTokoPublik();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const [wilayah, setWilayah] = useState<NilaiAlamat>({ provinsi: '', kota: '', alamat: '' });
   const [payment, setPayment] = useState<PayOption>('cash');
   const [notes, setNotes] = useState('');
   const [galat, setGalat] = useState<Galat>({});
@@ -71,7 +73,15 @@ export function PublicCheckout() {
     if (!me) return;
     setName((v) => v || me.name);
     setPhone((v) => v || me.phone || '');
-    setAddress((v) => v || me.address || '');
+    setWilayah((v) => {
+      if (v.alamat || v.provinsi) return v;
+      const kota = me.city || '';
+      return {
+        provinsi: me.province || provinsiDariKota(kota),
+        kota,
+        alamat: me.address || '',
+      };
+    });
     // Alamat belum tersimpan di akun: formulirnya langsung terbuka.
     if (!me.address) setUbahAlamat(true);
   }, [me]);
@@ -127,7 +137,8 @@ export function PublicCheckout() {
     );
   }
 
-  const alamatLengkap = !!name.trim() && !!phone.trim() && !!address.trim();
+  const alamatTeks = alamatSatuBaris({ alamat: wilayah.alamat, kota: wilayah.kota, provinsi: wilayah.provinsi });
+  const alamatLengkap = !!name.trim() && !!phone.trim() && !!wilayah.alamat.trim() && !!wilayah.provinsi && !!wilayah.kota;
 
   /** Memilih metode manual membatalkan kanal otomatis yang sedang dipilih. */
   function pilihManual(p: PayOption) {
@@ -139,7 +150,9 @@ export function PublicCheckout() {
     const g: Galat = {};
     if (!name.trim()) g.name = 'Nama penerima wajib diisi.';
     if (!phone.trim()) g.phone = 'Nomor HP wajib diisi.';
-    if (!address.trim()) g.address = 'Alamat pengiriman wajib diisi.';
+    if (!wilayah.provinsi) g.provinsi = 'Pilih provinsi.';
+    if (!wilayah.kota) g.kota = 'Pilih kota/kabupaten.';
+    if (!wilayah.alamat.trim()) g.address = 'Alamat pengiriman wajib diisi.';
     setGalat(g);
     if (Object.keys(g).length) setUbahAlamat(true);
     return Object.keys(g).length === 0;
@@ -155,7 +168,9 @@ export function PublicCheckout() {
         store_id: PUBLIC_STORE_ID,
         customer_name: name.trim(),
         customer_phone: phone.trim(),
-        delivery_address: address.trim(),
+        delivery_address: alamatTeks,
+        delivery_province: wilayah.provinsi,
+        delivery_city: wilayah.kota,
         payment_method: payment,
         payment_channel: kanalKode ?? undefined,
         notes: notes.trim() || undefined,
@@ -175,7 +190,9 @@ export function PublicCheckout() {
       void updateCustomerMe(token, {
         name: me.name,
         phone: me.phone || phone.trim(),
-        address: address.trim(),
+        address: wilayah.alamat.trim(),
+        province: wilayah.provinsi,
+        city: wilayah.kota,
       }).then(({ data: baru }) => baru && setMe(baru));
     }
     if (isDirect) clearBuyNow();
@@ -271,7 +288,7 @@ export function PublicCheckout() {
                       <span className="mx-1.5 text-ink-300">·</span>
                       <span className="text-ink-600 dark:text-ink-300">{phone}</span>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-ink-500">{address}</p>
+                    <p className="mt-1 line-clamp-2 text-sm text-ink-500">{alamatTeks}</p>
                     {notes.trim() && <p className="mt-1 text-xs text-ink-500">Catatan: {notes}</p>}
                   </div>
                   <button
@@ -284,7 +301,7 @@ export function PublicCheckout() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {!alamatLengkap && !address.trim() && (
+                  {!alamatLengkap && !wilayah.alamat.trim() && (
                     <div className="flex items-start gap-2 rounded-lg border border-dashed border-ink-200 bg-ink-50 p-3 text-sm text-ink-600 dark:border-ink-700 dark:bg-ink-800/50 dark:text-ink-300">
                       <MapPin size={16} className="mt-0.5 shrink-0 text-ink-400" />
                       Anda belum menyimpan alamat. Isi sekali di sini, checkout berikutnya terisi otomatis.
@@ -314,18 +331,13 @@ export function PublicCheckout() {
                       />
                     </Kolom>
                   </div>
-                  <Kolom label="Alamat Pengiriman" id="alamat-kirim" galat={galat.address}>
-                    <textarea
-                      id="alamat-kirim"
-                      name="delivery_address"
-                      aria-label="Alamat Pengiriman"
-                      rows={3}
-                      placeholder="Jalan, nomor rumah, kelurahan, kecamatan, kota, kode pos"
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      className={cn(KOLOM, 'h-auto resize-none py-2.5', galat.address && KOLOM_GALAT)}
-                    />
-                  </Kolom>
+                  <KolomAlamat
+                    nilai={wilayah}
+                    onChange={setWilayah}
+                    kelasKolom={KOLOM}
+                    kelasGalat={KOLOM_GALAT}
+                    galat={{ provinsi: galat.provinsi, kota: galat.kota, alamat: galat.address }}
+                  />
                   <Kolom label="Catatan (opsional)" id="catatan">
                     <input
                       id="catatan"
