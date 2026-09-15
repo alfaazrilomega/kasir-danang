@@ -1361,7 +1361,11 @@ async function kirimEmail({ to, subject, text, html }) {
     }
   }
   const transport = ambilPengirimEmail();
-  if (!transport) throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
+  if (!transport) {
+    // Sementara: sebutkan sebab teknisnya supaya kegagalan di produksi bisa ditelusuri.
+    const sebab = galatEmailTerakhir ? ` [diagnosa: ${galatEmailTerakhir.pesan}]` : ' [diagnosa: layanan email tidak dicoba]';
+    throw new HttpError(503, `Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.${sebab}`);
+  }
   const info = await transport.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@tokoku.local',
     to,
