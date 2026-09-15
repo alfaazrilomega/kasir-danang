@@ -1731,7 +1731,7 @@ async function resolveCustomerFromRequest(req) {
     throw new HttpError(401, 'Sesi berakhir, silakan masuk lagi.');
   }
   const found = await pool.query(
-    `select c.id, c.store_id
+    `select c.id, c.store_id, c.email, c.name, c.phone
        from public.customers c
        join public.profiles p on p.id = c.user_id
       where c.user_id = $1 and p.role = 'customer'
@@ -1894,7 +1894,8 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         merchantRef: orderNumber,
         amount: total,
         customerName,
-        customerEmail: pembeli.email,
+        // Tripay menolak transaksi tanpa email pembeli.
+        customerEmail: pembeli.email || `${customerPhone.replace(/\D/g, '') || 'pembeli'}@pesanan.web`,
         customerPhone,
         items: orderItems.map((it) => ({ name: it.name, price: it.price, quantity: it.qty })),
         callbackUrl: process.env.TRIPAY_CALLBACK_URL || undefined,
