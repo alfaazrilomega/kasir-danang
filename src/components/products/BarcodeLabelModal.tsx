@@ -4,7 +4,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import { urutNamaSku } from '@/lib/sortProducts';
-import { UKURAN_LABEL, kodeLabel, printLabels, svgBarcode, type UkuranLabel } from '@/lib/labels';
+import { UKURAN_LABEL, kodeLabel, printLabels, skuLabel, svgBarcode, type UkuranLabel } from '@/lib/labels';
 import type { Product } from '@/types';
 
 /**
@@ -57,6 +57,7 @@ export function BarcodeLabelModal({
   const jumlahLabel = terpilih.reduce((s, p) => s + (pilih[p.id] ?? 0), 0);
   const contoh = terpilih[0] ?? null;
   const svgContoh = contoh ? svgBarcode(kodeLabel(contoh)) : null;
+  const skuContoh = contoh ? skuLabel(contoh) : null;
 
   function ubah(id: string, copies: number | null) {
     setPilih((prev) => {
@@ -80,6 +81,7 @@ export function BarcodeLabelModal({
       terpilih.map((p) => ({
         name: p.name,
         code: kodeLabel(p),
+        sku: skuLabel(p),
         price: tampilHarga ? Number(p.base_price) : null,
         copies: pilih[p.id] ?? 1,
       })),
@@ -92,8 +94,9 @@ export function BarcodeLabelModal({
     <Modal open={open} onClose={onClose} title="Cetak Label Barcode" size="lg">
       <div className="space-y-4 text-sm">
         <p className="text-xs text-ink-500">
-          Kode di label adalah barcode produk, atau SKU bila barcode kosong. Label bisa langsung
-          dipindai di kasir.
+          Kode di label adalah barcode produk, atau SKU bila barcode kosong. SKU juga dicetak sebagai
+          teks kecil di bawah barcode untuk mengecek produknya sudah sesuai, kecuali kalau SKU itu
+          sendiri yang dipakai jadi kode. Label bisa langsung dipindai di kasir.
         </p>
 
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
@@ -198,9 +201,16 @@ export function BarcodeLabelModal({
                   <div className="space-y-1">
                     <div className="line-clamp-2 text-[11px] font-bold leading-tight">{contoh.name}</div>
                     <div className="h-14 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svgContoh }} />
-                    {tampilHarga && (
-                      <div className="text-right text-[11px] font-bold">
-                        {formatMoney(Number(contoh.base_price), currency)}
+                    {(skuContoh || tampilHarga) && (
+                      <div className="flex items-baseline gap-2">
+                        {skuContoh && (
+                          <span className="truncate font-mono text-[9px]">{skuContoh}</span>
+                        )}
+                        {tampilHarga && (
+                          <span className="ml-auto whitespace-nowrap text-[11px] font-bold">
+                            {formatMoney(Number(contoh.base_price), currency)}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

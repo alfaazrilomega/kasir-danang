@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Input, TextArea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
@@ -962,20 +962,23 @@ function ProductForm({
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
               placeholder="cth. GNNK Racing"
             />
-            <Input
-              name="variant_name"
-              label="Nama variasi"
-              value={form.variant_name}
-              onChange={(e) => setForm({ ...form, variant_name: e.target.value })}
-              placeholder="cth. 13T / Merah"
-              hint="Produk bernama sama tampil sebagai satu produk dengan pilihan variasi di toko online."
-            />
-            <Input
-              label="Deskripsi"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Opsional"
-            />
+            {/* Deskripsi dipakai untuk menulis detail panjang, jadi diberi
+                lebar penuh dan tinggi yang cukup supaya isinya terlihat
+                sekaligus tanpa perlu menggulir baris demi baris. */}
+            <div className="sm:col-span-2">
+              <TextArea
+                name="description"
+                label="Deskripsi produk"
+                rows={8}
+                className="min-h-[200px] resize-y leading-relaxed"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Opsional. Tulis detail produk di sini: bahan, ukuran, cara pakai, dan catatan lain. Tekan Enter untuk baris baru."
+              />
+              <div className="mt-1 text-right text-xs text-ink-500">
+                {form.description.length} karakter
+              </div>
+            </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium mb-1.5">Gambar produk</label>
               <ImagePicker
@@ -986,6 +989,11 @@ function ProductForm({
               <DetailTokoOnline form={form} setForm={setForm} />
             </div>
           </div>
+        </section>
+
+        {/* Penamaan & variasi ============================================ */}
+        <section className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
+          <SeksiPenamaanVariasi form={form} setForm={setForm} />
         </section>
 
         <section>
@@ -1842,9 +1850,10 @@ function GaleriFoto({ value, onChange }: { value: string[]; onChange: (v: string
 }
 
 /**
- * Isian halaman produk toko online yang disamakan dengan Lazada: nama
- * atribut variasi, spesifikasi, garansi, isi kotak, kualifikasi, sorotan,
- * dan video. Semua opsional; yang kosong tidak ditampilkan di toko.
+ * Isian halaman produk toko online yang disamakan dengan Lazada: spesifikasi,
+ * garansi, isi kotak, kualifikasi, sorotan, dan video. Semua opsional; yang
+ * kosong tidak ditampilkan di toko. Nama atribut variasi pindah ke blok
+ * "Penamaan & variasi" supaya sepasang dengan nama variasinya.
  */
 function DetailTokoOnline({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
   const ubahSpec = (i: number, kunci: 'label' | 'value', nilai: string) =>
@@ -1854,13 +1863,6 @@ function DetailTokoOnline({ form, setForm }: { form: FormState; setForm: (f: For
     <div className="mt-4 space-y-3 rounded-xl border border-ink-100 p-3 dark:border-ink-800">
       <div className="text-xs font-semibold uppercase tracking-wide text-ink-500">Detail halaman toko online</div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Input
-          name="variant_label"
-          label="Nama atribut variasi"
-          placeholder="cth. Ukuran / Warna"
-          value={form.variant_label}
-          onChange={(e) => setForm({ ...form, variant_label: e.target.value })}
-        />
         <Input
           name="video_url"
           label="Video produk (tautan)"
@@ -1952,6 +1954,87 @@ function DetailTokoOnline({ form, setForm }: { form: FormState; setForm: (f: For
         value={form.highlights}
         onChange={(v) => setForm({ ...form, highlights: v })}
       />
+    </div>
+  );
+}
+
+/**
+ * Blok penamaan produk dan variasinya.
+ *
+ * Client memakai satu nama dasar untuk banyak varian (13T, 14T, 15T) supaya
+ * daftar produk tidak penuh nama panjang yang saling mirip. Tiap varian tetap
+ * baris produk sendiri dengan SKU sendiri, jadi stok dan penjualannya terlacak
+ * per varian. Dua isian itu dikumpulkan di sini beserta hasil akhirnya supaya
+ * aturan penamaannya terlihat tanpa harus menyimpan dulu.
+ */
+function SeksiPenamaanVariasi({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+  const namaDasar = form.name.trim();
+  const namaVariasi = form.variant_name.trim();
+  const atribut = form.variant_label.trim() || 'Variasi';
+  const sku = form.sku.trim();
+  const namaTampil = namaDasar
+    ? namaVariasi
+      ? `${namaDasar} (${namaVariasi})`
+      : namaDasar
+    : 'Isi nama produk dulu';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
+        <Layers size={14} /> Penamaan &amp; variasi
+      </div>
+      <p className="text-xs leading-relaxed text-ink-500">
+        Satu baris produk = satu SKU. Untuk barang yang sama tapi beda ukuran atau warna,
+        pakai <strong className="font-semibold text-ink-600 dark:text-ink-300">nama produk</strong> yang
+        sama persis untuk semua variannya, lalu bedakan lewat{' '}
+        <strong className="font-semibold text-ink-600 dark:text-ink-300">nama variasi</strong>. Nama
+        produk tetap pendek, dan tiap varian tetap punya SKU sendiri sehingga stok serta
+        penjualannya terlacak terpisah.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          name="variant_name"
+          label="Nama variasi"
+          value={form.variant_name}
+          onChange={(e) => setForm({ ...form, variant_name: e.target.value })}
+          placeholder="cth. 13T / Merah"
+          hint="Kosongkan kalau produk ini tidak punya varian."
+        />
+        <Input
+          name="variant_label"
+          label="Nama atribut variasi"
+          placeholder="cth. Ukuran / Warna"
+          value={form.variant_label}
+          onChange={(e) => setForm({ ...form, variant_label: e.target.value })}
+          hint="Judul pilihan variasi di halaman toko online."
+        />
+      </div>
+      <dl className="space-y-1.5 rounded-lg bg-ink-50 px-3 py-2 dark:bg-ink-900">
+        <div className="flex items-start justify-between gap-3">
+          <dt className="text-xs text-ink-500">Nama tampil</dt>
+          <dd className={cn('text-right text-sm', namaDasar ? 'font-semibold' : 'text-ink-400')}>
+            {namaTampil}
+          </dd>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <dt className="text-xs text-ink-500">SKU varian ini</dt>
+          <dd className={cn('text-right font-mono text-xs', sku ? 'font-semibold' : 'text-ink-400')}>
+            {sku || 'Belum diisi'}
+          </dd>
+        </div>
+        {namaVariasi && (
+          <div className="flex items-start justify-between gap-3">
+            <dt className="text-xs text-ink-500">Pilihan di toko online</dt>
+            <dd className="text-right text-xs">
+              {atribut}: {namaVariasi}
+            </dd>
+          </div>
+        )}
+      </dl>
+      <p className="text-xs leading-relaxed text-ink-500">
+        Menambah varian lain: simpan produk ini, lalu pakai tombol Salin di daftar produk.
+        Nama, harga, dan foto ikut tersalin; SKU dan nama variasi diisi ulang.
+      </p>
     </div>
   );
 }

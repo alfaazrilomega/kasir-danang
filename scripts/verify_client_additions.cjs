@@ -257,6 +257,54 @@ const record = (nama, ok, ket) => {
     record('Impor ulang tidak menggandakan pelanggan dengan HP yang sama',
       totalDenganHpItu === '1', totalDenganHpItu + ' baris untuk HP ' + hpA);
 
+    // ---- 7.1 Impor pengeluaran massal (Dashboard > Impor / Ekspor Data > Pengeluaran) ----
+    const berkasPengeluaran = path.join(tmp, 'pengeluaran.csv');
+    fs.writeFileSync(
+      berkasPengeluaran,
+      [
+        'sep=;',
+        'Tanggal;Kategori;Keterangan;Jumlah;Metode Bayar',
+        `2026-07-05;Sewa;Sewa gudang uji ${CAP};Rp 3.500.000;transfer`,
+        `06/07/2026;Listrik & Air;Token listrik uji ${CAP};450000;cash`,
+        `2026-07-07;KategoriNgawur;Biaya uji ${CAP};125.000;dompet digital`,
+      ].join(NL),
+      'utf8',
+    );
+
+    await page.goto(BASE + '/', { waitUntil: 'networkidle' });
+    await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
+    await page.getByRole('button', { name: /Impor \/ Ekspor Data/i }).click();
+    await page.waitForTimeout(800);
+    await modal().getByRole('button', { name: 'Pengeluaran', exact: true }).click();
+    await page.locator('input[type="file"]').first().setInputFiles(berkasPengeluaran);
+    await modal().getByText(/Baris terbaca/i).waitFor({ timeout: 40000 }).catch(() => {});
+    await page.waitForTimeout(500);
+
+    const teksPengeluaran = (await modal().innerText()).replace(/\s+/g, ' ');
+    record('Tiga baris pengeluaran terbaca', /Baris terbaca 3/.test(teksPengeluaran),
+      teksPengeluaran.slice(teksPengeluaran.indexOf('Baris terbaca'), teksPengeluaran.indexOf('Baris terbaca') + 120));
+    record('Total nilai pengeluaran dihitung dari berkas', /4\.075\.000/.test(teksPengeluaran),
+      'harusnya Rp 4.075.000 (3.500.000 + 450.000 + 125.000)');
+    record('Kategori di luar daftar ditandai, bukan menggagalkan baris',
+      /tidak dikenal/i.test(teksPengeluaran));
+
+    await modal().getByRole('button', { name: /Impor \d+ Pengeluaran/i }).click();
+    await waitForApiIdle(page, { idleMs: 4000, minWaitMs: 3000, timeoutMs: 120000 });
+    await page.waitForTimeout(1500);
+
+    const tersimpan = psql(
+      `select count(*) from public.expenses where description like '%uji ${CAP}%';`);
+    record('Ketiga pengeluaran tersimpan di server', tersimpan === '3', tersimpan + ' baris');
+    const jumlahSewa = psql(
+      `select amount::int from public.expenses where description = 'Sewa gudang uji ${CAP}';`);
+    record('Jumlah "Rp 3.500.000" terbaca sebagai angka', jumlahSewa === '3500000', jumlahSewa);
+    const tanggalToken = psql(
+      `select expense_date::text from public.expenses where description = 'Token listrik uji ${CAP}';`);
+    record('Tanggal 06/07/2026 terbaca sebagai 2026-07-06', tanggalToken === '2026-07-06', tanggalToken);
+    const kategoriNgawur = psql(
+      `select category from public.expenses where description = 'Biaya uji ${CAP}';`);
+    record('Kategori tak dikenal jatuh ke Lainnya', kategoriNgawur === 'lainnya', kategoriNgawur);
+
     // Ekspor
     await page.goto(BASE + '/customers', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
@@ -291,6 +339,7 @@ const record = (nama, ok, ket) => {
     try {
       psql(`delete from public.products where sku = 'UJIDUP-${CAP}';`);
       psql(`delete from public.customers where name like '%Uji%${CAP}%' or phone = '0811${CAP}';`);
+      psql(`delete from public.expenses where description like '%uji ${CAP}%';`);
     } catch (_) { /* biarkan */ }
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) { /* biarkan */ }
   }
