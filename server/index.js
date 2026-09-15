@@ -529,6 +529,10 @@ const DEMO_ACCOUNTS = {
  * Ringkasan integrasi luar untuk diagnosa deploy: cuma menyebut sebuah kunci
  * terpasang atau tidak (dan panjangnya), tidak pernah nilainya.
  */
+// Pesan galat terakhir dari layanan email (bukan rahasia), untuk menelusuri
+// kenapa pengiriman gagal di server produksi yang lognya tidak bisa dibaca.
+let galatEmailTerakhir = null;
+
 function statusIntegrasi() {
   const panjang = (v) => (v ? String(v).trim().length : 0);
   return {
@@ -538,6 +542,7 @@ function statusIntegrasi() {
       aktif: mailketingAktif(),
       panjang_token: panjang(process.env.MAILKETING_API_TOKEN),
       pengirim: process.env.MAILKETING_FROM_EMAIL || null,
+      galat_terakhir: galatEmailTerakhir,
     },
     smtp: !!process.env.SMTP_HOST,
   };
@@ -1351,6 +1356,7 @@ async function kirimEmail({ to, subject, text, html }) {
       await kirimEmailMailketing({ to, subject, html: html || text });
       return;
     } catch (error) {
+      galatEmailTerakhir = { waktu: new Date().toISOString(), pesan: String(error.message).slice(0, 200) };
       console.error('[mailketing] gagal, beralih ke SMTP:', error.message);
     }
   }
