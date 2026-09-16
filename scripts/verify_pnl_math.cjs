@@ -108,8 +108,11 @@ async function tungguTenang(batasMs = 90000) {
 
     // --- hitungan independen dari Postgres ---
     const bacaSql = () => ({
+      // Ongkir BUKAN pendapatan toko — uangnya diteruskan ke kurir. Laporan
+      // laba rugi memang mengeluarkannya (lihat verify_guest_checkout), jadi
+      // pembanding SQL-nya harus ikut mengeluarkan shipping_cost.
       revenueSql: Number(sql(
-        `select coalesce(sum(total - tax),0)::bigint from public.orders
+        `select coalesce(sum(total - tax - coalesce(shipping_cost,0)),0)::bigint from public.orders
           where order_status <> 'canceled'
             and created_at::date between '${FROM}' and '${TO}';`)),
       cogsSql: Number(sql(

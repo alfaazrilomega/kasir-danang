@@ -80,7 +80,12 @@ const sql = (q) =>
 
     // isi hitungan fisik pada baris pertama -> selisih harus muncul
     const firstCount = page.locator('tbody tr input[type="number"]').first();
-    const sysQty = await page.locator('tbody tr').first().locator('td').nth(1).innerText();
+    // Kolom "Stok Sistem" dicari lewat judulnya, bukan nomor tetap: saat sesi
+    // masih bisa diedit ada kolom centang di depan, sehingga nomor kolomnya
+    // bergeser satu dan yang terbaca justru nama produk.
+    const kolomSistem = await page.locator('thead th').evaluateAll((ths) =>
+      ths.findIndex((th) => /stok sistem/i.test(th.textContent || '')));
+    const sysQty = await page.locator('tbody tr').first().locator('td').nth(kolomSistem).innerText();
     await firstCount.fill(String(Number(sysQty.replace(/[^0-9]/g, '')) + 5));
     await page.waitForTimeout(900);
     const bodyTxt = await page.locator('body').innerText();

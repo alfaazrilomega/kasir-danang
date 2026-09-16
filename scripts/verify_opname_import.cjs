@@ -132,9 +132,12 @@ const [thn, bln, tgl] = tanggalLalu.split('-');
       await page.waitForTimeout(1500);
 
       const teksSetelah = await page.locator('body').innerText();
+      const barisSku = page.locator('tbody tr').filter({ hasText: sku2 || '___' });
+      const jumlahBaris = await barisSku.count();
+      const nilaiKolom = await barisSku.first().locator('input[type="number"]').inputValue().catch((e) => 'GAGAL: ' + e.message.slice(0, 60));
       record('Hasil hitung tampil di kolom tanpa mengetik manual',
-        String(stokSistem2 + 5) === (await page.locator(`tbody tr`).filter({ hasText: sku2 || '___' })
-          .locator('input[type="number"]').inputValue().catch(() => '')));
+        String(stokSistem2 + 5) === nilaiKolom,
+        `sku=${sku2} baris=${jumlahBaris} harap=${stokSistem2 + 5} dapat=${nilaiKolom}`);
     } else {
       record('Berkas hasil hitung terbaca', false, 'unduhan gagal');
       record('Dua baris terisi diterapkan', false);

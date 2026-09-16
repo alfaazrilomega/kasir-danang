@@ -62,7 +62,14 @@ function sql(q) {
       .catch(() => {});
     record('Login admin (akun database asli)', await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 90000 }).then(() => true).catch(() => false));
 
-    // Dexie v9 + tabel expenses
+    // Dexie v9 + tabel expenses.
+    //
+    // Pengeluaran TIDAK ikut ditarik saat login: pullExpenses() hanya dipanggil
+    // dari halaman Pengeluaran dan Laporan (src/lib/sync.ts), supaya login tidak
+    // menunggu data yang belum tentu dibuka. Jadi halamannya dibuka dulu, baru
+    // isi cache lokal diperiksa.
+    await page.goto(BASE + '/expenses', { waitUntil: 'networkidle' });
+    await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 1500 });
     const dbInfo = await page.evaluate(() => new Promise((resolve) => {
       const req = indexedDB.open('kasir');
       req.onsuccess = () => {
