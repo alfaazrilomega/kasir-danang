@@ -326,6 +326,55 @@ const record = (nama, ok, ket) => {
       record('Ekspor pelanggan mengikuti hasil pencarian, bukan seluruh data', false);
     }
 
+    // ========== Order ID pesanan tersimpan bisa diubah ==========
+    //
+    // Client menjual juga di Shopee/TikTok dan nomor pesanan di sana sering baru
+    // diketahui setelah struk tercetak. Uji memakai pesanan buatan sendiri,
+    // bukan pesanan client, lalu menghapusnya lagi di bagian bersih-bersih.
+    const tokoUji = psql("select id from public.stores order by created_at limit 1;").split(String.fromCharCode(10))[0].trim();
+    const nomorAwal = 'UJI-ORD-' + CAP;
+    const nomorBaru = 'UJI-ORD-' + CAP + '-SHOPEE';
+    psql(`insert into public.orders (id, store_id, order_number, subtotal, tax, discount, total,
+            payment_method, payment_status, order_status, order_type, sales_channel, created_at)
+          values (gen_random_uuid(), '${tokoUji}', '${nomorAwal}', 10000, 0, 0, 10000,
+            'cash', 'paid', 'done', 'take_away', 'offline', now());`);
+
+    await page.goto(BASE + '/orders', { waitUntil: 'networkidle' });
+    await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2000 });
+    const barisUji = page.locator('tbody tr').filter({ hasText: nomorAwal }).first();
+    // Baris baru muncul setelah pullRecentOrders menulis ke Dexie dan liveQuery
+    // merender ulang — itu terjadi sesudah lalu lintas API reda, jadi ditunggu
+    // barisnya, bukan ditebak lamanya.
+    await barisUji.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
+    record('Pesanan uji muncul di Riwayat Transaksi', await barisUji.count() > 0);
+    // Panel detail dibuka lewat tombol mata di kolom Action; mengklik barisnya
+    // sendiri tidak membuka apa pun.
+    await barisUji.locator('button[title="Detail"]').click();
+    await page.waitForTimeout(1000);
+    const tombolUbah = page.getByRole('button', { name: /Ubah Order ID/i }).first();
+    record('Tombol "Ubah Order ID" tersedia untuk admin', await tombolUbah.count() > 0);
+    await tombolUbah.click();
+    await page.waitForTimeout(600);
+    await page.locator('#ubah-order-id').fill(nomorBaru);
+    await page.getByRole('button', { name: /Simpan Order ID/i }).click();
+    await page.waitForTimeout(1800);
+    const diDb = psql(`select order_number from public.orders where order_number = '${nomorBaru}';`).trim();
+    record('Order ID tersimpan ke database', diDb === nomorBaru, diDb || 'kosong');
+
+    // ========== Tamu diarahkan ke etalase, bukan ke formulir masuk ==========
+    const tamu = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const halamanTamu = await tamu.newPage();
+    await halamanTamu.goto(BASE + '/', { waitUntil: 'networkidle' });
+    await halamanTamu.waitForTimeout(1200);
+    record('Pengunjung tanpa sesi diarahkan ke /toko',
+      new URL(halamanTamu.url()).pathname.startsWith('/toko'), halamanTamu.url());
+    await halamanTamu.goto(BASE + '/login', { waitUntil: 'networkidle' });
+    await halamanTamu.waitForTimeout(800);
+    record('/login tetap bisa dibuka langsung',
+      new URL(halamanTamu.url()).pathname === '/login'
+        && (await halamanTamu.locator('input[type="password"]').count()) > 0);
+    await tamu.close();
+
     console.log('');
     console.log('--- RINGKASAN ---');
     const lulus = hasil.filter((h) => h.ok).length;
@@ -340,6 +389,7 @@ const record = (nama, ok, ket) => {
       psql(`delete from public.products where sku = 'UJIDUP-${CAP}';`);
       psql(`delete from public.customers where name like '%Uji%${CAP}%' or phone = '0811${CAP}';`);
       psql(`delete from public.expenses where description like '%uji ${CAP}%';`);
+      psql(`delete from public.orders where order_number like 'UJI-ORD-${CAP}%';`);
     } catch (_) { /* biarkan */ }
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) { /* biarkan */ }
   }

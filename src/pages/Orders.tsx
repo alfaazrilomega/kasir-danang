@@ -13,6 +13,7 @@ import {
   PencilLine,
   Plus,
   Printer,
+  Hash,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -191,6 +192,7 @@ export function Orders() {
   const [to, setTo] = useState(initial.to);
   const [selected, setSelected] = useState<Order | null>(null);
   const [adjustFor, setAdjustFor] = useState<Order | null>(null);
+  const [nomorFor, setNomorFor] = useState<Order | null>(null);
   const [settleFor, setSettleFor] = useState<Order | null>(null);
   const [channelFilter, setChannelFilter] = useState('all');
   const [termFilter, setTermFilter] = useState<'all' | 'cash' | 'tempo' | 'receivable'>('all');
@@ -1108,6 +1110,11 @@ export function Orders() {
                   <PencilLine size={14} /> Sesuaikan harga
                 </Button>
               )}
+              {canAdjust && selected.order_status !== 'awaiting_confirmation' && (
+                <Button variant="secondary" onClick={() => setNomorFor(selected)}>
+                  <Hash size={14} /> Ubah Order ID
+                </Button>
+              )}
               {canAdjust && selected.payment_term === 'tempo' && receivableOf(selected) > 0 && (
                 <Button variant="secondary" onClick={() => setSettleFor(selected)}>
                   <Landmark size={14} /> Catat pencairan
@@ -1146,6 +1153,16 @@ export function Orders() {
         onClose={() => setAdjustFor(null)}
         onSaved={(updated) => {
           setAdjustFor(null);
+          setSelected((prev) => (prev && prev.id === updated.id ? updated : prev));
+        }}
+      />
+
+      <UbahNomorModal
+        order={nomorFor}
+        storeId={storeId}
+        onClose={() => setNomorFor(null)}
+        onSaved={(updated) => {
+          setNomorFor(null);
           setSelected((prev) => (prev && prev.id === updated.id ? updated : prev));
         }}
       />
@@ -1390,6 +1407,110 @@ function AdjustPriceModal({
           </Button>
           <Button onClick={submit} disabled={busy}>
             {busy ? 'Menyimpan...' : 'Simpan penyesuaian'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Mengganti Order ID pesanan yang sudah tersimpan.
+ *
+ * Kasir sudah bisa mengetik Order ID sendiri saat transaksi dibuat, tapi nomor
+ * pesanan Shopee/TikTok sering baru diketahui belakangan — sesudah struk
+ * tercetak. Tanpa ini nomor di sistem dan nomor di marketplace tidak pernah
+ * bisa dicocokkan lagi.
+ */
+function UbahNomorModal({
+  order,
+  storeId,
+  onClose,
+  onSaved,
+}: {
+  order: Order | null;
+  storeId: string;
+  onClose: () => void;
+  onSaved: (order: Order) => void;
+}) {
+  const [nomor, setNomor] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (order) setNomor(order.order_number);
+  }, [order]);
+
+  // Nomor kembar bikin retur dan pencocokan marketplace menunjuk pesanan yang
+  // salah, jadi ditolak — bukan sekadar diperingatkan.
+  const kembar = useLiveQuery(async () => {
+    const cari = nomor.trim().toUpperCase();
+    if (!order || !cari || cari === order.order_number.toUpperCase()) return null;
+    const rows = await db.orders.where('store_id').equals(storeId).toArray();
+    return rows.find((r) => r.id !== order.id && r.order_number.toUpperCase() === cari) ?? null;
+  }, [nomor, order?.id, storeId]) ?? null;
+
+  if (!order) return null;
+  const current = order;
+  const bersih = nomor.trim();
+  const berubah = bersih !== current.order_number;
+
+  async function submit() {
+    if (!bersih) {
+      toast.error('Order ID tidak boleh kosong.');
+      return;
+    }
+    if (kembar) {
+      toast.error(`Order ID itu sudah dipakai pesanan lain (${kembar.order_number}).`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const patch = { order_number: bersih };
+      const { error } = await getBackendClient().from('orders').update(patch).eq('id', current.id);
+      if (error) throw error;
+      const updated = { ...current, ...patch } as Order;
+      await db.orders.put(updated);
+      toast.success('Order ID diperbarui.');
+      onSaved(updated);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Gagal mengubah Order ID.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Ubah Order ID · ${current.order_number}`} size="sm">
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label htmlFor="ubah-order-id" className="block text-sm font-medium text-ink-700 dark:text-ink-200">
+            Order ID
+          </label>
+          <input
+            id="ubah-order-id"
+            className="input"
+            value={nomor}
+            onChange={(e) => setNomor(e.target.value)}
+            placeholder={current.order_number}
+          />
+          {kembar ? (
+            <p className="text-xs font-medium text-rose-600 dark:text-rose-300">
+              Sudah dipakai pesanan lain ({kembar.order_number}).
+            </p>
+          ) : (
+            <p className="text-xs text-ink-500">
+              Samakan dengan nomor pesanan di Shopee/TikTok supaya mudah dicocokkan saat pencairan
+              dana atau retur. Struk yang sudah tercetak tetap memakai nomor lama.
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-ink-100 pt-3 dark:border-ink-800">
+          <Button variant="secondary" onClick={onClose}>
+            Batal
+          </Button>
+          <Button onClick={submit} disabled={busy || !berubah || !bersih || !!kembar}>
+            {busy ? 'Menyimpan...' : 'Simpan Order ID'}
           </Button>
         </div>
       </div>

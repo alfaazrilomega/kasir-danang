@@ -218,7 +218,7 @@ export function NavActions({
     : 'text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800';
 
   return (
-    <div className="flex items-center gap-1.5" ref={dropdownRef}>
+    <div className="flex shrink-0 items-center gap-1.5" ref={dropdownRef}>
       {canInstall && (
         <button
           onClick={installDesktopApp}

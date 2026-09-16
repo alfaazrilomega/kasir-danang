@@ -18,7 +18,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     );
   }
   if (!userId) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    // Pengunjung tanpa sesi diantar ke etalase, bukan ke formulir masuk: yang
+    // membuka alamat toko hampir selalu pembeli, sedangkan staf tahu jalannya
+    // sendiri ke /login — alamat itu tetap bisa dibuka langsung.
+    return <Navigate to="/toko" replace state={{ from: location }} />;
   }
   if (!profile?.store_id) {
     return (

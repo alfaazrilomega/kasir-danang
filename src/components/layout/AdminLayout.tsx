@@ -196,7 +196,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <MenuIcon size={17} />
             </button>
 
-            <div className="min-w-0 flex-1">
+            {/* min-w: judul halaman tidak boleh menyusut sampai hilang ketika
+                kontrol halaman ikut berebut tempat di layar sempit. Satuannya
+                piksel — huruf dasar aplikasi 14px, jadi 6rem cuma 84px. Di layar
+                lebar judulnya boleh lega karena kontrol sudah muat seluruhnya. */}
+            <div className="min-w-[112px] flex-1 lg:min-w-[220px]">
               <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">
                 <span className="hidden sm:inline">Admin Console</span>
                 <ChevronRight size={11} className="hidden sm:inline" />
@@ -208,8 +212,19 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
 
             {/* The divider only earns its place when the page actually put
-                controls in the slot, so `:empty` drives it rather than state. */}
-            <div ref={setHeaderSlot} className="peer flex shrink-0 items-center gap-2" />
+                controls in the slot, so `:empty` drives it rather than state.
+
+                Kontrol milik halaman boleh menyusut dan digulir mendatar: di
+                layar 393px penyaring periode Dasbor selebar 287px mendorong
+                lonceng dan avatar keluar layar, dan cangkang admin memotongnya
+                (overflow-hidden), sehingga akun tidak bisa dibuka sama sekali. */}
+            <div
+              ref={setHeaderSlot}
+              /* Bilah gulir disembunyikan, jadi tepi kanan dibuat memudar sebagai
+                 tanda masih ada kontrol lain di sebelahnya. Di layar lebar tidak
+                 ada yang tersembunyi, jadi tanpa efek. */
+              className="peer tanpa-bilah flex min-w-0 shrink items-center gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-18px),transparent)] lg:[mask-image:none]"
+            />
             <div className="ml-1 hidden h-7 w-px shrink-0 bg-ink-200 peer-[:not(:empty)]:block dark:bg-ink-700" />
             <NavActions tone="surface" />
           </header>
