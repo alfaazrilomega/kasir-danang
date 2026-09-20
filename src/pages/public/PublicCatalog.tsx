@@ -405,7 +405,26 @@ function Karosel({ slides }: { slides: ReactNode[] }) {
   const tarik = useRef<{ x0: number; dx: number } | null>(null);
   const [geser, setGeser] = useState<number | null>(null);
   const bingkai = useRef<HTMLDivElement>(null);
+  const slideRef = useRef<(HTMLDivElement | null)[]>([]);
   const n = slides.length;
+
+  /**
+   * Slide yang tidak sedang tampil dibuat inert.
+   *
+   * aria-hidden saja tidak cukup: isinya cuma disembunyikan lewat opacity,
+   * sehingga tautan dan tombolnya tetap ada di urutan Tab. Pengguna keyboard
+   * mendarat di tautan yang tidak terlihat, dan Enter membawanya ke halaman
+   * yang tidak pernah dilihatnya. `inert` mencabut seluruh isinya dari fokus,
+   * klik, dan pembaca layar sekaligus.
+   *
+   * Disetel lewat properti DOM, bukan atribut JSX, karena React 18 belum
+   * mengenali `inert` sebagai prop.
+   */
+  useEffect(() => {
+    slideRef.current.forEach((el, i) => {
+      if (el) el.inert = i !== aktif;
+    });
+  }, [aktif, n]);
 
   useEffect(() => {
     if (n < 2 || jeda || geser !== null) return;
@@ -452,7 +471,15 @@ function Karosel({ slides }: { slides: ReactNode[] }) {
         style={{ transform: `translateX(calc(${-aktif * 100}% + ${geser ?? 0}px))` }}
       >
         {slides.map((s, i) => (
-          <div key={i} data-aktif={i === aktif} className="group/slide h-full w-full shrink-0" aria-hidden={i !== aktif}>
+          <div
+            key={i}
+            ref={(el) => {
+              slideRef.current[i] = el;
+            }}
+            data-aktif={i === aktif}
+            className="group/slide h-full w-full shrink-0"
+            aria-hidden={i !== aktif}
+          >
             {s}
           </div>
         ))}
