@@ -5,7 +5,7 @@ import { PublicShell } from '@/components/layout/PublicShell';
 import { cn, formatMoney } from '@/lib/format';
 import { Link, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
-import { fetchPublicCatalog } from '@/lib/publicCatalog';
+import { fetchPublicCatalog, tawaranTambahan, type PublicCatalogProduct } from '@/lib/publicCatalog';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { usePublicCart } from '@/stores/publicCart';
@@ -27,18 +27,24 @@ export function PublicCart() {
   const lines = usePublicCart((s) => s.lines);
   const updateQty = usePublicCart((s) => s.updateQty);
   const remove = usePublicCart((s) => s.remove);
+  const tambah = usePublicCart((s) => s.add);
   const favorit = useWishlist((s) => s.ids);
   const toggleFavorit = useWishlist((s) => s.toggle);
   const token = useCustomer((s) => s.token);
   const klikMasuk = useKlikMasuk();
   const me = useCustomer((s) => s.me);
   const [namaToko, setNamaToko] = useState('');
+  const [katalog, setKatalog] = useState<PublicCatalogProduct[]>([]);
   const [pilih, setPilih] = useState<string[]>(() => lines.map((l) => l.product_id));
 
   useEffect(() => {
     let alive = true;
     fetchPublicCatalog(PUBLIC_STORE_ID)
-      .then((d) => alive && setNamaToko(d.store?.name ?? ''))
+      .then((d) => {
+        if (!alive) return;
+        setNamaToko(d.store?.name ?? '');
+        setKatalog(d.products ?? []);
+      })
       .catch(() => {});
     return () => {
       alive = false;
@@ -54,6 +60,13 @@ export function PublicCart() {
   const subtotal = terpilih.reduce((sum, l) => sum + l.price * l.qty, 0);
   const qtyTerpilih = terpilih.reduce((sum, l) => sum + l.qty, 0);
   const semua = lines.length > 0 && terpilih.length === lines.length;
+
+  // Tawaran dihitung dari isi keranjang, jadi ikut berubah tiap barang ditambah
+  // atau dihapus.
+  const tawaran = useMemo(
+    () => tawaranTambahan(katalog, lines.map((l) => l.product_id)),
+    [katalog, lines],
+  );
 
   const pilihSemua = () => setPilih(semua ? [] : lines.map((l) => l.product_id));
   const togglePilih = (id: string) => setPilih((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -205,6 +218,55 @@ export function PublicCart() {
             })}
           </div>
         </div>
+
+        {tawaran.length > 0 && (
+          <div className="bg-white p-4 lg:col-start-1 dark:bg-ink-900">
+            <h2 className="text-sm font-semibold text-ink-800 dark:text-ink-100">
+              Sering dibeli bersamaan
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-500">
+              Tambahkan tanpa meninggalkan halaman ini.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {tawaran.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex flex-col overflow-hidden rounded-lg border border-ink-100 dark:border-ink-800"
+                >
+                  <Link to={`/toko/produk?id=${p.id}`} className="block aspect-square bg-ink-50 dark:bg-ink-800">
+                    {p.image_url ? (
+                      <img src={p.image_url} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
+                    ) : null}
+                  </Link>
+                  <div className="flex flex-1 flex-col p-2">
+                    <div className="line-clamp-2 text-[11px] leading-snug text-ink-700 dark:text-ink-200">
+                      {p.name}
+                    </div>
+                    <div className="mt-1 text-xs font-bold text-brand-600">
+                      {formatMoney(Number(p.base_price))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        tambah({
+                          product_id: p.id,
+                          name: p.name,
+                          price: Number(p.base_price),
+                          image_url: p.image_url ?? null,
+                        });
+                        setPilih((sebelum) => [...sebelum, p.id]);
+                        toast.success('Ditambahkan ke keranjang.');
+                      }}
+                      className="mt-auto pt-2 text-[11px] font-semibold text-brand-600 hover:underline"
+                    >
+                      + Tambah
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <aside className="bg-white p-4 text-sm lg:sticky lg:top-[calc(var(--tinggi-header,118px)+16px)] dark:bg-ink-900">
           <h2 className="text-ink-500">Lokasi</h2>

@@ -85,6 +85,7 @@ interface FormState {
   setComponents: SetComponentDraft[];
   brand: string;
   variant_name: string;
+  parent_sku: string;
   compare_at_price: number;
   images: string[];
   spec: { label: string; value: string }[];
@@ -124,6 +125,7 @@ const emptyForm: FormState = {
   setComponents: [],
   brand: '',
   variant_name: '',
+  parent_sku: '',
   compare_at_price: 0,
   images: [],
   spec: [],
@@ -293,6 +295,7 @@ export function Products() {
         })),
       brand: p.brand ?? '',
       variant_name: p.variant_name ?? '',
+      parent_sku: p.parent_sku ?? '',
       compare_at_price: Number(p.compare_at_price ?? 0),
       images: p.images ?? [],
       spec: p.spec ?? [],
@@ -352,6 +355,7 @@ export function Products() {
       // dan foto ikut, tapi label variasinya diisi ulang.
       brand: p.brand ?? '',
       variant_name: '',
+      parent_sku: p.parent_sku ?? '',
       compare_at_price: Number(p.compare_at_price ?? 0),
       images: p.images ?? [],
       spec: p.spec ?? [],
@@ -514,6 +518,7 @@ export function Products() {
       track_stock: form.track_stock,
       brand: form.brand.trim() || null,
       variant_name: form.variant_name.trim() || null,
+      parent_sku: form.parent_sku.trim() || null,
       compare_at_price: form.compare_at_price,
       images: form.images,
       spec: form.spec.filter((s) => s.label.trim() && s.value.trim()).map((s) => ({ label: s.label.trim(), value: s.value.trim() })),
@@ -813,6 +818,7 @@ export function Products() {
       />
       <ImportExportModal
         open={importOpen}
+        hanya="produk"
         storeId={storeId}
         onClose={() => setImportOpen(false)}
         onImported={() => {
@@ -1985,13 +1991,22 @@ function SeksiPenamaanVariasi({ form, setForm }: { form: FormState; setForm: (f:
       </div>
       <p className="text-xs leading-relaxed text-ink-500">
         Satu baris produk = satu SKU. Untuk barang yang sama tapi beda ukuran atau warna,
-        pakai <strong className="font-semibold text-ink-600 dark:text-ink-300">nama produk</strong> yang
-        sama persis untuk semua variannya, lalu bedakan lewat{' '}
-        <strong className="font-semibold text-ink-600 dark:text-ink-300">nama variasi</strong>. Nama
-        produk tetap pendek, dan tiap varian tetap punya SKU sendiri sehingga stok serta
-        penjualannya terlacak terpisah.
+        isi{' '}<strong className="font-semibold text-ink-600 dark:text-ink-300">SKU Induk</strong> yang
+        sama untuk semua variannya, lalu bedakan lewat{' '}
+        <strong className="font-semibold text-ink-600 dark:text-ink-300">nama variasi</strong>. Kasir
+        dan toko online menampilkannya sebagai satu produk berisi pilihan, sedangkan stok dan
+        penjualan tetap terlacak per SKU. Dua produk boleh bernama sama persis asal SKU induknya
+        berbeda.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
+        <Input
+          name="parent_sku"
+          label="SKU Induk"
+          value={form.parent_sku}
+          onChange={(e) => setForm({ ...form, parent_sku: e.target.value })}
+          placeholder="cth. GEAR-BLKNG-FIZR-BLAC"
+          hint="Sama dengan kolom SKU Induk di ekspor marketplace. Kosong = dikelompokkan lewat nama."
+        />
         <Input
           name="variant_name"
           label="Nama variasi"

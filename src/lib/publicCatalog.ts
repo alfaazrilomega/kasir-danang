@@ -24,6 +24,7 @@ export interface PublicCatalogProduct {
   sold_qty?: number;
   brand?: string | null;
   variant_name?: string | null;
+  parent_sku?: string | null;
   compare_at_price?: number;
   rating_avg?: number;
   rating_count?: number;
@@ -94,10 +95,70 @@ export interface KelompokProduk {
   habis: boolean;
 }
 
+/**
+ * Kunci yang menyatukan varian satu produk.
+ *
+ * SKU Induk dipakai lebih dulu karena nama produk tidak cukup: di katalog
+ * client ada dua produk bernama sama persis dengan SKU Induk berbeda
+ * (GEAR-BLKNG-FIZR dan GEAR-BLKNG-FIZR-BLAC), dan menyamakan keduanya
+ * menghasilkan satu produk berisi 17 varian campur warna. Produk lama yang
+ * SKU Induknya belum diisi tetap dikelompokkan lewat nama seperti sebelumnya.
+ */
+export function kunciKelompok(p: { name: string; parent_sku?: string | null }): string {
+  const induk = (p.parent_sku ?? '').trim();
+  return induk ? 'induk:' + induk.toLowerCase() : 'nama:' + p.name.trim().toLowerCase();
+}
+
+/**
+ * Produk yang ditawarkan sebagai tambahan di keranjang dan checkout.
+ *
+ * Dipilih dari kategori yang sama dengan isi keranjang lebih dulu, karena yang
+ * paling sering dibeli bersamaan di toko ini adalah barang serumpun (gear depan
+ * dengan rantai, misalnya). Kalau belum cukup, dilengkapi produk terlaris toko.
+ *
+ * Yang sudah ada di keranjang dan yang stoknya habis tidak pernah ditawarkan —
+ * menawarkan barang habis membuat pembeli menekan tombol yang langsung gagal.
+ */
+export function tawaranTambahan(
+  products: PublicCatalogProduct[],
+  idDiKeranjang: string[],
+  maks = 4,
+): PublicCatalogProduct[] {
+  const dipakai = new Set(idDiKeranjang);
+  const tersedia = products.filter(
+    (p) => !dipakai.has(p.id) && !(p.track_stock && Number(p.stock_qty ?? 0) <= 0),
+  );
+  const kategoriKeranjang = new Set(
+    products.filter((p) => dipakai.has(p.id)).map((p) => p.category_id ?? ''),
+  );
+  const laris = (a: PublicCatalogProduct, b: PublicCatalogProduct) =>
+    Number(b.sold_qty ?? 0) - Number(a.sold_qty ?? 0);
+
+  const serumpun = tersedia
+    .filter((p) => kategoriKeranjang.has(p.category_id ?? ''))
+    .sort(laris);
+  const sisanya = tersedia
+    .filter((p) => !kategoriKeranjang.has(p.category_id ?? ''))
+    .sort(laris);
+
+  // Satu varian per kelompok: menawarkan 14 ukuran gear yang sama bukan tawaran,
+  // itu daftar.
+  const hasil: PublicCatalogProduct[] = [];
+  const kelompokDipakai = new Set<string>();
+  for (const p of [...serumpun, ...sisanya]) {
+    const k = kunciKelompok(p);
+    if (kelompokDipakai.has(k)) continue;
+    kelompokDipakai.add(k);
+    hasil.push(p);
+    if (hasil.length >= maks) break;
+  }
+  return hasil;
+}
+
 export function kelompokkanVarian(products: PublicCatalogProduct[]): KelompokProduk[] {
   const map = new Map<string, PublicCatalogProduct[]>();
   for (const p of products) {
-    const k = p.name.trim().toLowerCase();
+    const k = kunciKelompok(p);
     map.set(k, [...(map.get(k) ?? []), p]);
   }
   return [...map.entries()].map(([key, anggota]) => {

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   CalendarDays,
+  Database,
   Pencil,
   Plus,
   Receipt,
@@ -39,6 +40,7 @@ import {
   expenseMethodLabel,
 } from '@/lib/expenseCategories';
 import { hasCapability } from '@/lib/roles';
+import { ImportExportModal } from '@/components/data/ImportExportModal';
 import type { CashMovement, Expense, ExpenseCategory, ExpensePaymentMethod } from '@/types';
 
 interface FormState {
@@ -78,6 +80,7 @@ export function Expenses() {
   const [q, setQ] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | ExpenseCategory>('all');
   const [open, setOpen] = useState(false);
+  const [imporOpen, setImporOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
 
@@ -250,11 +253,26 @@ export function Expenses() {
           </p>
         </div>
         {canManage && (
-          <Button onClick={startNew} variant="onBrand">
-            <Plus size={16} /> Catat Pengeluaran
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => setImporOpen(true)} variant="onBrandSoft">
+              <Database size={16} /> Impor / Ekspor
+            </Button>
+            <Button onClick={startNew} variant="onBrand">
+              <Plus size={16} /> Catat Pengeluaran
+            </Button>
+          </div>
         )}
       </div>
+
+      <ImportExportModal
+        open={imporOpen}
+        hanya="pengeluaran"
+        storeId={storeId}
+        onClose={() => setImporOpen(false)}
+        onImported={() => {
+          if (storeId) void pullExpenses(storeId);
+        }}
+      />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="p-4">

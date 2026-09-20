@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowDownUp,
   Download,
+  Upload,
   Eye,
   Minus,
   Pencil,
@@ -26,6 +27,7 @@ import { getBackendClient } from '@/lib/api';
 import { pullLoyalty, pullRecentOrders, pullReference } from '@/lib/sync';
 import { cn, formatDate, formatDateTime, formatMoney, uuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
+import { ImportExportModal } from '@/components/data/ImportExportModal';
 import type { Customer, LoyaltyTransaction } from '@/types';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -55,6 +57,7 @@ export function Customers() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const [open, setOpen] = useState(false);
+  const [imporOpen, setImporOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [detail, setDetail] = useState<Customer | null>(null);
@@ -237,11 +240,24 @@ export function Customers() {
           >
             <Download size={16} /> Export CSV
           </Button>
+          <Button onClick={() => setImporOpen(true)} variant="onBrandSoft">
+            <Upload size={16} /> Impor
+          </Button>
           <Button onClick={startNew} variant="onBrand">
             <Plus size={16} /> Add Customer
           </Button>
         </div>
       </div>
+
+      <ImportExportModal
+        open={imporOpen}
+        hanya="pelanggan"
+        storeId={storeId}
+        onClose={() => setImporOpen(false)}
+        onImported={() => {
+          if (storeId) void pullReference(storeId);
+        }}
+      />
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center gap-3">

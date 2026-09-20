@@ -231,7 +231,11 @@ export function Reports() {
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [expensesInRange]);
-  const netProfit = curStats.gross - expenseTotal;
+  // Potongan marketplace adalah biaya yang benar-benar keluar, sama seperti
+  // pengeluaran operasional — hanya saja tercatat per pesanan, bukan di tabel
+  // pengeluaran, supaya tidak dobel kalau client juga mengimpor biaya admin
+  // dari rekening koran.
+  const netProfit = curStats.gross - expenseTotal - curStats.marketplaceFee;
   const prevStats = useMemo(
     () => computeStats(prev, items, productById, prevRefunds),
     [prev, items, productById, prevRefunds],
@@ -539,6 +543,7 @@ export function Reports() {
       rows.push(['Retur / refund', csvInt(curStats.refunds)]);
       rows.push(['HPP', csvInt(curStats.cogs)]);
       rows.push(['Laba kotor', csvInt(curStats.gross)]);
+      rows.push(['Potongan marketplace (dari pencairan)', csvInt(curStats.marketplaceFee)]);
       rows.push(['Pengeluaran operasional', csvInt(expenseTotal)]);
       for (const [cat, amount] of expenseByCategory) {
         rows.push(['  ' + expenseCategoryLabel(cat), csvInt(amount)]);
@@ -1281,6 +1286,13 @@ export function Reports() {
                   bold
                 />
                 <hr className="border-ink-100 dark:border-ink-800" />
+                {curStats.marketplaceFee > 0 && (
+                  <Row
+                    label="Potongan Marketplace (dari pencairan)"
+                    value={`-${formatMoney(curStats.marketplaceFee, store?.currency)}`}
+                    negative
+                  />
+                )}
                 <Row
                   label="Pengeluaran Operasional"
                   value={`-${formatMoney(expenseTotal, store?.currency)}`}
@@ -1323,7 +1335,9 @@ export function Reports() {
               <p className="mt-3 text-xs text-ink-500">
                 HPP dihitung dari <code>cost_price</code> tiap produk yang terjual. Pastikan modal
                 produk terisi di halaman Products supaya laba akurat. Laba Bersih = Laba Kotor
-                dikurangi pengeluaran operasional pada rentang yang sama.
+                dikurangi pengeluaran operasional dan potongan marketplace pada rentang yang
+                sama. Potongan marketplace hanya muncul untuk pesanan yang laporan
+                pencairannya sudah diimpor.
               </p>
             </>
           )}
@@ -1787,6 +1801,14 @@ interface Stats {
   shipping: number;
   /** Nilai retur pada periode ini. Sudah dipotong dari `revenue`. */
   refunds: number;
+  /**
+   * Potongan marketplace yang sudah diketahui dari laporan pencairan.
+   *
+   * Bukan bagian dari `revenue`: harga tayang tetap dihitung penuh sebagai
+   * penjualan supaya omzet sama dengan angka di Shopee/TikTok, dan potongannya
+   * berdiri sendiri sebagai biaya — sama seperti pengeluaran operasional.
+   */
+  marketplaceFee: number;
   cogs: number;
   gross: number;
   margin: number;
@@ -1815,10 +1837,12 @@ function computeStats(
   // tidak punya HPP, jadi memasukkannya membuat margin terlihat lebih
   // besar dari kenyataan. Pajak juga bukan pendapatan toko.
   let shipping = 0;
+  let marketplaceFee = 0;
   for (const o of orderList) {
     const ongkir = Number(o.shipping_cost ?? 0);
     shipping += ongkir;
     revenue += Number(o.total) - Number(o.tax) - ongkir;
+    marketplaceFee += Number(o.marketplace_fee ?? 0);
   }
   for (const it of items) {
     if (!orderIds.has(it.order_id)) continue;
@@ -1838,6 +1862,7 @@ function computeStats(
     revenue: netRevenue,
     shipping,
     refunds,
+    marketplaceFee,
     cogs,
     gross,
     margin: netRevenue ? (gross / netRevenue) * 100 : 0,

@@ -82,6 +82,17 @@ const TYPE_TABS: { value: OrderTypeFilter; label: string }[] = [
   { value: 'take_away', label: 'Take Away' },
 ];
 
+// Kunci rincian potongan pencairan datang apa adanya dari settlementImport.ts
+// (cuma TikTok yang merincinya per komponen; Shopee cuma kasih satu angka
+// bersih). Kunci di luar daftar ini tetap ditampilkan pakai kuncinya sendiri
+// supaya komponen baru dari provider tidak hilang diam-diam.
+const FEE_DETAIL_LABELS: Record<string, string> = {
+  komisi: 'Komisi',
+  layanan_pre_order: 'Layanan pre-order',
+  pembayaran: 'Pembayaran',
+  ongkir: 'Ongkir',
+};
+
 interface Preset {
   key: string;
   label: string;
@@ -1086,6 +1097,47 @@ export function Orders() {
                 </div>
                 {selected.adjustment_note && (
                   <div className="mt-1 italic text-ink-500">{selected.adjustment_note}</div>
+                )}
+              </div>
+            )}
+
+            {selected.net_settled != null && (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs dark:border-emerald-500/20 dark:bg-emerald-950/25">
+                <div className="font-semibold text-emerald-700 dark:text-emerald-200">
+                  Pencairan
+                </div>
+                <div className="mt-1.5 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-ink-500 dark:text-ink-400">Harga tayang</span>
+                    <span>{formatMoney(selected.total, store?.currency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-ink-500 dark:text-ink-400">Potongan</span>
+                    <span>-{formatMoney(Number(selected.marketplace_fee ?? 0), store?.currency)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-ink-500 dark:text-ink-400">Dana cair</span>
+                    <span className="font-bold">{formatMoney(Number(selected.net_settled), store?.currency)}</span>
+                  </div>
+                  {selected.settlement_date && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-ink-500 dark:text-ink-400">Tanggal cair</span>
+                      <span>{formatDate(selected.settlement_date)}</span>
+                    </div>
+                  )}
+                </div>
+                {selected.fee_detail && Object.keys(selected.fee_detail).length > 0 && (
+                  <ul className="mt-2 space-y-1 border-t border-emerald-200 pt-2 dark:border-emerald-500/30">
+                    {Object.entries(selected.fee_detail).map(([key, value]) => (
+                      <li
+                        key={key}
+                        className="flex items-center justify-between gap-2 text-ink-600 dark:text-ink-300"
+                      >
+                        <span>{FEE_DETAIL_LABELS[key] ?? key}</span>
+                        <span>{formatMoney(value, store?.currency)}</span>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             )}

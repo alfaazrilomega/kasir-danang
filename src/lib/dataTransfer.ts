@@ -45,6 +45,9 @@ export const PRODUCT_COLUMNS = [
   // Opsional: tampilan toko online (merek, label variasi, harga coret).
   'merek',
   'nama_variasi',
+  // Kolom "SKU Induk" di ekspor marketplace: penyatu varian dari satu produk.
+  // Dua produk boleh bernama sama asal SKU induknya berbeda.
+  'sku_induk',
   'harga_coret',
 ] as const;
 
@@ -103,6 +106,7 @@ export interface ParsedProduct {
   /** null = kolom kosong: nilai lama dipertahankan saat mode gabung. */
   brand: string | null;
   variantName: string | null;
+  parentSku: string | null;
   compareAtPrice: number | null;
 }
 
@@ -382,6 +386,7 @@ export async function planProductImport(
       setItems,
       brand: get(r, 'merek') || null,
       variantName: get(r, 'nama_variasi') || null,
+      parentSku: get(r, 'sku_induk') || null,
       compareAtPrice: hargaCoret,
     });
   }
@@ -514,6 +519,7 @@ export async function runProductImport(
       height_cm: r.heightCm ?? prev?.height_cm ?? 0,
       brand: r.brand ?? prev?.brand ?? null,
       variant_name: r.variantName ?? prev?.variant_name ?? null,
+      parent_sku: r.parentSku ?? prev?.parent_sku ?? null,
       compare_at_price: r.compareAtPrice ?? prev?.compare_at_price ?? 0,
       images: prev?.images ?? [],
     };
@@ -740,6 +746,7 @@ export async function exportProductsCsv(storeId: string): Promise<number> {
       isiSetText(p.id),
       p.brand ?? '',
       p.variant_name ?? '',
+      p.parent_sku ?? '',
       p.compare_at_price ?? 0,
     ]);
 

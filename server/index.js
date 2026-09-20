@@ -86,7 +86,7 @@ const TABLES = {
       'id', 'store_id', 'category_id', 'name', 'description', 'image_url',
       'base_price', 'sizes', 'is_active', 'sku', 'barcode', 'cost_price',
       'stock_qty', 'min_stock', 'track_stock', 'created_at', 'weight_gram',
-      'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'compare_at_price',
+      'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
       'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
       'highlights', 'license_type', 'license_code', 'video_url',
     ],
@@ -147,6 +147,7 @@ const TABLES = {
       'delivery_address', 'shipping_cost', 'tax_inclusive',
       'payment_channel', 'payment_reference', 'payment_url',
       'delivery_province', 'delivery_city',
+      'marketplace_fee', 'net_settled', 'settlement_date', 'fee_detail',
     ],
     tenantColumn: 'store_id',
   },
@@ -1357,6 +1358,86 @@ function ambilPengirimEmail() {
   return pengirimEmail;
 }
 
+/**
+ * Kabar pesanan baru ke pembeli dan ke toko.
+ *
+ * Dipisah dari alur simpan pesanan dan SELALU dibungkus try/catch: pesanan yang
+ * sudah tersimpan tidak boleh gagal hanya karena layanan email sedang menolak.
+ * Kegagalannya cukup masuk log — staf tetap melihat pesanannya di antrian.
+ */
+/**
+ * Alamat yang tidak boleh benar-benar dikirimi email.
+ *
+ * Domain contoh/uji dipakai suite Playwright tiap kali membuat pesanan. Mengirim
+ * ke sana berarti memantulkan email berkali-kali dari domain pengirim toko, dan
+ * pantulan beruntun itulah yang membuat domain dicurigai penyedia email.
+ */
+function alamatUji(email) {
+  const domain = String(email || '').split('@')[1]?.toLowerCase() || '';
+  if (!domain) return true;
+  if (domain === 'contoh.id' || domain === 'pesanan.web') return true;
+  if (/^example\.(com|net|org)$/.test(domain)) return true;
+  return /\.(test|invalid|localhost|local)$/.test(domain);
+}
+
+async function kabarkanPesananBaru({ storeId, orderNumber, total, items, pembeliEmail, customerName, customerPhone, alamat, metode }) {
+  const toko = (await pool.query('select name from public.stores where id = $1', [storeId])).rows[0]?.name || 'Toko';
+  const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+  const barisBarang = items
+    .map((it) => `<tr><td>${escHtml(it.name)}</td><td align="center">${it.qty}</td><td align="right">${rupiah(it.price * it.qty)}</td></tr>`)
+    .join('');
+  const tabel =
+    '<table cellpadding="6" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:520px">' +
+    '<tr><th align="left">Barang</th><th align="center">Qty</th><th align="right">Subtotal</th></tr>' +
+    barisBarang +
+    `<tr><td colspan="2"><b>Total</b></td><td align="right"><b>${rupiah(total)}</b></td></tr>` +
+    '</table>';
+
+  if (!pembeliEmail || alamatUji(pembeliEmail)) {
+    console.log(`[pesanan] ${orderNumber}: email pembeli dilewati (${pembeliEmail || 'tanpa email'}).`);
+  } else {
+    await kirimEmail({
+      to: pembeliEmail,
+      subject: `Pesanan ${orderNumber} diterima - ${toko}`,
+      text:
+        `Terima kasih, pesananmu di ${toko} sudah kami terima.\n\n` +
+        `Nomor pesanan: ${orderNumber}\nTotal: ${rupiah(total)}\n` +
+        `Metode pembayaran: ${metode}\n\n` +
+        'Pesanan sedang menunggu konfirmasi toko. Ongkos kirim dikabari terpisah.',
+      html:
+        `<p>Terima kasih, pesananmu di <b>${escHtml(toko)}</b> sudah kami terima.</p>` +
+        `<p>Nomor pesanan: <b>${escHtml(orderNumber)}</b><br>Metode pembayaran: ${escHtml(metode)}</p>` +
+        tabel +
+        '<p>Pesanan sedang menunggu konfirmasi toko. Ongkos kirim dikabari terpisah lewat WhatsApp.</p>',
+    });
+  }
+
+  // Alamat pemberitahuan toko HARUS disetel sendiri lewat ORDER_NOTIFY_EMAIL.
+  // Sengaja tidak jatuh ke alamat pengirim: alamat pengirim ada di setiap
+  // pemasangan, termasuk mesin pengembangan, dan toko akan kebanjiran email dari
+  // pesanan uji tanpa pernah memintanya.
+  const tujuanToko = (process.env.ORDER_NOTIFY_EMAIL || '').trim();
+  if (!tujuanToko || alamatUji(tujuanToko)) {
+    console.log(`[pesanan] ${orderNumber}: ORDER_NOTIFY_EMAIL belum disetel, toko tidak dikabari lewat email.`);
+  } else {
+    await kirimEmail({
+      to: tujuanToko,
+      subject: `Pesanan website baru ${orderNumber} - ${rupiah(total)}`,
+      text:
+        `Pesanan baru dari toko online ${toko}.\n\n` +
+        `Nomor: ${orderNumber}\nPembeli: ${customerName} (${customerPhone})\n` +
+        `Alamat: ${alamat}\nTotal: ${rupiah(total)}\nMetode: ${metode}`,
+      html:
+        `<p>Pesanan baru dari toko online <b>${escHtml(toko)}</b>.</p>` +
+        `<p>Nomor: <b>${escHtml(orderNumber)}</b><br>` +
+        `Pembeli: ${escHtml(customerName)} (${escHtml(customerPhone)})<br>` +
+        `Alamat: ${escHtml(alamat)}<br>Metode: ${escHtml(metode)}</p>` +
+        tabel +
+        '<p>Pesanan menunggu konfirmasi di menu Riwayat Transaksi, tab Pesanan Website.</p>',
+    });
+  }
+}
+
 async function kirimEmail({ to, subject, text, html }) {
   // Domain pengirim client sudah terverifikasi di Mailketing, jadi dipakai lebih
   // dulu. Kalau layanannya menolak (token salah, kredit habis), pengiriman
@@ -1577,7 +1658,7 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
 
   const productRes = await pool.query(
     `select id, name, description, image_url, images, base_price, compare_at_price, category_id,
-            track_stock, stock_qty, sku, brand, variant_name, weight_gram, length_cm, width_cm, height_cm,
+            track_stock, stock_qty, sku, brand, variant_name, parent_sku, weight_gram, length_cm, width_cm, height_cm,
             spec, variant_label, warranty_type, warranty_period, box_contents, highlights,
             license_type, license_code, video_url
        from public.products
@@ -1587,12 +1668,24 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
   if (!productRes.rowCount) throw new HttpError(404, 'Produk tidak ditemukan atau sudah tidak dijual.');
   const product = productRes.rows[0];
 
-  const variantRes = await pool.query(
-    `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
-       from public.products
-      where store_id = $1 and is_active = true and lower(btrim(name)) = lower(btrim($2))`,
-    [storeId, product.name],
-  );
+  // Varian dikumpulkan lewat SKU Induk kalau produknya punya; nama produk cuma
+  // cadangan untuk data lama. Di katalog client ada dua produk bernama sama
+  // persis dengan SKU Induk berbeda, dan mengelompokkan dari nama membuat
+  // keduanya tampil sebagai satu produk berisi varian campur.
+  const variantRes = product.parent_sku
+    ? await pool.query(
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+           from public.products
+          where store_id = $1 and is_active = true and parent_sku = $2`,
+        [storeId, product.parent_sku],
+      )
+    : await pool.query(
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+           from public.products
+          where store_id = $1 and is_active = true and parent_sku is null
+            and lower(btrim(name)) = lower(btrim($2))`,
+        [storeId, product.name],
+      );
   const ids = variantRes.rows.map((v) => v.id);
 
   const komponenRes = await pool.query(
@@ -1973,6 +2066,25 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
     }
   }
 
+  // Kabar dikirim setelah transaksi database aman. Ditunggu (bukan dilepas)
+  // karena di serverless proses bisa dimatikan begitu balasan terkirim, tapi
+  // kegagalannya tidak pernah menggagalkan pesanan.
+  try {
+    await kabarkanPesananBaru({
+      storeId,
+      orderNumber,
+      total,
+      items: orderItems,
+      pembeliEmail: pembeli.email || null,
+      customerName,
+      customerPhone,
+      alamat: deliveryAddress,
+      metode: kanalTripay ? kanalTripay.name : metodeTercatat,
+    });
+  } catch (error) {
+    console.error('[pesanan] gagal mengabarkan lewat email:', error.message);
+  }
+
   res.json({ data: { order_id: orderId, order_number: orderNumber, payment: pembayaran } });
 }));
 
@@ -2103,7 +2215,7 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
   const productsRes = await pool.query(
     `select p.id, p.name, p.description, p.image_url, p.base_price, p.category_id,
             p.track_stock, p.stock_qty, p.weight_gram, p.length_cm, p.width_cm, p.height_cm,
-            p.brand, p.variant_name, p.compare_at_price,
+            p.brand, p.variant_name, p.parent_sku, p.compare_at_price,
             coalesce(s.sold, 0)::int as sold_qty,
             coalesce(rv.avg_rating, 0)::float as rating_avg,
             coalesce(rv.jumlah, 0)::int as rating_count

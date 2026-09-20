@@ -290,9 +290,13 @@ export async function exportSupplierCatalog() {
  * Laporan dana cair per pesanan: harga tayang dikurangi potongan platform
  * (biaya admin dll) = uang yang benar-benar diterima toko.
  *
- * Potongan aktual dipakai bila total pesanan sudah disesuaikan lewat
- * "Sesuaikan harga" (total asli tersimpan di original_total). Selain itu
- * potongan diperkirakan dari persen biaya channel di Pengaturan.
+ * Urutan sumber angkanya, dari yang paling dipercaya:
+ *   1. Laporan pencairan yang sudah diimpor (net_settled/marketplace_fee) —
+ *      angka dari penyedia, bukan hitungan sendiri.
+ *   2. Total yang sudah disesuaikan manual lewat "Sesuaikan harga"
+ *      (total asli tersimpan di original_total).
+ *   3. Perkiraan dari persen biaya channel di Pengaturan, untuk pesanan yang
+ *      belum cair sama sekali.
  */
 export async function exportDisbursement(orderList: Order[], opts?: { filenameSuffix?: string }) {
   const channels = await db.sales_channels.toArray();
@@ -301,17 +305,22 @@ export async function exportDisbursement(orderList: Order[], opts?: { filenameSu
 
   const headers = [
     'No. Pesanan', 'No. Pesanan Platform', 'Tanggal', 'Channel', 'Pelanggan', 'Status Order',
-    'Harga Tayang', 'Potongan (Admin dll)', 'Dana Cair', 'Dasar Potongan', 'Sudah Diterima',
-    'Belum Diterima',
+    'Harga Tayang', 'Potongan (Admin dll)', 'Dana Cair', 'Dasar Potongan', 'Tanggal Cair',
+    'Sudah Diterima', 'Belum Diterima',
   ];
   const rows = orderList
     .filter(countsAsSale)
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
     .map((o) => {
+      const sudahCair = o.net_settled != null;
       const disesuaikan = o.original_total != null;
       const tayang = Number(o.original_total ?? o.total);
       const fee = channelFeePercent(o.sales_channel, channels);
-      const cair = disesuaikan ? Number(o.total) : Math.round(tayang * (1 - fee / 100));
+      const cair = sudahCair
+        ? Number(o.net_settled)
+        : disesuaikan
+          ? Number(o.total)
+          : Math.round(tayang * (1 - fee / 100));
       const diterima =
         o.payment_term === 'tempo'
           ? Number(o.paid_amount ?? 0)
@@ -328,7 +337,14 @@ export async function exportDisbursement(orderList: Order[], opts?: { filenameSu
         int(tayang),
         int(tayang - cair),
         int(cair),
-        disesuaikan ? 'Aktual (disesuaikan)' : fee > 0 ? `Estimasi ${fee}% biaya channel` : 'Tanpa potongan',
+        sudahCair
+          ? 'Aktual (pencairan)'
+          : disesuaikan
+            ? 'Aktual (disesuaikan)'
+            : fee > 0
+              ? `Estimasi ${fee}% biaya channel`
+              : 'Tanpa potongan',
+        text(o.settlement_date ?? null),
         int(diterima),
         int(Math.max(0, cair - diterima)),
       ];

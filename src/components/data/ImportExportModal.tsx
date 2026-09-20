@@ -43,12 +43,18 @@ interface Props {
   onClose: () => void;
   /** Dipanggil setelah impor sukses supaya halaman pemanggil menyegarkan data. */
   onImported?: () => void;
+  /** Kunci modal ke satu jenis data saja; dipakai tombol di halaman masing-masing. */
+  hanya?: 'produk' | 'pelanggan' | 'pengeluaran';
 }
 
-export function ImportExportModal({ open, storeId, onClose, onImported }: Props) {
+export function ImportExportModal({ open, storeId, onClose, onImported, hanya }: Props) {
   const [tab, setTab] = useState<Tab>('pilih');
   // Produk (katalog) atau pelanggan (butir 5.1 sheet client), dalam satu pintu di dashboard.
-  const [jenis, setJenis] = useState<'produk' | 'pelanggan' | 'pengeluaran'>('produk');
+  //
+  // Halaman Produk, Pelanggan, dan Pengeluaran memanggil modal yang sama dengan
+  // `hanya` diisi, supaya orang yang sudah berada di halaman itu tidak perlu
+  // memilih jenis lagi — dan tidak bisa salah mengimpor jenis lain dari sana.
+  const [jenis, setJenis] = useState<'produk' | 'pelanggan' | 'pengeluaran'>(hanya ?? 'produk');
   // Default GABUNG, bukan ganti total: mengunggah beberapa SKU baru saja
   // dengan mode ganti total akan mengarsipkan semua produk lain.
   const [mode, setMode] = useState<ImportMode>('merge');
@@ -155,7 +161,7 @@ export function ImportExportModal({ open, storeId, onClose, onImported }: Props)
 
   return (
     <Modal open={open} onClose={close} title="Impor / Ekspor Data" size="lg">
-      {(tab === 'pilih' || jenis !== 'produk') && (
+      {!hanya && (tab === 'pilih' || jenis !== 'produk') && (
         <div className="mb-4 flex gap-1 rounded-full bg-ink-100 p-1 text-xs font-semibold dark:bg-ink-800">
           {([
             ['produk', 'Produk'],

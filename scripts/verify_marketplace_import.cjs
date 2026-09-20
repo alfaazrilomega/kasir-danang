@@ -101,10 +101,18 @@ function berkasShopee(tujuan) {
     'Metode Pembayaran', 'SKU Induk', 'Nama Produk', 'Nomor Referensi SKU', 'Jumlah',
     'Harga Setelah Diskon', 'Nama Penerima',
   ];
-  const baris = [
-    [NO_SP[0], 'Perlu Dikirim', '2026-09-02 19:34', '2026-09-02 19:35', 'QRIS',
-      'UJI-INDUK', 'Gear Belakang Uji', 'UJI-SKU-D', '1', '195.000', 'E*** F***'],
+  // Empat baris SKU pada satu nomor pesanan: pesanan set di marketplace memang
+  // terurai begitu, dan importer hanya boleh mengambil tiga baris pertama.
+  const isi = [
+    ['UJI-SKU-D', 'Gear Belakang Uji', '195.000'],
+    ['UJI-SKU-E', 'Gear Depan Uji', '65.000'],
+    ['UJI-SKU-F', 'Rantai Uji', '145.000'],
+    ['UJI-SKU-G', 'Baut Uji (baris keempat, harus dilewati)', '15.000'],
   ];
+  const baris = isi.map(([sku, nama, harga]) => [
+    NO_SP[0], 'Perlu Dikirim', '2026-09-02 19:34', '2026-09-02 19:35', 'QRIS',
+    'UJI-INDUK', nama, sku, '1', harga, 'E*** F***',
+  ]);
   buatXlsx(tujuan, [header, ...baris]);
 }
 
@@ -231,17 +239,21 @@ function bersihkan() {
     await page.waitForTimeout(3500);
     teks = await modal().innerText();
     record('Susunan Shopee dikenali', /ekspor Shopee/i.test(teks));
-    record('Titik ribuan dibaca sebagai ribuan, bukan desimal', /195\.000/.test(teks) && !/Rp 195\b/.test(teks));
+    // 195.000 + 65.000 + 145.000 dari tiga baris pertama; baris keempat dipotong batas.
+    record('Titik ribuan dibaca sebagai ribuan, bukan desimal', /405\.000/.test(teks) && !/Rp 405\b/.test(teks));
     record('Pilihan channel tujuan tersedia', /Channel tujuan/i.test(teks));
     n = /Impor (\d+) Pesanan/i.exec(teks);
     record('Satu pesanan Shopee terbaca', n && n[1] === '1', n ? n[1] + ' pesanan' : '-');
+    record('Baris SKU keempat dilaporkan dilewati, bukan dibuang diam-diam',
+      /3 baris SKU/i.test(teks) && /dilewati/i.test(teks),
+      (teks.split(String.fromCharCode(10)).find((b) => /baris SKU/i.test(b)) || '(tidak disebut)').slice(0, 90));
 
     await page.getByRole('button', { name: /Impor \d+ Pesanan/i }).click();
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 3000, timeoutMs: 120000 });
     await page.waitForTimeout(1500);
 
     const nilaiSp = psql(`select total from public.orders where order_number = '${NO_SP[0]}';`);
-    record('Nilai pesanan Shopee benar', Number(nilaiSp) === 195000, 'Rp ' + nilaiSp);
+    record('Nilai pesanan Shopee benar', Number(nilaiSp) === 405000, 'Rp ' + nilaiSp);
     const channelSp = psql(`select sales_channel from public.orders where order_number = '${NO_SP[0]}';`);
     record('Channel terisi dari susunan berkas', channelSp === 'shopee', channelSp);
     const qrisSp = psql(`select payment_method from public.orders where order_number = '${NO_SP[0]}';`);

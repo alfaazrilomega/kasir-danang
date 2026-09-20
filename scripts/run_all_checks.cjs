@@ -12,6 +12,7 @@ const SUITES = [
   'verify_purchase_revisions',
   'verify_product_sets',
   'verify_opname_import',
+  'verify_settlement_import',
   'verify_client_additions',
   'verify_guest_checkout',
 ];

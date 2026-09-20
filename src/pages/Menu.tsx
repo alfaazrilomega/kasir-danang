@@ -19,6 +19,7 @@ import { getCategoryIcon } from '@/lib/categoryIcons';
 import { toast } from 'sonner';
 import { db } from '@/lib/db';
 import { hitungStokSet } from '@/components/products/ProductSetSection';
+import { kunciKelompok } from '@/lib/publicCatalog';
 import { useAuth } from '@/stores/auth';
 import { useCart } from '@/stores/cart';
 import { useUI } from '@/stores/ui';
@@ -49,6 +50,8 @@ export function MenuPage() {
   const [category, setCategory] = useState<string | 'all'>('all');
   const [q, setQ] = useState('');
   const [selectedSize, setSelectedSize] = useState<Record<string, string>>({});
+  // Varian yang sedang dipilih di tiap kartu kelompok, dikunci id produknya.
+  const [varianDipilih, setVarianDipilih] = useState<Record<string, string>>({});
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [priceMin, setPriceMin] = useState<number | ''>('');
   const [priceMax, setPriceMax] = useState<number | ''>('');
@@ -159,6 +162,23 @@ export function MenuPage() {
     popularity,
     topSellerIds,
   ]);
+
+  /**
+   * Satu kartu per produk, bukan per SKU.
+   *
+   * Client menjual satu produk dengan belasan varian ukuran; menampilkan tiap
+   * SKU sebagai kartu sendiri membuat layar kasir penuh judul yang sama persis
+   * dan barang yang benar jadi sulit dicari. Stok tetap milik tiap varian, jadi
+   * yang dikelompokkan hanya tampilannya.
+   */
+  const kelompok = useMemo(() => {
+    const peta = new Map<string, Product[]>();
+    for (const p of filtered) {
+      const k = kunciKelompok(p);
+      peta.set(k, [...(peta.get(k) ?? []), p]);
+    }
+    return [...peta.entries()].map(([key, anggota]) => ({ key, anggota }));
+  }, [filtered]);
 
   const activeFilters = useMemo<ActiveFilter[]>(() => {
     const out: ActiveFilter[] = [];
@@ -491,7 +511,18 @@ export function MenuPage() {
           </Card>
         ) : (
           <div className={cn('grid gap-3', gridCols)}>
-            {filtered.map((p) => {
+            {kelompok.map((g) => {
+              // Varian yang ditampilkan: pilihan kasir, kalau belum memilih
+              // ambil yang stoknya masih ada supaya kartu tidak membuka dengan
+              // varian habis padahal yang lain tersedia.
+              const p =
+                g.anggota.find((x) => x.id === varianDipilih[g.key]) ??
+                g.anggota.find((x) => !x.track_stock || Number(x.stock_qty ?? 0) > 0) ??
+                g.anggota[0];
+              const banyakVarian = g.anggota.length > 1;
+              const hargaVarian = g.anggota.map((x) => Number(x.base_price));
+              const hargaMin = Math.min(...hargaVarian);
+              const hargaMax = Math.max(...hargaVarian);
               const size = selectedSize[p.id] ?? p.sizes?.[0]?.label ?? '';
               const modifier =
                 p.sizes?.find((s) => s.label === size)?.price_modifier ?? 0;
@@ -502,7 +533,7 @@ export function MenuPage() {
               const compact = menuDensity === 'compact';
               return (
                 <Card
-                  key={p.id}
+                  key={g.key}
                   className={cn(
                     'group relative flex h-full flex-col overflow-hidden transition-all',
                     empty ? 'opacity-60' : 'hover:-translate-y-0.5 hover:shadow-lg cursor-pointer',
@@ -563,13 +594,45 @@ export function MenuPage() {
                       </div>
                       {!compact && (
                         <div className="truncate font-mono text-xs text-ink-500">
-                          {p.sku ?? p.barcode ?? (p.sizes?.length ? 'Cup Size' : '—')}
+                          {banyakVarian
+                            ? `${g.anggota.length} varian · ${p.sku ?? '—'}`
+                            : (p.sku ?? p.barcode ?? (p.sizes?.length ? 'Cup Size' : '—'))}
                         </div>
                       )}
                       <div className={cn('mt-1 font-bold', compact ? 'text-xs' : 'text-sm')}>
-                        {formatMoney(Number(p.base_price) + Number(modifier))}
+                        {banyakVarian && hargaMin !== hargaMax && !varianDipilih[g.key]
+                          ? `${formatMoney(hargaMin)} – ${formatMoney(hargaMax)}`
+                          : formatMoney(Number(p.base_price) + Number(modifier))}
                       </div>
                     </div>
+
+                    {banyakVarian && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {g.anggota.map((v) => {
+                          const habis = v.track_stock && Number(v.stock_qty ?? 0) <= 0;
+                          return (
+                            <button
+                              key={v.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVarianDipilih({ ...varianDipilih, [g.key]: v.id });
+                              }}
+                              title={habis ? `${v.variant_name ?? v.sku ?? ''} stok habis` : undefined}
+                              className={cn(
+                                'inline-flex items-center justify-center rounded-full border font-semibold leading-none',
+                                compact ? 'h-6 px-2 text-[10px]' : 'h-7 px-2.5 text-xs',
+                                habis && 'line-through opacity-50',
+                                v.id === p.id
+                                  ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950/40'
+                                  : 'border-ink-200 dark:border-ink-700 text-ink-600',
+                              )}
+                            >
+                              {v.variant_name || v.sku || '—'}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {features.useSizes && p.sizes?.length ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">

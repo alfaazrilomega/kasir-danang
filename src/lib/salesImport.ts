@@ -42,6 +42,20 @@ export const SALES_COLUMNS = [
 
 const WAJIB = ['No. Pesanan', 'Tanggal', 'Qty', 'Harga Satuan'];
 
+/**
+ * Batas baris SKU yang diambil per pesanan, KHUSUS ekspor marketplace.
+ *
+ * Aturan dari client: satu pesanan cukup tiga baris SKU pertama. Di ekspor
+ * Shopee/TikTok, pesanan berisi set bisa terurai menjadi banyak baris komponen,
+ * dan mengambil semuanya membuat nilai pesanan membengkak jauh di atas yang
+ * dibayar pembeli.
+ *
+ * Tidak berlaku untuk template TokoKu sendiri: di sana satu pesanan memang
+ * boleh berisi puluhan barang, dan memotongnya di baris ketiga akan
+ * menghilangkan penjualan yang benar-benar terjadi.
+ */
+const MAKS_BARIS_SKU = 3;
+
 export type SalesLayout = 'kasir' | 'tiktok' | 'shopee';
 
 /**
@@ -191,6 +205,8 @@ export interface SalesImportPlan {
   layoutLabel: string;
   /** Baris yang SKU-nya tidak ketemu di katalog. */
   unmatched: number;
+  /** Baris SKU yang dipotong karena satu pesanan dibatasi tiga baris. */
+  melebihiBatas: number;
 }
 
 export interface SalesImportResult {
@@ -203,7 +219,7 @@ export interface SalesImportResult {
  * Terima "1.250.000", "1250000", dan "1250,50".
  * Titik ribuan dibuang, koma desimal diubah jadi titik.
  */
-function parseNumber(value: string): number | null {
+export function parseNumber(value: string): number | null {
   const raw = String(value ?? '').trim();
   if (!raw) return 0;
   const normalized = raw
@@ -223,7 +239,7 @@ function parseNumber(value: string): number | null {
  * Angka seri ikut ditangani karena sel tanggal di .xlsx kadang tersimpan
  * sebagai angka, bukan teks, tergantung cara berkasnya dibuat.
  */
-function parseDate(value: string): string | null {
+export function parseDate(value: string): string | null {
   const raw = String(value ?? '').trim();
   if (!raw) return null;
 
@@ -315,6 +331,7 @@ export async function planSalesImport(
     layout: 'kasir',
     layoutLabel: LAYOUTS[0].label,
     unmatched: 0,
+    melebihiBatas: 0,
   });
 
   if (rows.length < 2) return kosong('Berkas kosong.');
@@ -367,6 +384,7 @@ export async function planSalesImport(
   const duplicates = new Set<string>();
   let totalRows = 0;
   let unmatched = 0;
+  let melebihiBatas = 0;
 
   for (let i = 1; i < rows.length; i++) {
     const nomorBaris = i + 1; // baris 1 adalah judul kolom
@@ -484,7 +502,20 @@ export async function planSalesImport(
       costPrice: Number(produk?.cost_price ?? 0),
     };
 
+    // Satu pesanan marketplace diambil paling banyak tiga baris SKU (aturan
+    // client). Pesanan set di sana bisa terurai jadi banyak baris komponen, dan
+    // menyalin semuanya membuat satu pesanan tercatat jauh lebih besar dari
+    // yang sebenarnya dibeli. Baris yang dipotong tetap dihitung dan
+    // dilaporkan, tidak dibuang diam-diam.
     const list = grouped.get(orderNumber) ?? [];
+    if (map.layout !== 'kasir' && list.length >= MAKS_BARIS_SKU) {
+      melebihiBatas++;
+      issues.push({
+        row: nomorBaris,
+        message: `Pesanan ${orderNumber} sudah punya ${MAKS_BARIS_SKU} baris SKU — baris ini dilewati.`,
+      });
+      continue;
+    }
     list.push(line);
     grouped.set(orderNumber, list);
   }
@@ -503,6 +534,7 @@ export async function planSalesImport(
     layout: map.layout,
     layoutLabel: map.label,
     unmatched,
+    melebihiBatas,
   };
 }
 

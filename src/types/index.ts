@@ -93,6 +93,12 @@ export interface Product {
   brand?: string | null;
   /** Label variasi (mis. "12T"); produk aktif bernama sama tampil sebagai satu produk bervariasi. */
   variant_name?: string | null;
+  /**
+   * SKU induk: kunci yang menyatukan varian satu produk, diisi dari kolom
+   * "SKU Induk" ekspor marketplace. Dua produk boleh bernama sama persis
+   * asal SKU induknya berbeda, dan keduanya tetap tampil terpisah.
+   */
+  parent_sku?: string | null;
   /** Harga coret sebelum diskon; 0 = tidak ada. */
   compare_at_price?: number;
   /** Foto tambahan untuk galeri halaman produk. */
@@ -192,6 +198,20 @@ export interface Order {
   adjusted_by: string | null;
   /** Nomor pesanan milik platform: Shopee "No. Pesanan", TikTok "Order Id". */
   external_order_no: string | null;
+  /**
+   * Potongan marketplace (biaya admin, komisi, layanan, ongkir penjual) sebagai
+   * besaran positif. Sengaja tidak menimpa `total`: harga tayang tetap jadi
+   * penjualan, potongannya tampil sebagai biaya tersendiri di laba rugi.
+   */
+  marketplace_fee?: number;
+  /** Dana yang benar-benar masuk saldo. `null` = pesanan belum cair. */
+  net_settled?: number | null;
+  settlement_date?: string | null;
+  /**
+   * Rincian potongan apa adanya dari penyedia. TikTok memberi komisi, biaya
+   * layanan, dan ongkir terpisah; Shopee hanya memberi satu angka bersih.
+   */
+  fee_detail?: Record<string, number> | null;
   /**
    * Nama pelanggan yang diketik langsung, tanpa baris di tabel pelanggan.
    * Dipakai impor rekap marketplace dan penjualan cepat di kasir.

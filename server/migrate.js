@@ -32,7 +32,7 @@ const REQUIRED_COLUMNS = {
     'id', 'store_id', 'category_id', 'name', 'description', 'image_url',
     'base_price', 'sizes', 'is_active', 'sku', 'barcode', 'cost_price',
     'stock_qty', 'min_stock', 'track_stock', 'created_at', 'weight_gram',
-    'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'compare_at_price',
+    'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
     'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
     'highlights', 'license_type', 'license_code', 'video_url',
   ],
@@ -65,6 +65,7 @@ const REQUIRED_COLUMNS = {
     'delivery_address', 'shipping_cost', 'tax_inclusive',
     'payment_channel', 'payment_reference', 'payment_url',
     'delivery_province', 'delivery_city',
+    'marketplace_fee', 'net_settled', 'settlement_date', 'fee_detail',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',
