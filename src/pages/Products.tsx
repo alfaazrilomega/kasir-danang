@@ -6,6 +6,7 @@ import {
   ArrowUp,
   Barcode,
   BoxIcon,
+  ChevronRight,
   Copy,
   Download,
   History,
@@ -168,6 +169,20 @@ function dedupeMappings<T extends { channel_code: string; external_sku: string }
   });
 }
 
+/**
+ * Dipakai dua kali: memfilter tabel produk DAN menentukan kelompok varian mana
+ * yang otomatis dibuka. `kata` sudah dalam huruf kecil (dipangkas sekali oleh
+ * pemanggil, bukan tiap baris) supaya perbandingan tidak berulang kali memanggil
+ * toLowerCase untuk kata kuncinya sendiri.
+ */
+function cocokPencarian(p: { name: string; sku?: string | null; barcode?: string | null }, kata: string): boolean {
+  return (
+    p.name.toLowerCase().includes(kata) ||
+    (p.sku ?? '').toLowerCase().includes(kata) ||
+    (p.barcode ?? '').toLowerCase().includes(kata)
+  );
+}
+
 export function Products() {
   const { profile, store } = useAuth();
   const storeId = profile?.store_id ?? '';
@@ -181,6 +196,9 @@ export function Products() {
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
+  // Baris induk yang statusnya diubah manual oleh user. Kalau kelompoknya
+  // tidak ada di sini, keadaan bukanya ikut `bukaOtomatis` (lihat kelompokTampil).
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (storeId) pullInventoryReference(storeId);
@@ -254,6 +272,42 @@ export function Products() {
         .sort(urutNamaSku),
     [products, q],
   );
+
+  // Kelompok tabel: SATU baris per produk seperti di kasir (Menu.tsx), pakai
+  // kunciKelompok yang sama supaya dua produk bernama sama dengan SKU Induk
+  // berbeda (mis. GEAR-BLKNG-FIZR vs GEAR-BLKNG-FIZR-BLAC) tetap dua baris
+  // terpisah. Dikelompokkan dari SELURUH produk toko (bukan `filtered`) supaya
+  // varian yang namanya/SKU-nya sendiri tidak cocok kata kunci tetap ikut
+  // tampil begitu salah satu saudaranya cocok.
+  const kelompokProduk = useMemo(() => {
+    const peta = new Map<string, Product[]>();
+    for (const p of products) {
+      const k = kunciKelompok(p);
+      peta.set(k, [...(peta.get(k) ?? []), p]);
+    }
+    return [...peta.entries()].map(([key, anggota]) => ({
+      key,
+      anggota: [...anggota].sort(urutNamaSku),
+    }));
+  }, [products]);
+
+  const kata = q.trim().toLowerCase();
+
+  // Kelompok lolos kalau ADA anggotanya yang cocok kata kunci — bukan harus
+  // semua — supaya mencari satu SKU varian tetap menemukan kelompoknya.
+  const kelompokTampil = useMemo(
+    () =>
+      kelompokProduk
+        .filter((g) => !kata || g.anggota.some((p) => cocokPencarian(p, kata)))
+        .sort((a, b) => urutNamaSku(a.anggota[0], b.anggota[0])),
+    [kelompokProduk, kata],
+  );
+
+  // Kelompok yang tampil karena pencarian (bukan dibuka manual oleh user)
+  // langsung terbuka, supaya SKU varian yang dicari langsung terlihat.
+  function bukaTutupKelompok(key: string, bukaOtomatis: boolean) {
+    setOpenGroups((prev) => ({ ...prev, [key]: !(prev[key] ?? bukaOtomatis) }));
+  }
 
   const lowStock = useMemo(
     () =>
@@ -667,6 +721,200 @@ export function Products() {
     toast.success('Produk dihapus.');
   }
 
+  /**
+   * Satu baris SKU, dipakai untuk produk tanpa varian maupun tiap anggota
+   * kelompok yang dibuka. `anggotaKelompok` menambah sedikit indentasi supaya
+   * baris terlihat sebagai anak dari baris induk di atasnya, tanpa menambah
+   * kolom baru yang bisa melebarkan tabel di layar HP.
+   */
+  function renderBarisProduk(p: Product, anggotaKelompok = false) {
+    const low = p.track_stock && Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0);
+    const price = Number(p.base_price);
+    const cost = produkSet.has(p.id)
+      ? modalDariIsi(isiByParent.get(p.id) ?? [], products)
+      : Number(p.cost_price ?? 0);
+    const marginAbs = price - cost;
+    const marginPct = price > 0 ? (marginAbs / price) * 100 : 0;
+    const marginTone =
+      cost === 0 ? 'text-ink-400' : marginAbs < 0 ? 'text-rose-600' : marginPct < 20 ? 'text-amber-600' : 'text-emerald-600';
+    return (
+      <tr
+        key={p.id}
+        className={cn('border-t border-ink-100 dark:border-ink-800', anggotaKelompok && 'bg-ink-50/60 dark:bg-ink-900/40')}
+      >
+        <td className="py-3">
+          <div className={cn('flex items-center gap-3', anggotaKelompok && 'pl-4 border-l-2 border-ink-200 dark:border-ink-700')}>
+            <div className="h-10 w-10 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
+              {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
+            </div>
+            <div className="font-semibold">{p.name}</div>
+          </div>
+        </td>
+        <td className="py-3">
+          <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{p.sku ?? '—'}</div>
+          <div className="text-[10px] text-ink-500 font-mono">{p.barcode ?? '—'}</div>
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {(mappingsByProduct.get(p.id) ?? []).map((m) => (
+              <span
+                key={m.id}
+                title={m.external_sku}
+                className="inline-flex items-center rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
+              >
+                {channelLabel(m.channel_code, channelRows)}
+              </span>
+            ))}
+            {!(mappingsByProduct.get(p.id) ?? []).length && (
+              <span className="inline-flex items-center rounded-md bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-400">
+                Toko fisik
+              </span>
+            )}
+          </div>
+        </td>
+        <td className="py-3">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
+        <td className="py-3">{formatMoney(price, store?.currency)}</td>
+        <td className="py-3 text-ink-500">{formatMoney(cost, store?.currency)}</td>
+        <td className={cn('py-3 font-semibold', marginTone)}>
+          {cost === 0 ? (
+            '—'
+          ) : (
+            <>
+              <div>{marginPct.toFixed(0)}%</div>
+              <div className="text-[10px] font-normal text-ink-500">
+                {formatMoney(marginAbs, store?.currency)}
+              </div>
+            </>
+          )}
+        </td>
+        <td className="py-3">
+          {p.track_stock ? (
+            <div className={cn('flex items-center gap-1.5', low && 'text-amber-600 font-semibold')}>
+              {low && <AlertTriangle size={12} />}
+              {Number(p.stock_qty ?? 0)}
+              <button
+                onClick={() => setStockOpen(p)}
+                className="ml-1 text-xs rounded-md bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 hover:bg-ink-200"
+              >
+                +/-
+              </button>
+            </div>
+          ) : (
+            <span className="text-ink-400">—</span>
+          )}
+        </td>
+        <td className="py-3">
+          <Badge tone={p.is_active ? 'success' : 'warning'}>
+            {p.is_active ? 'Aktif' : 'Nonaktif'}
+          </Badge>
+        </td>
+        <td className="py-3">
+          <div className="flex justify-end gap-1">
+            <button
+              onClick={() => navigate(`/stock-mutation?q=${encodeURIComponent(p.sku || p.name)}`)}
+              className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+              title="Riwayat keluar-masuk"
+            >
+              <History size={14} />
+            </button>
+            <button
+              onClick={() => {
+                setLabelIds([p.id]);
+                setLabelOpen(true);
+              }}
+              className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+              title="Cetak label barcode"
+            >
+              <Barcode size={14} />
+            </button>
+            <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Edit">
+              <Pencil size={14} />
+            </button>
+            <button onClick={() => startDuplicate(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Duplikat">
+              <Copy size={14} />
+            </button>
+            <button onClick={() => remove(p)} className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Hapus">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  /**
+   * Baris induk satu kelompok varian (>= 2 SKU) plus, kalau sedang terbuka,
+   * seluruh baris anak-anaknya. Modal dan Margin sengaja "—" di baris induk —
+   * menjumlahkan modal antar varian yang harga modalnya beda-beda menyesatkan,
+   * bukan sekadar belum diisi.
+   */
+  function renderBarisKelompok(g: { key: string; anggota: Product[] }) {
+    const anggota = g.anggota;
+    const wakil = anggota[0];
+    const hargaVarian = anggota.map((p) => Number(p.base_price));
+    const hargaMin = Math.min(...hargaVarian);
+    const hargaMax = Math.max(...hargaVarian);
+    const dilacak = anggota.filter((p) => p.track_stock);
+    const totalStok = dilacak.reduce((sum, p) => sum + Number(p.stock_qty ?? 0), 0);
+    const adaMenipis = dilacak.some((p) => Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0));
+    const semuaAktif = anggota.every((p) => p.is_active);
+    const semuaNonaktif = anggota.every((p) => !p.is_active);
+    const bukaOtomatis = Boolean(kata);
+    const terbuka = openGroups[g.key] ?? bukaOtomatis;
+    const baris = (
+      <tr key={g.key} className="border-t border-ink-100 dark:border-ink-800">
+        <td className="py-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
+              {wakil.image_url && <img src={wakil.image_url} alt={wakil.name} className="h-full w-full object-cover" />}
+            </div>
+            <div>
+              <div className="font-semibold">{wakil.name}</div>
+              <div className="text-xs text-ink-500">{anggota.length} varian</div>
+            </div>
+          </div>
+        </td>
+        <td className="py-3">
+          <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{wakil.parent_sku ?? '—'}</div>
+        </td>
+        <td className="py-3">{categories.find((c) => c.id === wakil.category_id)?.name ?? '—'}</td>
+        <td className="py-3">
+          {hargaMin === hargaMax
+            ? formatMoney(hargaMin, store?.currency)
+            : `${formatMoney(hargaMin, store?.currency)} – ${formatMoney(hargaMax, store?.currency)}`}
+        </td>
+        <td className="py-3 text-ink-400">—</td>
+        <td className="py-3 text-ink-400">—</td>
+        <td className="py-3">
+          {dilacak.length === 0 ? (
+            <span className="text-ink-400">—</span>
+          ) : (
+            <div className={cn('flex items-center gap-1.5', adaMenipis && 'text-amber-600 font-semibold')}>
+              {adaMenipis && <AlertTriangle size={12} />}
+              {totalStok}
+            </div>
+          )}
+        </td>
+        <td className="py-3">
+          <Badge tone={semuaAktif ? 'success' : semuaNonaktif ? 'warning' : 'neutral'}>
+            {semuaAktif ? 'Aktif' : semuaNonaktif ? 'Nonaktif' : 'Campuran'}
+          </Badge>
+        </td>
+        <td className="py-3">
+          <div className="flex justify-end">
+            <button
+              onClick={() => bukaTutupKelompok(g.key, bukaOtomatis)}
+              className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800"
+              aria-label={terbuka ? `Tutup varian ${wakil.name}` : `Buka varian ${wakil.name}`}
+              aria-expanded={terbuka}
+            >
+              <ChevronRight size={16} className={cn('transition-transform', terbuka && 'rotate-90')} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+    return terbuka ? [baris, ...anggota.map((p) => renderBarisProduk(p, true))] : [baris];
+  }
+
   return (
     <div className="space-y-5">
       <div className="rounded-3xl bg-brand-600 text-white p-6 md:p-8 flex flex-wrap items-center justify-between gap-3">
@@ -774,115 +1022,9 @@ export function Products() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => {
-                  const low = p.track_stock && Number(p.stock_qty ?? 0) <= Number(p.min_stock ?? 0);
-                  const price = Number(p.base_price);
-                  const cost = produkSet.has(p.id)
-                    ? modalDariIsi(isiByParent.get(p.id) ?? [], products)
-                    : Number(p.cost_price ?? 0);
-                  const marginAbs = price - cost;
-                  const marginPct = price > 0 ? (marginAbs / price) * 100 : 0;
-                  const marginTone =
-                    cost === 0 ? 'text-ink-400' : marginAbs < 0 ? 'text-rose-600' : marginPct < 20 ? 'text-amber-600' : 'text-emerald-600';
-                  return (
-                    <tr key={p.id} className="border-t border-ink-100 dark:border-ink-800">
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
-                            {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
-                          </div>
-                          <div className="font-semibold">{p.name}</div>
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{p.sku ?? '—'}</div>
-                        <div className="text-[10px] text-ink-500 font-mono">{p.barcode ?? '—'}</div>
-                        <div className="mt-0.5 flex flex-wrap gap-1">
-                          {(mappingsByProduct.get(p.id) ?? []).map((m) => (
-                            <span
-                              key={m.id}
-                              title={m.external_sku}
-                              className="inline-flex items-center rounded-md bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
-                            >
-                              {channelLabel(m.channel_code, channelRows)}
-                            </span>
-                          ))}
-                          {!(mappingsByProduct.get(p.id) ?? []).length && (
-                            <span className="inline-flex items-center rounded-md bg-ink-100 px-1.5 py-0.5 text-[10px] font-medium text-ink-500 dark:bg-ink-800 dark:text-ink-400">
-                              Toko fisik
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
-                      <td className="py-3">{formatMoney(price, store?.currency)}</td>
-                      <td className="py-3 text-ink-500">{formatMoney(cost, store?.currency)}</td>
-                      <td className={cn('py-3 font-semibold', marginTone)}>
-                        {cost === 0 ? (
-                          '—'
-                        ) : (
-                          <>
-                            <div>{marginPct.toFixed(0)}%</div>
-                            <div className="text-[10px] font-normal text-ink-500">
-                              {formatMoney(marginAbs, store?.currency)}
-                            </div>
-                          </>
-                        )}
-                      </td>
-                      <td className="py-3">
-                        {p.track_stock ? (
-                          <div className={cn('flex items-center gap-1.5', low && 'text-amber-600 font-semibold')}>
-                            {low && <AlertTriangle size={12} />}
-                            {Number(p.stock_qty ?? 0)}
-                            <button
-                              onClick={() => setStockOpen(p)}
-                              className="ml-1 text-xs rounded-md bg-ink-100 dark:bg-ink-800 px-1.5 py-0.5 hover:bg-ink-200"
-                            >
-                              +/-
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-ink-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-3">
-                        <Badge tone={p.is_active ? 'success' : 'warning'}>
-                          {p.is_active ? 'Aktif' : 'Nonaktif'}
-                        </Badge>
-                      </td>
-                      <td className="py-3">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => navigate(`/stock-mutation?q=${encodeURIComponent(p.sku || p.name)}`)}
-                            className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
-                            title="Riwayat keluar-masuk"
-                          >
-                            <History size={14} />
-                          </button>
-                          <button
-                            onClick={() => {
-                              setLabelIds([p.id]);
-                              setLabelOpen(true);
-                            }}
-                            className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
-                            title="Cetak label barcode"
-                          >
-                            <Barcode size={14} />
-                          </button>
-                          <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Edit">
-                            <Pencil size={14} />
-                          </button>
-                          <button onClick={() => startDuplicate(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Duplikat">
-                            <Copy size={14} />
-                          </button>
-                          <button onClick={() => remove(p)} className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Hapus">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {kelompokTampil.flatMap((g) =>
+                  g.anggota.length > 1 ? renderBarisKelompok(g) : [renderBarisProduk(g.anggota[0])],
+                )}
               </tbody>
             </table>
           </div>
