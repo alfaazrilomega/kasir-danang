@@ -334,12 +334,16 @@ const record = (nama, ok, ket) => {
     // mengikuti batas yang sedang berlaku (batas+1 pasti melewatinya, berapa
     // pun sisa jatah dari langkah sebelumnya).
     const batas = Number(envValue('PUBLIC_ORDER_RATE_MAX')) || 5;
+    // Tembakan diberi X-Forwarded-For sendiri (IP dokumentasi RFC 5737) supaya
+    // yang terkuras jatahnya adalah ember IP palsu itu, bukan ember IP nyata
+    // yang dipakai seluruh suite. Tanpa ini, suite mana pun yang membuat
+    // pesanan publik dalam 10 menit berikutnya ikut kena 429 dan merah palsu.
     const hasilBurst = await guest.evaluate(async (n) => {
       const kode = [];
       for (let i = 0; i < n + 1; i++) {
         const res = await fetch('/api/public/orders', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '198.51.100.7' },
           body: JSON.stringify({ store_id: 'not-a-uuid' }),
         });
         kode.push(res.status);

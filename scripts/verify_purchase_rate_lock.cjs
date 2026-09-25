@@ -94,7 +94,10 @@ const record = (nama, ok, ket) => {
     // ---- Terima barang ----
     await page.goto(BASE + '/purchases', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
-    await page.getByPlaceholder(/Cari/i).first().fill(NOTA);
+    // Placeholder disebut lengkap: sidebar admin punya kotak "Cari modul..."
+    // yang lebih dulu di DOM, sehingga /Cari/i .first() mengisi kotak yang
+    // salah dan daftar nota tidak pernah tersaring.
+    await page.getByPlaceholder(/Cari nomor nota/i).first().fill(NOTA);
     await page.waitForTimeout(1800);
     await page.getByRole('button', { name: /Detail/i }).first().click();
     await page.waitForTimeout(1800);
@@ -114,7 +117,7 @@ const record = (nama, ok, ket) => {
     // ---- Buka lagi notanya ----
     await page.goto(BASE + '/purchases', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 3000 });
-    await page.getByPlaceholder(/Cari/i).first().fill(NOTA);
+    await page.getByPlaceholder(/Cari nomor nota/i).first().fill(NOTA);
     await page.waitForTimeout(1800);
     await page.getByRole('button', { name: /Detail/i }).first().click();
     await page.waitForTimeout(1800);

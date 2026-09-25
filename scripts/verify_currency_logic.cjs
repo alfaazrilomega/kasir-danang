@@ -39,8 +39,9 @@ record('Kurs nota lama tidak ikut berubah saat kurs supplier diubah', true,
 
 // 3. Total nota konsisten dengan komponennya, dalam rupiah.
 const totalSalah = Number(sql(`select count(*) from public.purchases
-  where abs(total - (subtotal - discount + tax + other_cost)) > 1;`));
-record('Total nota = subtotal - diskon + pajak + biaya lain', totalSalah === 0, totalSalah + ' nota melenceng');
+  where abs(total - (subtotal - discount + tax + other_cost + coalesce(extra_cost, 0))) > 1;`));
+record('Total nota = subtotal - diskon + pajak + biaya lain + biaya tambahan',
+  totalSalah === 0, totalSalah + ' nota melenceng');
 
 // 4. Nilai nota disimpan dalam rupiah, bukan dolar. Nota USD yang totalnya
 //    masih sekelas angka dolar (< 1 juta padahal ada isinya) berarti belum dikonversi.
