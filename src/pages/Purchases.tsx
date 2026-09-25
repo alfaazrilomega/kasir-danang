@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from '@/lib/router';
 import {
@@ -14,6 +14,7 @@ import {
   Search,
   Trash2,
   Truck,
+  Upload,
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -34,7 +35,14 @@ import {
   receivePurchaseActual,
 } from '@/lib/sync';
 import { ProductPicker } from '@/components/data/ProductPicker';
-import { cn, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
+import { downloadFile } from '@/lib/dataTransfer';
+import {
+  buildPurchaseTemplate,
+  readPurchaseImportFile,
+  PURCHASE_ITEM_COLUMNS,
+  type PurchaseImportReport,
+} from '@/lib/purchaseImport';
+import { cn, errorMessage, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
 import type {
   Expense,
@@ -190,6 +198,22 @@ export function Purchases() {
   const [busy, setBusy] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [payFor, setPayFor] = useState<Purchase | null>(null);
+
+  // Unggah templat item nota: laporan ditampilkan sampai form ditutup, supaya
+  // tidak menempel dari nota sebelumnya begitu form dipakai lagi.
+  const [importBusy, setImportBusy] = useState(false);
+  const [importReport, setImportReport] = useState<PurchaseImportReport | null>(null);
+  // Isi berkas yang menunggu keputusan tambah/ganti dari penggunanya.
+  const [importPilihan, setImportPilihan] = useState<
+    { items: ItemDraft[]; laporan: PurchaseImportReport } | null
+  >(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (!formOpen) {
+      setImportReport(null);
+      setImportPilihan(null);
+    }
+  }, [formOpen]);
 
   useEffect(() => {
     if (!storeId) return;
@@ -491,6 +515,64 @@ export function Purchases() {
         }),
       };
     });
+  }
+
+  /** Baris item dianggap "berisi" kalau sudah ada nama, produk, atau harga. */
+  function itemTerisi(item: ItemDraft): boolean {
+    return Boolean(item.name.trim() || item.product_id || Number(item.cost_price || 0) > 0);
+  }
+
+  /**
+   * Baca berkas templat lalu tuang hasilnya ke form.items.
+   *
+   * Kalau formulir sudah berisi item, pilihannya ditanyakan lewat satu dialog
+   * dua tombol (tambah / ganti), bukan rentetan confirm() bawaan browser:
+   * "OK berarti tambah, Batal berarti lanjut ke pertanyaan berikutnya" adalah
+   * teka-teki, dan yang sebenarnya ingin membatalkan harus menekan Batal dua
+   * kali. Baris kosong bawaan tidak ikut dipertahankan.
+   */
+  async function handleFileImpor(file: File) {
+    setImportBusy(true);
+    try {
+      const laporan = await readPurchaseImportFile(file, products);
+      if (!laporan.rows.length) {
+        toast.error('Tidak ada baris yang bisa dibaca dari berkas ini.');
+        return;
+      }
+      const itemBaru: ItemDraft[] = laporan.rows.map((r) => ({
+        key: uuid(),
+        product_id: r.productId ?? '',
+        name: r.name,
+        sku: r.sku,
+        barcode: r.barcode,
+        qty: String(r.qty),
+        cost_price: String(r.costPrice),
+        note: r.note,
+      }));
+
+      if (!form.items.some(itemTerisi)) {
+        setForm((prev) => ({ ...prev, items: itemBaru }));
+        setImportReport(laporan);
+        return;
+      }
+      setImportPilihan({ items: itemBaru, laporan });
+    } catch (e) {
+      toast.error(errorMessage(e, 'Gagal membaca berkas.'));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  /** Terapkan hasil unggahan setelah penggunanya memilih tambah atau ganti. */
+  function terapkanImpor(mode: 'tambah' | 'ganti') {
+    if (!importPilihan) return;
+    const { items, laporan } = importPilihan;
+    setForm((prev) => ({
+      ...prev,
+      items: mode === 'tambah' ? [...prev.items.filter(itemTerisi), ...items] : items,
+    }));
+    setImportReport(laporan);
+    setImportPilihan(null);
   }
 
   // Nota yang barangnya sudah diterima atau sudah dibayar nilainya sudah
@@ -1132,21 +1214,87 @@ export function Purchases() {
           </div>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <span className="text-sm font-semibold">Item pembelian</span>
                 <span className="ml-2 text-xs text-ink-500">
                   (Ketik SKU atau scan Barcode untuk deteksi produk otomatis)
                 </span>
               </div>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setForm({ ...form, items: [...form.items, blankItem()] })}
-              >
-                <Plus size={12} /> Tambah item
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  onClick={() => downloadFile('template-item-po-kasir.csv', buildPurchaseTemplate(), 'text/csv')}
+                >
+                  <Download size={12} /> Unduh templat
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  disabled={importBusy}
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <Upload size={12} /> {importBusy ? 'Membaca berkas...' : 'Unggah berkas'}
+                </Button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleFileImpor(f);
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="min-h-[44px]"
+                  onClick={() => setForm({ ...form, items: [...form.items, blankItem()] })}
+                >
+                  <Plus size={12} /> Tambah item
+                </Button>
+              </div>
             </div>
+            <p className="mb-2 text-[11px] text-ink-500">
+              Kolom berkas: {PURCHASE_ITEM_COLUMNS.join(', ')}. Harga beli di berkas mengikuti mata uang nota yang
+              sedang dipilih sekarang:{' '}
+              <strong className="text-ink-700 dark:text-ink-300">
+                {form.currency === 'USD' ? 'Dolar AS (USD)' : 'Rupiah (IDR)'}
+              </strong>
+              .
+            </p>
+            {importReport && (
+              <div className="mb-2 rounded-xl border border-ink-200 px-3 py-2 text-[11px] dark:border-ink-700">
+                <div className="font-semibold text-ink-600 dark:text-ink-300">
+                  {formatNumber(importReport.totalRows)} baris terbaca, {formatNumber(importReport.matchedCount)} SKU
+                  cocok ke produk.
+                </div>
+                {(importReport.missingQty > 0 || importReport.missingPrice > 0) && (
+                  <div className="mt-0.5 text-amber-700 dark:text-amber-400">
+                    {importReport.missingQty > 0 &&
+                      `${formatNumber(importReport.missingQty)} baris tanpa qty`}
+                    {importReport.missingQty > 0 && importReport.missingPrice > 0 && ', '}
+                    {importReport.missingPrice > 0 &&
+                      `${formatNumber(importReport.missingPrice)} baris tanpa harga beli`}
+                    {' '}
+                    -- diisi 0, silakan dibetulkan di bawah.
+                  </div>
+                )}
+                {importReport.unknownSkus.length > 0 && (
+                  <div className="mt-1 text-amber-700 dark:text-amber-400">
+                    {formatNumber(importReport.unknownSkus.length)} SKU tidak dikenal katalog (tetap masuk sebagai
+                    item manual): {importReport.unknownSkus.slice(0, 15).join(', ')}
+                    {importReport.unknownSkus.length > 15 &&
+                      `, +${formatNumber(importReport.unknownSkus.length - 15)} lainnya`}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               {form.items.map((item) => (
                 <div
@@ -1426,6 +1574,34 @@ export function Purchases() {
               {busy ? 'Menyimpan...' : 'Simpan nota'}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Satu dialog, dua pilihan yang tertulis jelas — lebih jujur daripada
+          menanyakan "tambah atau ganti" lewat rentetan OK/Batal. */}
+      <Modal
+        open={importPilihan !== null}
+        onClose={() => setImportPilihan(null)}
+        title="Item dari berkas"
+        size="sm"
+      >
+        <p className="text-sm text-ink-600 dark:text-ink-300">
+          Berkas berisi{' '}
+          <strong>{formatNumber(importPilihan?.items.length ?? 0)} item</strong>, sedangkan formulir
+          ini sudah punya{' '}
+          <strong>{formatNumber(form.items.filter(itemTerisi).length)} item</strong> yang diketik.
+          Mau diapakan?
+        </p>
+        <div className="mt-4 flex flex-col gap-2">
+          <Button className="min-h-[44px]" onClick={() => terapkanImpor('tambah')}>
+            Tambahkan ke daftar yang ada
+          </Button>
+          <Button variant="secondary" className="min-h-[44px]" onClick={() => terapkanImpor('ganti')}>
+            Ganti seluruh daftar item
+          </Button>
+          <Button variant="ghost" className="min-h-[44px]" onClick={() => setImportPilihan(null)}>
+            Batal
+          </Button>
         </div>
       </Modal>
 
