@@ -102,6 +102,9 @@ interface FormState {
   discount: string;
   tax: string;
   other_cost: string;
+  other_cost_label: string;
+  extra_cost: string;
+  extra_cost_label: string;
   dp_percent: string;
   notes: string;
   items: ItemDraft[];
@@ -137,6 +140,9 @@ function emptyForm(): FormState {
     discount: '0',
     tax: '0',
     other_cost: '0',
+    other_cost_label: '',
+    extra_cost: '0',
+    extra_cost_label: '',
     dp_percent: '0',
     notes: '',
     items: [blankItem()],
@@ -292,6 +298,9 @@ export function Purchases() {
       discount: String(purchase.discount ?? 0),
       tax: String(purchase.tax ?? 0),
       other_cost: String(purchase.other_cost ?? 0),
+      other_cost_label: purchase.other_cost_label ?? '',
+      extra_cost: String(purchase.extra_cost ?? 0),
+      extra_cost_label: purchase.extra_cost_label ?? '',
       dp_percent: String(purchase.dp_percent ?? 0),
       notes: purchase.notes ?? '',
       items: rows.length
@@ -359,6 +368,9 @@ export function Purchases() {
       discount: String(purchase.discount ?? 0),
       tax: String(purchase.tax ?? 0),
       other_cost: String(purchase.other_cost ?? 0),
+      other_cost_label: purchase.other_cost_label ?? '',
+      extra_cost: String(purchase.extra_cost ?? 0),
+      extra_cost_label: purchase.extra_cost_label ?? '',
       dp_percent: String(purchase.dp_percent ?? 0),
       notes: purchase.notes ?? '',
       items: rows.length
@@ -541,7 +553,11 @@ export function Purchases() {
       0,
     );
     const total =
-      subtotal - Number(form.discount || 0) + Number(form.tax || 0) + Number(form.other_cost || 0);
+      subtotal -
+      Number(form.discount || 0) +
+      Number(form.tax || 0) +
+      Number(form.other_cost || 0) +
+      Number(form.extra_cost || 0);
     // DP dihitung dari nilai barang (subtotal), bukan dari total nota — client
     // memesan "100jt dp 20%" maksudnya 20jt dari nilai barangnya, pajak dan
     // biaya lain baru masuk hitungan di sisa pelunasan.
@@ -596,7 +612,11 @@ export function Purchases() {
         0,
       );
       const total =
-        subtotal - Number(form.discount || 0) + Number(form.tax || 0) + Number(form.other_cost || 0);
+        subtotal -
+        Number(form.discount || 0) +
+        Number(form.tax || 0) +
+        Number(form.other_cost || 0) +
+        Number(form.extra_cost || 0);
 
       // Angka total dalam IDR untuk pembukuan
       const totalInIdr = isUsd ? total * rate : total;
@@ -604,6 +624,7 @@ export function Purchases() {
       const discountInIdr = isUsd ? Number(form.discount || 0) * rate : Number(form.discount || 0);
       const taxInIdr = isUsd ? Number(form.tax || 0) * rate : Number(form.tax || 0);
       const otherCostInIdr = isUsd ? Number(form.other_cost || 0) * rate : Number(form.other_cost || 0);
+      const extraCostInIdr = isUsd ? Number(form.extra_cost || 0) * rate : Number(form.extra_cost || 0);
 
       const row: Purchase = {
         id,
@@ -618,6 +639,9 @@ export function Purchases() {
         discount: discountInIdr,
         tax: taxInIdr,
         other_cost: otherCostInIdr,
+        other_cost_label: form.other_cost_label.trim() || null,
+        extra_cost: extraCostInIdr,
+        extra_cost_label: form.extra_cost_label.trim() || null,
         total: totalInIdr,
         currency: form.currency || 'IDR',
         exchange_rate: isUsd ? rate : 1,
@@ -1254,7 +1278,7 @@ export function Purchases() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Input
               label="Diskon"
               type="number"
@@ -1270,6 +1294,20 @@ export function Purchases() {
               onChange={(e) => setForm({ ...form, tax: e.target.value })}
             />
             <Input
+              label="DP (%)"
+              type="number"
+              min={0}
+              max={100}
+              value={form.dp_percent}
+              onChange={(e) => setForm({ ...form, dp_percent: e.target.value })}
+            />
+          </div>
+
+          {/* Dua baris biaya tambahan terpisah, masing-masing bisa diberi nama
+              sendiri (mis. "Ongkir" dan "Bea masuk") — client minta pemisahan
+              ini supaya nota tidak menumpuk semua biaya jadi satu angka buta. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
               label="Biaya lain"
               type="number"
               min={0}
@@ -1278,12 +1316,26 @@ export function Purchases() {
               hint="Ongkir, packing, dll."
             />
             <Input
-              label="DP (%)"
+              label="Nama biaya lain"
+              value={form.other_cost_label}
+              onChange={(e) => setForm({ ...form, other_cost_label: e.target.value })}
+              placeholder="Ongkir"
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="Biaya tambahan"
               type="number"
               min={0}
-              max={100}
-              value={form.dp_percent}
-              onChange={(e) => setForm({ ...form, dp_percent: e.target.value })}
+              value={form.extra_cost}
+              onChange={(e) => setForm({ ...form, extra_cost: e.target.value })}
+              hint="Bea masuk, asuransi, dll."
+            />
+            <Input
+              label="Nama biaya tambahan"
+              value={form.extra_cost_label}
+              onChange={(e) => setForm({ ...form, extra_cost_label: e.target.value })}
+              placeholder="Bea masuk"
             />
           </div>
 
@@ -1616,10 +1668,20 @@ function PurchaseDetail({
               {Number(purchase.other_cost) > 0 && (
                 <tr>
                   <td className="py-1 text-ink-500" colSpan={4}>
-                    Biaya lain
+                    {purchase.other_cost_label?.trim() || 'Biaya lain'}
                   </td>
                   <td className="py-1 text-right tabular-nums">
                     {formatMoney(purchase.other_cost, currency)}
+                  </td>
+                </tr>
+              )}
+              {Number(purchase.extra_cost) > 0 && (
+                <tr>
+                  <td className="py-1 text-ink-500" colSpan={4}>
+                    {purchase.extra_cost_label?.trim() || 'Biaya tambahan'}
+                  </td>
+                  <td className="py-1 text-right tabular-nums">
+                    {formatMoney(purchase.extra_cost ?? 0, currency)}
                   </td>
                 </tr>
               )}
@@ -2077,7 +2139,11 @@ function ReceiveDialog({
     0,
   );
   const total =
-    subtotal - Number(purchase.discount || 0) + Number(purchase.tax || 0) + Number(purchase.other_cost || 0);
+    subtotal -
+    Number(purchase.discount || 0) +
+    Number(purchase.tax || 0) +
+    Number(purchase.other_cost || 0) +
+    Number(purchase.extra_cost || 0);
   const sudahBayar = Number(purchase.paid_amount || 0);
   const sisa = total - sudahBayar;
   const valid = items.every((it) => {

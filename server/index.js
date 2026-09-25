@@ -194,6 +194,7 @@ const TABLES = {
     columns: [
       'id', 'store_id', 'supplier_id', 'invoice_number', 'status', 'order_date',
       'expected_date', 'due_date', 'subtotal', 'discount', 'tax', 'other_cost',
+      'other_cost_label', 'extra_cost', 'extra_cost_label',
       'total', 'paid_amount', 'dp_percent', 'received_at', 'notes', 'created_by',
       'created_at', 'currency', 'exchange_rate',
     ],

@@ -458,6 +458,12 @@ export interface Purchase {
   discount: number;
   tax: number;
   other_cost: number;
+  /** Nama baris "Biaya lain", boleh kosong. Opsional: nota lama belum punya kolom ini. */
+  other_cost_label?: string | null;
+  /** Opsional: nota lama belum punya kolom ini, dianggap 0. */
+  extra_cost?: number;
+  /** Nama baris biaya tambahan kedua, boleh kosong. */
+  extra_cost_label?: string | null;
   total: number;
   /** Dijaga trigger database dari daftar purchase_payments. */
   paid_amount: number;
