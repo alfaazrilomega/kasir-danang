@@ -592,7 +592,7 @@ export function Promos() {
         <button
           onClick={() => setTab('kode')}
           className={cn(
-            'flex items-center gap-1.5 rounded-full px-3.5 py-1.5',
+            'flex min-h-[44px] items-center gap-1.5 rounded-full px-4 sm:min-h-[34px]',
             tab === 'kode' ? 'bg-white shadow-card dark:bg-ink-700' : 'text-ink-600 dark:text-ink-300',
           )}
         >
@@ -601,7 +601,7 @@ export function Promos() {
         <button
           onClick={() => setTab('flash')}
           className={cn(
-            'flex items-center gap-1.5 rounded-full px-3.5 py-1.5',
+            'flex min-h-[44px] items-center gap-1.5 rounded-full px-4 sm:min-h-[34px]',
             tab === 'flash' ? 'bg-white shadow-card dark:bg-ink-700' : 'text-ink-600 dark:text-ink-300',
           )}
         >
@@ -1011,9 +1011,12 @@ export function Promos() {
                   const overPriced = product ? it.flash_price > product.base_price : false;
                   return (
                     <div key={it.key} className="rounded-xl border border-ink-200 dark:border-ink-700 p-2.5">
-                      <div className="flex items-center gap-2">
+                      {/* Di layar HP pemilih produk berdiri sendiri satu baris penuh:
+                          disandingkan dengan dua kolom angka, lebarnya tersisa ~70px
+                          dan nama produknya tidak terbaca sama sekali. */}
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <ProductPicker
-                          className="flex-1"
+                          className="min-w-0 sm:flex-1"
                           products={products}
                           value={it.product_id}
                           onChange={(id) => updateFlashItemRow(it.key, { product_id: id })}
@@ -1021,10 +1024,11 @@ export function Promos() {
                             .filter((other) => other.key !== it.key)
                             .map((other) => other.product_id)}
                         />
+                        <div className="flex items-center gap-2">
                         <input
                           type="number"
                           min={0}
-                          className="input !py-1.5 w-32"
+                          className="input !py-1.5 min-w-0 flex-1 sm:w-32 sm:flex-none"
                           placeholder="Harga flash"
                           value={it.flash_price || ''}
                           onChange={(e) => updateFlashItemRow(it.key, { flash_price: parseFloat(e.target.value) || 0 })}
@@ -1033,7 +1037,7 @@ export function Promos() {
                         <input
                           type="number"
                           min={0}
-                          className="input !py-1.5 w-28"
+                          className="input !py-1.5 min-w-0 flex-1 sm:w-36 sm:flex-none"
                           placeholder="Tanpa batas"
                           value={it.quota_qty ?? ''}
                           onChange={(e) =>
@@ -1051,6 +1055,7 @@ export function Promos() {
                         >
                           <Trash2 size={14} />
                         </button>
+                        </div>
                       </div>
                       {product && it.flash_price > 0 && (
                         <div className="mt-1.5 pl-1 text-xs">

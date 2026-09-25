@@ -1008,7 +1008,10 @@ function ProductForm({
   }
 
   return (
-    <div className="grid gap-5 md:grid-cols-[1fr_220px]">
+    // [&>*]:min-w-0 wajib: kolom grid bawaannya tidak boleh menyusut di bawah
+    // lebar isi terlebarnya, dan dropdown kategori (yang lebarnya mengikuti nama
+    // produk terpanjang) memaksa seluruh formulir melebihi layar HP.
+    <div className="grid gap-5 md:grid-cols-[1fr_220px] [&>*]:min-w-0">
       {/* Form ============================================================ */}
       <div className="space-y-4">
         <section>
@@ -1027,7 +1030,7 @@ function ProductForm({
                   <CategoryIcon size={14} />
                 </span>
                 <select
-                  className="flex-1 bg-transparent text-sm focus:outline-none"
+                  className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
                   value={form.category_id ?? ''}
                   onChange={(e) => setForm({ ...form, category_id: e.target.value || null })}
                 >
@@ -2219,23 +2222,26 @@ function SeksiPenamaanVariasi({
         {form.newVariants.length > 0 && (
           <div className="space-y-1.5">
             {form.newVariants.map((d) => (
-              <div key={d.key} className="flex gap-1.5">
+              // Empat kolom sejajar tidak muat di layar HP: input punya lebar
+              // bawaan sendiri, jadi barisnya memaksa modal melebar. Di HP
+              // dipecah jadi dua kolom, tombol hapus turun ke baris sendiri.
+              <div key={d.key} className="grid grid-cols-2 gap-1.5 sm:flex">
                 <input
-                  className="input !py-1.5 text-sm font-mono"
+                  className="input !py-1.5 text-sm font-mono min-w-0 sm:flex-1"
                   aria-label="SKU variasi baru"
                   placeholder="SKU (wajib)"
                   value={d.sku}
                   onChange={(e) => ubahBarisSku(d.key, { sku: e.target.value })}
                 />
                 <input
-                  className="input !py-1.5 text-sm"
+                  className="input !py-1.5 text-sm min-w-0 sm:flex-1"
                   aria-label="Nama variasi baru"
                   placeholder="Nama variasi"
                   value={d.variant_name}
                   onChange={(e) => ubahBarisSku(d.key, { variant_name: e.target.value })}
                 />
                 <input
-                  className="input !py-1.5 text-sm"
+                  className="input !py-1.5 text-sm min-w-0 sm:flex-1"
                   aria-label="Harga jual variasi baru"
                   type="number"
                   placeholder="Harga jual"
@@ -2243,7 +2249,7 @@ function SeksiPenamaanVariasi({
                   onChange={(e) => ubahBarisSku(d.key, { base_price: e.target.value })}
                 />
                 <input
-                  className="input !py-1.5 text-sm"
+                  className="input !py-1.5 text-sm min-w-0 sm:flex-1"
                   aria-label="Stok awal variasi baru"
                   type="number"
                   placeholder="Stok awal"
@@ -2254,7 +2260,7 @@ function SeksiPenamaanVariasi({
                   type="button"
                   aria-label="Hapus baris SKU baru"
                   onClick={() => hapusBarisSku(d.key)}
-                  className="grid w-9 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"
+                  className="col-span-2 grid h-[44px] place-items-center rounded-lg border border-ink-200 text-ink-400 hover:bg-rose-50 hover:text-rose-600 dark:border-ink-700 sm:col-auto sm:h-auto sm:w-9 sm:shrink-0 sm:border-0"
                 >
                   <X size={14} />
                 </button>
