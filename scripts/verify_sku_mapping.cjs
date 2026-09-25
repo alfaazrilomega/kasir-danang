@@ -118,7 +118,12 @@ function openKasir(evalFn) {
     await page.screenshot({ path: path.join(SHOTS, '20_products_channel_chips.png') });
 
     // Baris produk juga punya ikon riwayat & label, jadi tombol Edit dipilih lewat judulnya.
-    const editBtn = page.locator('tbody tr').first().locator('button[title="Edit"]');
+    // Sejak daftar produk dikelompokkan, baris teratas bisa berupa baris INDUK
+    // kelompok bervarian yang tidak punya tombol Edit sendiri.
+    const editBtn = page.locator('tbody tr')
+      .filter({ has: page.locator('button[title="Edit"]') })
+      .first()
+      .locator('button[title="Edit"]');
     await editBtn.click({ timeout: 10000 }).catch((e) => console.log('  [edit click] ' + e.message));
     await page.waitForTimeout(2000);
     const sectionVisible = await page.getByText('SKU Platform / Marketplace').first().isVisible().catch(() => false);

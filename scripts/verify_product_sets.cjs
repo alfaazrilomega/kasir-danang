@@ -110,7 +110,12 @@ const record = (nama, ok, ket) => {
       .last().fill(SKU_SET);
     await page.waitForTimeout(2000);
     // Baris produk kini juga punya ikon riwayat & label, jadi tombol Edit dipilih lewat judulnya.
-    await page.locator('tbody tr').first().locator('button[title="Edit"]').click();
+    // Baris teratas bisa berupa baris induk kelompok varian yang tanpa tombol Edit.
+    await page.locator('tbody tr')
+      .filter({ has: page.locator('button[title="Edit"]') })
+      .first()
+      .locator('button[title="Edit"]')
+      .click();
     await page.waitForTimeout(2000);
 
     const form = modal();
