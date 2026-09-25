@@ -109,6 +109,20 @@ const TABLES = {
     ],
     tenantColumn: 'store_id',
   },
+  // Sesi flash sale (jendela waktu) dan harga/kuota per produk di dalamnya.
+  // sold_qty sengaja tidak lewat jalur ini: dinaikkan atomik saat checkout,
+  // lihat POST /api/public/orders.
+  flash_sales: {
+    columns: ['id', 'store_id', 'name', 'starts_at', 'ends_at', 'is_active', 'created_at'],
+    tenantColumn: 'store_id',
+  },
+  flash_sale_items: {
+    columns: [
+      'id', 'store_id', 'flash_sale_id', 'product_id', 'flash_price',
+      'quota_qty', 'sold_qty', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
   shifts: {
     columns: [
       'id', 'store_id', 'cashier_id', 'opened_at', 'closed_at', 'opening_cash',
@@ -1956,25 +1970,6 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   const orderNumber =
     `WEB-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 
-  let subtotal = 0;
-  const orderItems = cleanItems.map((it) => {
-    const product = productById.get(it.product_id);
-    const price = Number(product.base_price);
-    subtotal += price * it.qty;
-    return {
-      id: crypto.randomUUID(),
-      product_id: it.product_id,
-      name: product.name,
-      size: it.size,
-      qty: it.qty,
-      price,
-      cost_price: product.cost_price != null ? Number(product.cost_price) : null,
-      note: it.note,
-    };
-  });
-  // TODO: tambahkan ongkir dari KiriminAja di sini saat integrasinya siap.
-  const total = subtotal;
-
   // Grup kanal menentukan metode bayar yang tercatat di pembukuan.
   const PETA_GRUP = {
     'Virtual Account': 'transfer',
@@ -1994,8 +1989,60 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   }
 
   const client = await pool.connect();
+  let orderItems;
+  let total;
   try {
     await client.query('begin');
+
+    // Harga flash dicek & "direbut" DI DALAM transaksi yang sama dengan
+    // insert pesanan, bukan di query produk di atas, supaya penambahan
+    // sold_qty dan harga baris yang tercatat selalu konsisten. UPDATE ini
+    // atomik dan mengunci baris flash_sale_items: kalau dua pembeli checkout
+    // produk & sesi yang sama nyaris bersamaan dan kuota tinggal satu,
+    // permintaan kedua baru dievaluasi setelah yang pertama commit, jadi
+    // sold_qty + qty <= quota_qty selalu dicek terhadap angka yang sudah naik
+    // — tidak pernah ada dua baris yang sama-sama "menang" kuota terakhir.
+    // Kondisi periode & is_active ikut dicek di WHERE yang sama supaya sesi
+    // yang baru saja berakhir/nonaktif tidak lolos hanya karena sempat lolos
+    // pengecekan sebelumnya. Tidak kena baris (kuota habis, sesi tidak
+    // berjalan, atau produk memang bukan peserta flash sale) = harga baris
+    // itu balik ke base_price seperti biasa.
+    let subtotal = 0;
+    orderItems = [];
+    for (const it of cleanItems) {
+      const product = productById.get(it.product_id);
+      let price = Number(product.base_price);
+
+      const flash = await client.query(
+        `update public.flash_sale_items fsi
+            set sold_qty = fsi.sold_qty + $3
+           from public.flash_sales fs
+          where fs.id = fsi.flash_sale_id
+            and fsi.store_id = $1
+            and fsi.product_id = $2
+            and fs.is_active = true
+            and now() between fs.starts_at and fs.ends_at
+            and (fsi.quota_qty is null or fsi.sold_qty + $3 <= fsi.quota_qty)
+          returning fsi.flash_price`,
+        [storeId, it.product_id, it.qty],
+      );
+      if (flash.rowCount) price = Number(flash.rows[0].flash_price);
+
+      subtotal += price * it.qty;
+      orderItems.push({
+        id: crypto.randomUUID(),
+        product_id: it.product_id,
+        name: product.name,
+        size: it.size,
+        qty: it.qty,
+        price,
+        cost_price: product.cost_price != null ? Number(product.cost_price) : null,
+        note: it.note,
+      });
+    }
+    // TODO: tambahkan ongkir dari KiriminAja di sini saat integrasinya siap.
+    total = subtotal;
+
     await client.query(
       `insert into public.orders (
         id, store_id, customer_id, cashier_id, shift_id, order_number,
@@ -2272,6 +2319,43 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
       products,
     },
   });
+}));
+
+// Sesi flash sale yang sedang berjalan untuk storefront publik. Tanpa
+// requireUser sama seperti /api/public/catalog: pengunjung anonim juga perlu
+// melihat banner & harga flash sale sebelum masuk/checkout. Kalau ada lebih
+// dari satu sesi aktif bersamaan, yang ditampilkan yang paling dekat
+// berakhir — itu yang paling mendesak dilihat pembeli. Cuma kolom produk
+// yang aman ditampilkan ke publik yang di-select (tidak ada cost_price/sku).
+app.get('/api/public/flash-sale', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+
+  const sessionRes = await pool.query(
+    `select id, store_id, name, starts_at, ends_at
+       from public.flash_sales
+      where store_id = $1 and is_active = true and now() between starts_at and ends_at
+      order by ends_at asc
+      limit 1`,
+    [storeId],
+  );
+  const flashSale = sessionRes.rows[0] ?? null;
+  if (!flashSale) {
+    res.json({ data: { flash_sale: null, items: [] } });
+    return;
+  }
+
+  const itemsRes = await pool.query(
+    `select fsi.product_id, fsi.flash_price, fsi.quota_qty, fsi.sold_qty,
+            p.name, p.image_url, p.base_price, p.stock_qty
+       from public.flash_sale_items fsi
+       join public.products p on p.id = fsi.product_id
+      where fsi.flash_sale_id = $1 and p.is_active = true
+      order by p.name`,
+    [flashSale.id],
+  );
+
+  res.json({ data: { flash_sale: flashSale, items: itemsRes.rows } });
 }));
 
 app.post('/api/query', requireUser, asyncHandler(async (req, res) => {

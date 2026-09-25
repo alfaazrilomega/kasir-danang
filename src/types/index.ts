@@ -148,6 +148,28 @@ export interface Promo {
   is_active: boolean;
 }
 
+export interface FlashSale {
+  id: string;
+  store_id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface FlashSaleItem {
+  id: string;
+  store_id: string;
+  flash_sale_id: string;
+  product_id: string;
+  flash_price: number;
+  /** null = tanpa batas kuota. */
+  quota_qty: number | null;
+  sold_qty: number;
+  created_at?: string;
+}
+
 export interface OrderItem {
   id: string;
   order_id: string;

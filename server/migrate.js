@@ -54,6 +54,11 @@ const REQUIRED_COLUMNS = {
     'address_province', 'address_city',
   ],
   promos: ['id', 'store_id', 'code', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'created_at'],
+  flash_sales: ['id', 'store_id', 'name', 'starts_at', 'ends_at', 'is_active', 'created_at'],
+  flash_sale_items: [
+    'id', 'store_id', 'flash_sale_id', 'product_id', 'flash_price',
+    'quota_qty', 'sold_qty', 'created_at',
+  ],
   orders: [
     'id', 'store_id', 'customer_id', 'cashier_id', 'shift_id', 'order_number',
     'subtotal', 'tax', 'discount', 'total', 'payment_method', 'payment_status',
