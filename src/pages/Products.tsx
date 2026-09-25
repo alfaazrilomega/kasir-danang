@@ -43,8 +43,9 @@ import {
   hitungStokSet,
   type SetComponentDraft,
 } from '@/components/products/ProductSetSection';
-import { findSkuConflict } from '@/lib/skuLookup';
+import { findSkuConflict, normalizeSku } from '@/lib/skuLookup';
 import { urutNamaSku } from '@/lib/sortProducts';
+import { kunciKelompok } from '@/lib/publicCatalog';
 import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
@@ -61,6 +62,15 @@ import type {
   ProductSize,
   SalesChannel,
 } from '@/types';
+
+/** Satu baris isian di "Tambah SKU" — belum jadi produk sampai form disimpan. */
+interface VariantDraft {
+  key: string;
+  sku: string;
+  variant_name: string;
+  base_price: string;
+  stock_qty: string;
+}
 
 interface FormState {
   id?: string;
@@ -97,6 +107,8 @@ interface FormState {
   license_type: string;
   license_code: string;
   video_url: string;
+  /** Baris "Tambah SKU" yang belum disimpan; lihat VariantDraft. */
+  newVariants: VariantDraft[];
 }
 
 const emptyForm: FormState = {
@@ -137,6 +149,7 @@ const emptyForm: FormState = {
   license_type: '',
   license_code: '',
   video_url: '',
+  newVariants: [],
 };
 
 /**
@@ -312,6 +325,9 @@ export function Products() {
         component_product_id: c.component_product_id,
         qty: String(c.qty ?? 1),
       })),
+      // Kelompok yang sudah ada ditampilkan lewat query produk, bukan disimpan
+      // di form; baris "Tambah SKU" selalu mulai kosong tiap form dibuka.
+      newVariants: [],
     });
     setOpen(true);
   }
@@ -374,6 +390,7 @@ export function Products() {
         component_product_id: c.component_product_id,
         qty: String(c.qty ?? 1),
       })),
+      newVariants: [],
     });
     setOpen(true);
     toast.info('Produk disalin. Isi SKU baru sebelum menyimpan — stok diawali dari 0.');
@@ -487,6 +504,35 @@ export function Products() {
       }
     }
 
+    // Baris "Tambah SKU" yang masih kosong sama sekali diabaikan (user klik
+    // tombolnya lalu batal isi). Baris yang sudah disentuh wajib punya SKU, dan
+    // SKU itu wajib unik dari SKU produk mana pun termasuk sesama baris baru —
+    // sama seperti SKU induk di atas, ini dicek di sini karena /api/query
+    // menelan error unique index Postgres.
+    const variantDrafts = form.newVariants.filter(
+      (d) => d.sku.trim() || d.variant_name.trim() || d.base_price.trim() || d.stock_qty.trim(),
+    );
+    const skuTerpakai = new Set<string>();
+    if (skuTrimmed) skuTerpakai.add(normalizeSku(skuTrimmed));
+    for (const d of variantDrafts) {
+      const varSku = d.sku.trim();
+      if (!varSku) {
+        toast.error('SKU wajib diisi untuk tiap baris SKU baru.');
+        return;
+      }
+      const clash = findSkuConflict(varSku, products);
+      if (clash) {
+        toast.error(`SKU "${varSku}" sudah dipakai produk "${clash.name}".`);
+        return;
+      }
+      const norm = normalizeSku(varSku);
+      if (skuTerpakai.has(norm)) {
+        toast.error(`SKU "${varSku}" dipakai lebih dari satu baris.`);
+        return;
+      }
+      skuTerpakai.add(norm);
+    }
+
     const otherMappings = channelMappings.filter((m) => m.product_id !== form.id);
     const draftError = validateChannelDrafts(form.channelMappings, otherMappings);
     if (draftError) {
@@ -496,6 +542,15 @@ export function Products() {
 
     setBusy(true);
     const api = getBackendClient();
+    // parent_sku baris baru ikut SKU Induk induknya apa adanya, termasuk saat
+    // kosong — JANGAN diisi otomatis dengan SKU produk induk. SKU Induk kosong
+    // berarti kelompoknya dibaca dari nama produk (kunciKelompok di
+    // publicCatalog.ts), dan baris baru sudah mewarisi nama itu, jadi kelompok
+    // tetap menyatu tanpa mengisi apa pun. Mengisi parent_sku diam-diam di sini
+    // malah melepas varian LAMA yang parent_sku-nya juga masih kosong, karena
+    // mereka jadi berkunci 'nama:...' sedangkan induk dan baris baru berkunci
+    // 'induk:...'.
+    const parentSkuUntukSimpan = form.parent_sku.trim() || null;
     const row: Product = {
       id: form.id ?? uuid(),
       store_id: storeId,
@@ -518,7 +573,7 @@ export function Products() {
       track_stock: form.track_stock,
       brand: form.brand.trim() || null,
       variant_name: form.variant_name.trim() || null,
-      parent_sku: form.parent_sku.trim() || null,
+      parent_sku: parentSkuUntukSimpan,
       compare_at_price: form.compare_at_price,
       images: form.images,
       spec: form.spec.filter((s) => s.label.trim() && s.value.trim()).map((s) => ({ label: s.label.trim(), value: s.value.trim() })),
@@ -537,14 +592,58 @@ export function Products() {
       // edit offline hilang tanpa pemberitahuan saat data ditarik ulang.
       const { queued } = await writeThrough('products', 'upsert', row);
       await db.products.put(row);
+      // Tiap baris "Tambah SKU" jadi produk sendiri yang mewarisi identitas
+      // produk induk (nama, kategori, merek, foto, berat/dimensi, dst.) —
+      // hanya SKU, nama variasi, harga jual, dan stok yang berbeda per baris.
+      // Pemetaan channel dan isi set milik induk, bukan ikut disalin ke sini.
+      for (const d of variantDrafts) {
+        const variantRow: Product = {
+          id: uuid(),
+          store_id: storeId,
+          category_id: row.category_id,
+          name: row.name,
+          description: row.description,
+          image_url: row.image_url,
+          base_price: Number(d.base_price) || 0,
+          sizes: [],
+          is_active: row.is_active,
+          sku: d.sku.trim(),
+          barcode: null,
+          cost_price: row.cost_price,
+          stock_qty: Number(d.stock_qty) || 0,
+          min_stock: 0,
+          weight_gram: row.weight_gram,
+          length_cm: row.length_cm,
+          width_cm: row.width_cm,
+          height_cm: row.height_cm,
+          track_stock: row.track_stock,
+          brand: row.brand,
+          variant_name: d.variant_name.trim() || null,
+          parent_sku: row.parent_sku,
+          compare_at_price: 0,
+          images: row.images,
+          spec: [],
+          variant_label: row.variant_label,
+          warranty_type: null,
+          warranty_period: null,
+          box_contents: null,
+          highlights: null,
+          license_type: null,
+          license_code: null,
+          video_url: null,
+        };
+        await writeThrough('products', 'upsert', variantRow);
+        await db.products.put(variantRow);
+      }
       await saveChannelMappings(row.id);
       await saveSetComponents(row.id);
       toast.success(
-        queued
+        (queued
           ? 'Produk disimpan lokal. Akan dikirim ke server saat online.'
           : form.id
             ? 'Produk diperbarui.'
-            : 'Produk ditambahkan.',
+            : 'Produk ditambahkan.') +
+          (variantDrafts.length ? ` +${variantDrafts.length} SKU baru.` : ''),
       );
       setOpen(false);
     } catch (e) {
@@ -790,7 +889,11 @@ export function Products() {
         )}
       </Card>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? 'Edit Produk' : 'Tambah Produk'} size="lg">
+      {/* Selebar nota Pembelian Supplier: formulir ini memuat isi set, SKU
+          platform, dan deskripsi panjang. Di lebar "lg" nama produk pada daftar
+          isi set terpotong, dan client tidak bisa memastikan barang yang dipilih
+          sudah benar. */}
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? 'Edit Produk' : 'Tambah Produk'} size="xl">
         <ProductForm
           form={form}
           setForm={setForm}
@@ -999,7 +1102,7 @@ function ProductForm({
 
         {/* Penamaan & variasi ============================================ */}
         <section className="rounded-xl border border-ink-100 p-3 dark:border-ink-800">
-          <SeksiPenamaanVariasi form={form} setForm={setForm} />
+          <SeksiPenamaanVariasi form={form} setForm={setForm} products={products} />
         </section>
 
         <section>
@@ -1973,7 +2076,15 @@ function DetailTokoOnline({ form, setForm }: { form: FormState; setForm: (f: For
  * per varian. Dua isian itu dikumpulkan di sini beserta hasil akhirnya supaya
  * aturan penamaannya terlihat tanpa harus menyimpan dulu.
  */
-function SeksiPenamaanVariasi({ form, setForm }: { form: FormState; setForm: (f: FormState) => void }) {
+function SeksiPenamaanVariasi({
+  form,
+  setForm,
+  products,
+}: {
+  form: FormState;
+  setForm: (f: FormState) => void;
+  products: Product[];
+}) {
   const namaDasar = form.name.trim();
   const namaVariasi = form.variant_name.trim();
   const atribut = form.variant_label.trim() || 'Variasi';
@@ -1983,6 +2094,41 @@ function SeksiPenamaanVariasi({ form, setForm }: { form: FormState; setForm: (f:
       ? `${namaDasar} (${namaVariasi})`
       : namaDasar
     : 'Isi nama produk dulu';
+
+  // Produk lain yang sudah sekelompok (kunci sama seperti kunciKelompok di
+  // publicCatalog.ts) ditampilkan apa adanya di sini, bukan diedit — mengedit
+  // baris orang lain dari form produk ini gampang salah pencet dan sudah ada
+  // formnya sendiri. Diri sendiri dikeluarkan karena sudah terwakili oleh
+  // isian di atas.
+  const anggotaKelompok = namaDasar
+    ? products
+        .filter(
+          (p) =>
+            p.is_active &&
+            p.id !== form.id &&
+            kunciKelompok(p) === kunciKelompok({ name: form.name, parent_sku: form.parent_sku }),
+        )
+        .sort(urutNamaSku)
+    : [];
+
+  function tambahBarisSku() {
+    setForm({
+      ...form,
+      newVariants: [
+        ...form.newVariants,
+        { key: uuid(), sku: '', variant_name: '', base_price: '', stock_qty: '' },
+      ],
+    });
+  }
+  function ubahBarisSku(key: string, patch: Partial<VariantDraft>) {
+    setForm({
+      ...form,
+      newVariants: form.newVariants.map((d) => (d.key === key ? { ...d, ...patch } : d)),
+    });
+  }
+  function hapusBarisSku(key: string) {
+    setForm({ ...form, newVariants: form.newVariants.filter((d) => d.key !== key) });
+  }
 
   return (
     <div className="space-y-3">
@@ -2046,10 +2192,82 @@ function SeksiPenamaanVariasi({ form, setForm }: { form: FormState; setForm: (f:
           </div>
         )}
       </dl>
-      <p className="text-xs leading-relaxed text-ink-500">
-        Menambah varian lain: simpan produk ini, lalu pakai tombol Salin di daftar produk.
-        Nama, harga, dan foto ikut tersalin; SKU dan nama variasi diisi ulang.
-      </p>
+      <div className="space-y-2 rounded-lg border border-ink-100 p-3 dark:border-ink-800">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium">SKU dalam kelompok ini</span>
+          <Button type="button" variant="secondary" size="sm" onClick={tambahBarisSku}>
+            <Plus size={12} /> Tambah SKU
+          </Button>
+        </div>
+
+        {anggotaKelompok.length > 0 && (
+          <div className="space-y-1">
+            {anggotaKelompok.map((p) => (
+              <div
+                key={p.id}
+                className="grid grid-cols-[1.2fr_1fr_1fr_0.7fr] gap-2 rounded-lg bg-ink-50 px-2 py-1.5 text-xs dark:bg-ink-900"
+              >
+                <span className="truncate font-mono">{p.sku || '(tanpa SKU)'}</span>
+                <span className="truncate text-ink-500">{p.variant_name || '—'}</span>
+                <span className="text-ink-500">{formatMoney(Number(p.base_price))}</span>
+                <span className="text-ink-500">Stok {p.stock_qty}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {form.newVariants.length > 0 && (
+          <div className="space-y-1.5">
+            {form.newVariants.map((d) => (
+              <div key={d.key} className="flex gap-1.5">
+                <input
+                  className="input !py-1.5 text-sm font-mono"
+                  aria-label="SKU variasi baru"
+                  placeholder="SKU (wajib)"
+                  value={d.sku}
+                  onChange={(e) => ubahBarisSku(d.key, { sku: e.target.value })}
+                />
+                <input
+                  className="input !py-1.5 text-sm"
+                  aria-label="Nama variasi baru"
+                  placeholder="Nama variasi"
+                  value={d.variant_name}
+                  onChange={(e) => ubahBarisSku(d.key, { variant_name: e.target.value })}
+                />
+                <input
+                  className="input !py-1.5 text-sm"
+                  aria-label="Harga jual variasi baru"
+                  type="number"
+                  placeholder="Harga jual"
+                  value={d.base_price}
+                  onChange={(e) => ubahBarisSku(d.key, { base_price: e.target.value })}
+                />
+                <input
+                  className="input !py-1.5 text-sm"
+                  aria-label="Stok awal variasi baru"
+                  type="number"
+                  placeholder="Stok awal"
+                  value={d.stock_qty}
+                  onChange={(e) => ubahBarisSku(d.key, { stock_qty: e.target.value })}
+                />
+                <button
+                  type="button"
+                  aria-label="Hapus baris SKU baru"
+                  onClick={() => hapusBarisSku(d.key)}
+                  className="grid w-9 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-rose-50 hover:text-rose-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-xs leading-relaxed text-ink-500">
+          Tiap baris "Tambah SKU" jadi produk sendiri saat disimpan, mewarisi nama, kategori,
+          merek, dan foto dari produk ini — tidak perlu lagi memakai tombol Salin.
+        </p>
+      </div>
     </div>
   );
 }
