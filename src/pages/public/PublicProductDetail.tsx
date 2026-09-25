@@ -26,10 +26,14 @@ import { Link, useLocation, useNavigate } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
   fetchPublicCatalog,
+  fetchPublicFlashSale,
   fetchPublicProduct,
+  flashUntukKelompok,
   kelompokkanVarian,
+  petaFlashAktif,
   tandaiHelpful,
   type PublicCatalogData,
+  type PublicFlashSaleData,
   type PublicProductDetailData,
   type PublicReview,
 } from '@/lib/publicCatalog';
@@ -39,6 +43,7 @@ import { useWishlist } from '@/stores/wishlist';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 
+const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 const PER_HALAMAN = 5;
 const KUNCI_HELPFUL = 'tokoku.helpful.v1';
 const TOMBOL_BELI =
@@ -111,6 +116,7 @@ export function PublicProductDetail() {
 
   const [data, setData] = useState<PublicProductDetailData | null>(null);
   const [catalog, setCatalog] = useState<PublicCatalogData | null>(null);
+  const [flash, setFlash] = useState<PublicFlashSaleData>(FLASH_KOSONG);
   const [loading, setLoading] = useState(true);
   const [galeri, setGaleri] = useState(0);
   const [qty, setQty] = useState(1);
@@ -163,6 +169,11 @@ export function PublicProductDetail() {
     fetchPublicCatalog(PUBLIC_STORE_ID).then(setCatalog).catch(() => {});
   }, []);
 
+  // Sesi flash sale toko, tanpa cache supaya harganya segar tiap halaman dibuka.
+  useEffect(() => {
+    fetchPublicFlashSale(PUBLIC_STORE_ID).then(setFlash).catch(() => {});
+  }, []);
+
   useEffect(() => setHalaman(1), [bintang, urutan, chip]);
 
   // Halaman ini juga punya bilah aksi menempel di bawah layar HP, jadi kaki
@@ -211,6 +222,8 @@ export function PublicProductDetail() {
     return { sama, suka };
   }, [catalog, data]);
 
+  const petaFlash = useMemo(() => petaFlashAktif(flash.items), [flash.items]);
+
   if (loading) {
     return (
       <PublicShell wide>
@@ -249,8 +262,12 @@ export function PublicProductDetail() {
   const stok = Number(product.stock_qty ?? 0);
   const habis = product.track_stock && stok <= 0;
   const maxQty = product.track_stock ? Math.max(1, stok) : 999;
-  const harga = Number(product.base_price);
-  const coret = Number(product.compare_at_price ?? 0);
+  // Item flash aktif untuk produk ini (kalau ada) menggantikan harga normal di
+  // seluruh halaman: hero, panel beli ringkas, dan harga yang dibawa ke keranjang
+  // — server tetap menghitung ulang harga sebenarnya saat checkout.
+  const itemFlash = petaFlash.get(product.id) ?? null;
+  const harga = itemFlash ? Number(itemFlash.flash_price) : Number(product.base_price);
+  const coret = itemFlash ? Number(itemFlash.base_price) : Number(product.compare_at_price ?? 0);
   const diskon = coret > harga && harga > 0 ? Math.round((1 - harga / coret) * 100) : 0;
   const namaAtribut = product.variant_label?.trim() || 'Variasi';
   const labelVarian = (v: { variant_name: string | null; sku: string | null }) => v.variant_name || v.sku || 'Standar';
@@ -668,7 +685,14 @@ export function PublicProductDetail() {
         <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded bg-white text-ink-300 ring-1 ring-ink-100 dark:bg-ink-900 dark:ring-ink-800">
           {product.image_url ? <img src={product.image_url} alt="" className="h-full w-full object-contain" /> : <ShoppingBag size={22} />}
         </span>
-        <span className="text-2xl text-brand-600">{formatMoney(harga, store.currency)}</span>
+        <span>
+          {itemFlash && (
+            <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              Flash Sale
+            </span>
+          )}
+          <span className="block text-2xl text-brand-600">{formatMoney(harga, store.currency)}</span>
+        </span>
       </div>
       {variasi.length > 1 && (
         <div className="mt-4 grid grid-cols-[80px_minmax(0,1fr)] gap-2 text-sm">
@@ -857,6 +881,11 @@ export function PublicProductDetail() {
               <img src={store.pdp_banner_url} alt="Promo toko" className="max-h-24 rounded-md object-contain" />
             )}
             <div>
+              {itemFlash && (
+                <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
+                  Flash Sale
+                </span>
+              )}
               <div className="text-3xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
               {diskon > 0 && (
                 <div className="mt-1 flex items-center gap-2 text-sm">
@@ -909,6 +938,11 @@ export function PublicProductDetail() {
           <div className="space-y-2 px-4 pb-4 lg:hidden">
             <div className="flex items-start justify-between gap-3">
               <div>
+                {itemFlash && (
+                  <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                    Flash Sale
+                  </span>
+                )}
                 <div className="text-2xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
                 {diskon > 0 && (
                   <div className="flex items-center gap-2 text-xs">
@@ -1148,7 +1182,7 @@ export function PublicProductDetail() {
             <h2 className="text-base text-ink-800 dark:text-ink-100">Dari Toko yang Sama</h2>
             <div className="grid auto-cols-[46%] grid-flow-col gap-2.5 overflow-x-auto pb-1 sm:auto-cols-[30%] lg:grid-flow-row lg:grid-cols-6 lg:overflow-visible">
               {lainnya.sama.map((k) => (
-                <KartuProduk key={k.key} kelompok={k} currency={store.currency} />
+                <KartuProduk key={k.key} kelompok={k} currency={store.currency} flash={flashUntukKelompok(k, petaFlash)} />
               ))}
             </div>
           </section>
@@ -1163,7 +1197,7 @@ export function PublicProductDetail() {
             </h2>
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
               {lainnya.suka.map((k) => (
-                <KartuProduk key={k.key} kelompok={k} currency={store.currency} />
+                <KartuProduk key={k.key} kelompok={k} currency={store.currency} flash={flashUntukKelompok(k, petaFlash)} />
               ))}
             </div>
           </section>

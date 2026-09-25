@@ -269,6 +269,92 @@ export async function tandaiHelpful(reviewId: string): Promise<number | null> {
   return payload.data?.helpful_count ?? null;
 }
 
+/* =========================================================================
+ * Flash sale storefront
+ * ========================================================================= */
+
+export interface PublicFlashSale {
+  id: string;
+  store_id: string;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface PublicFlashSaleItem {
+  product_id: string;
+  flash_price: number;
+  quota_qty: number | null;
+  sold_qty: number;
+  name: string;
+  image_url: string | null;
+  base_price: number;
+  stock_qty: number;
+}
+
+export interface PublicFlashSaleData {
+  flash_sale: PublicFlashSale | null;
+  items: PublicFlashSaleItem[];
+}
+
+const FLASH_SALE_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
+
+/**
+ * Sesi flash sale yang sedang berjalan. Sengaja TIDAK memakai cache modul
+ * seperti fetchPublicCatalog: sesinya berubah karena waktu (jendela
+ * starts_at/ends_at), jadi tiap kali halaman dibuka datanya harus diambil
+ * ulang, bukan dipakai bersama dari permintaan sebelumnya.
+ */
+export async function fetchPublicFlashSale(storeId: string): Promise<PublicFlashSaleData> {
+  const { apiBaseUrl } = loadConfig();
+  const response = await fetch(`${apiBaseUrl}/api/public/flash-sale?store_id=${encodeURIComponent(storeId)}`);
+  const text = await response.text();
+  const payload = text ? (JSON.parse(text) as { data?: PublicFlashSaleData; error?: string }) : null;
+  if (!response.ok) throw new Error(payload?.error || 'Gagal memuat flash sale.');
+  return payload?.data ?? FLASH_SALE_KOSONG;
+}
+
+/**
+ * Server tetap mengirim item yang kuotanya sudah habis (supaya pembeli yang
+ * terlanjur melihatnya tidak kehilangan produk dari daftar); klien yang
+ * menentukan mana yang masih boleh dianggap flash aktif.
+ */
+export function itemFlashAktif(item: Pick<PublicFlashSaleItem, 'quota_qty' | 'sold_qty'>): boolean {
+  return item.quota_qty === null || Number(item.sold_qty) < Number(item.quota_qty);
+}
+
+/** Peta product_id -> item flash aktif, supaya tiap kelompok/produk gampang dicek. */
+export function petaFlashAktif(items: PublicFlashSaleItem[]): Map<string, PublicFlashSaleItem> {
+  const peta = new Map<string, PublicFlashSaleItem>();
+  for (const item of items) {
+    if (itemFlashAktif(item)) peta.set(item.product_id, item);
+  }
+  return peta;
+}
+
+export interface FlashKartuInfo {
+  hargaFlash: number;
+  hargaCoret: number;
+}
+
+/**
+ * Satu kelompok varian dianggap flash bila ADA anggotanya yang sedang flash
+ * aktif. Harga yang dipakai di kartu adalah flash_price TERENDAH di antara
+ * anggota aktif itu, dan harga coretnya base_price anggota tersebut (bukan
+ * compare_at_price produk) — mengikuti keputusan Task 4.
+ */
+export function flashUntukKelompok(
+  kelompok: KelompokProduk,
+  petaFlash: Map<string, PublicFlashSaleItem>,
+): FlashKartuInfo | null {
+  let terpilih: PublicFlashSaleItem | null = null;
+  for (const p of kelompok.anggota) {
+    const item = petaFlash.get(p.id);
+    if (item && (!terpilih || Number(item.flash_price) < Number(terpilih.flash_price))) terpilih = item;
+  }
+  return terpilih ? { hargaFlash: Number(terpilih.flash_price), hargaCoret: Number(terpilih.base_price) } : null;
+}
+
 /**
  * Lokasi toko di kartu produk (seperti "Kota Jakarta Barat" di Lazada). Selama
  * belum diisi di Pengaturan > Toko Online, tampil contoh sementara.

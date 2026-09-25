@@ -2,7 +2,7 @@ import { ShoppingBag } from 'lucide-react';
 import { Link } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import { Bintang } from '@/components/public/Bintang';
-import type { KelompokProduk } from '@/lib/publicCatalog';
+import type { FlashKartuInfo, KelompokProduk } from '@/lib/publicCatalog';
 
 /**
  * Kartu produk mengikuti kartu Lazada: rata tanpa bingkai dan tanpa tombol,
@@ -15,16 +15,19 @@ export function KartuProduk({
   currency,
   gaya = 'beranda',
   lokasi,
+  flash,
 }: {
   kelompok: KelompokProduk;
   currency?: string;
   gaya?: 'beranda' | 'cari';
   /** Lokasi toko di pojok kanan bawah kartu hasil pencarian. */
   lokasi?: string;
+  /** Ada isinya hanya kalau kelompok ini sedang flash sale aktif; tanpa ini kartu tampil seperti biasa. */
+  flash?: FlashKartuInfo | null;
 }) {
   const p = kelompok.wakil;
-  const harga = kelompok.hargaMin;
-  const coret = Number(p.compare_at_price ?? 0);
+  const harga = flash ? flash.hargaFlash : kelompok.hargaMin;
+  const coret = flash ? flash.hargaCoret : Number(p.compare_at_price ?? 0);
   const diskon = coret > harga && harga > 0 ? Math.round((1 - harga / coret) * 100) : 0;
   const bervariasi = kelompok.anggota.length > 1;
 
@@ -44,6 +47,11 @@ export function KartuProduk({
           <div className="grid h-full place-items-center text-ink-300 dark:text-ink-600">
             <ShoppingBag size={30} />
           </div>
+        )}
+        {flash && (
+          <span className="absolute left-1.5 top-1.5 rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Flash Sale
+          </span>
         )}
         {kelompok.habis && (
           <div className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-ink-900/60">

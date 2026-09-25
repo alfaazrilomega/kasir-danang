@@ -28,17 +28,26 @@ import { Link, useLocation } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
   fetchPublicCatalog,
+  fetchPublicFlashSale,
+  flashUntukKelompok,
+  itemFlashAktif,
   kelompokkanVarian,
   lokasiToko,
+  petaFlashAktif,
+  type FlashKartuInfo,
   type KelompokProduk,
   type PublicCatalogData,
   type PublicCatalogStore,
+  type PublicFlashSale,
+  type PublicFlashSaleData,
+  type PublicFlashSaleItem,
 } from '@/lib/publicCatalog';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 
 const EMPTY: PublicCatalogData = { store: null, categories: [], products: [] };
+const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 
 type SortKey = 'terbaru' | 'terlaris' | 'rating' | 'harga-asc' | 'harga-desc' | 'nama-asc';
 
@@ -102,6 +111,7 @@ export function PublicCatalog() {
 
   const [catalog, setCatalog] = useState<PublicCatalogData>(EMPTY);
   const [loading, setLoading] = useState(true);
+  const [flash, setFlash] = useState<PublicFlashSaleData>(FLASH_KOSONG);
 
   useEffect(() => {
     let alive = true;
@@ -115,7 +125,20 @@ export function PublicCatalog() {
     };
   }, []);
 
+  // Sesi flash sale diambil terpisah dan tanpa cache: waktunya berubah sendiri,
+  // jadi harus segar tiap kali halaman toko dibuka.
+  useEffect(() => {
+    let alive = true;
+    fetchPublicFlashSale(PUBLIC_STORE_ID)
+      .then((data) => alive && setFlash(data))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const kelompok = useMemo(() => kelompokkanVarian(catalog.products), [catalog.products]);
+  const petaFlash = useMemo(() => petaFlashAktif(flash.items), [flash.items]);
 
   return (
     <PublicShell wide beranda={!modeCari} latar={modeCari ? 'putih' : 'abu'}>
@@ -129,9 +152,17 @@ export function PublicCatalog() {
           merekUrl={merekUrl}
           kategoriUrl={kategoriUrl}
           urutUrl={urutUrl}
+          petaFlash={petaFlash}
         />
       ) : (
-        <Beranda data={catalog} kelompok={kelompok} loading={loading} />
+        <Beranda
+          data={catalog}
+          kelompok={kelompok}
+          loading={loading}
+          flashSale={flash.flash_sale}
+          flashItems={flash.items}
+          petaFlash={petaFlash}
+        />
       )}
     </PublicShell>
   );
@@ -141,7 +172,21 @@ export function PublicCatalog() {
  * Beranda
  * ========================================================================= */
 
-function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompok: KelompokProduk[]; loading: boolean }) {
+function Beranda({
+  data,
+  kelompok,
+  loading,
+  flashSale,
+  flashItems,
+  petaFlash,
+}: {
+  data: PublicCatalogData;
+  kelompok: KelompokProduk[];
+  loading: boolean;
+  flashSale: PublicFlashSale | null;
+  flashItems: PublicFlashSaleItem[];
+  petaFlash: Map<string, PublicFlashSaleItem>;
+}) {
   const { store, categories } = data;
   const token = useCustomer((s) => s.token);
   const klikMasuk = useKlikMasuk();
@@ -261,6 +306,9 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
         <Ubin to="/toko?semua=1" judul="Semua Produk" teks={`Lihat seluruh katalog ${store?.name ?? 'toko'}`} ikon={Store} />
       </div>
 
+      {/* ---------- Flash Sale ---------- */}
+      {flashSale && <BlokFlashSale flashSale={flashSale} items={flashItems} currency={store?.currency} />}
+
       {/* ---------- Terlaris ---------- */}
       {terlaris.length > 0 && (
         <section id="terlaris" className="scroll-mt-24">
@@ -277,7 +325,7 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
             </div>
             <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
               {terlaris.map((k) => (
-                <KartuProduk key={k.key} kelompok={k} currency={store?.currency} />
+                <KartuProduk key={k.key} kelompok={k} currency={store?.currency} flash={flashUntukKelompok(k, petaFlash)} />
               ))}
             </div>
           </div>
@@ -347,7 +395,7 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {untukmu.slice(0, jfy).map((k) => (
-              <KartuProduk key={k.key} kelompok={k} currency={store?.currency} />
+              <KartuProduk key={k.key} kelompok={k} currency={store?.currency} flash={flashUntukKelompok(k, petaFlash)} />
             ))}
           </div>
         )}
@@ -369,6 +417,130 @@ function Beranda({ data, kelompok, loading }: { data: PublicCatalogData; kelompo
 
 function JudulBagian({ children }: { children: ReactNode }) {
   return <h2 className="pb-3 pt-6 text-[22px] leading-7 text-ink-700 dark:text-ink-200">{children}</h2>;
+}
+
+/**
+ * Blok Flash Sale di beranda: satu kartu per PRODUK (bukan per kelompok
+ * varian) karena harga & kuota melekat pada satu SKU — menggabung varian ke
+ * satu kartu akan menyembunyikan kuota mana yang sudah habis.
+ *
+ * Hitung mundur pakai SATU interval 1 detik untuk seluruh blok (bukan per
+ * kartu), dihitung dari selisih ke Date.now() supaya tidak tergantung zona
+ * waktu string ISO. Begitu waktunya lewat, blok menghilang sendiri dan
+ * intervalnya dimatikan, tanpa perlu muat ulang halaman.
+ */
+function BlokFlashSale({
+  flashSale,
+  items,
+  currency,
+}: {
+  flashSale: PublicFlashSale;
+  items: PublicFlashSaleItem[];
+  currency?: string;
+}) {
+  const hitungSisa = () => new Date(flashSale.ends_at).getTime() - Date.now();
+  const [sisaMs, setSisaMs] = useState(hitungSisa);
+
+  useEffect(() => {
+    setSisaMs(hitungSisa());
+    const timer = window.setInterval(() => {
+      const sisa = hitungSisa();
+      setSisaMs(sisa);
+      if (sisa <= 0) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flashSale.ends_at]);
+
+  if (sisaMs <= 0 || items.length === 0) return null;
+
+  const totalDetik = Math.max(0, Math.floor(sisaMs / 1000));
+  const dua = (n: number) => String(n).padStart(2, '0');
+  const jam = dua(Math.floor(totalDetik / 3600));
+  const menit = dua(Math.floor((totalDetik % 3600) / 60));
+  const detik = dua(totalDetik % 60);
+
+  return (
+    <section id="flash-sale" className="scroll-mt-24">
+      <JudulBagian>Flash Sale</JudulBagian>
+      <div className="bg-white dark:bg-ink-900">
+        <div className="flex h-[53px] items-center justify-between border-b border-ink-100 px-4 dark:border-ink-800">
+          <span className="truncate pr-3 text-sm text-brand-600">{flashSale.name}</span>
+          <span className="flex shrink-0 items-center gap-1.5 rounded-sm bg-ink-800 px-2.5 py-1 text-sm font-semibold tabular-nums text-white dark:bg-ink-700">
+            {jam}:{menit}:{detik}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
+          {items.map((item) => (
+            <KartuFlash key={item.product_id} item={item} currency={currency} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Kartu satu produk di blok Flash Sale. Item yang kuotanya sudah habis tetap
+ * tampil (tidak dihilangkan dari daftar) tapi kembali ke harga normal tanpa
+ * badge — pembeli sudah terlanjur melihatnya di daftar ini.
+ */
+function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: string }) {
+  const aktif = itemFlashAktif(item);
+  const harga = aktif ? Number(item.flash_price) : Number(item.base_price);
+  const coret = Number(item.base_price);
+  const diskon = aktif && coret > harga && harga > 0 ? Math.round((1 - harga / coret) * 100) : 0;
+  const kuotaAda = item.quota_qty !== null;
+  const persenTerjual = kuotaAda ? Math.min(100, Math.round((Number(item.sold_qty) / Number(item.quota_qty)) * 100)) : 0;
+  const stokHabis = Number(item.stock_qty) <= 0;
+
+  return (
+    <Link
+      to={`/toko/produk?id=${item.product_id}`}
+      data-kartu-produk=""
+      className="flex h-full flex-col overflow-hidden bg-white hover:shadow-[0_2px_12px_rgba(0,0,0,0.16)] dark:bg-ink-900"
+    >
+      <div className="relative aspect-square bg-white dark:bg-ink-900">
+        {item.image_url ? (
+          <img src={item.image_url} alt={item.name} loading="lazy" className="h-full w-full object-contain" />
+        ) : (
+          <div className="grid h-full place-items-center text-ink-300 dark:text-ink-600">
+            <ShoppingBag size={30} />
+          </div>
+        )}
+        {aktif && (
+          <span className="absolute left-1.5 top-1.5 rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Flash Sale
+          </span>
+        )}
+        {stokHabis && (
+          <div className="absolute inset-0 grid place-items-center bg-white/60 dark:bg-ink-900/60">
+            <span className="rounded-sm bg-ink-800/80 px-2 py-1 text-xs font-medium text-white">Stok habis</span>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-1 flex-col px-2 pb-3 pt-2">
+        <span className="line-clamp-2 min-h-9 text-sm leading-[18px] text-ink-800 dark:text-ink-100">{item.name}</span>
+        <span className="mt-1.5 text-lg leading-6 text-brand-600">{formatMoney(harga, currency)}</span>
+        {aktif && diskon > 0 && (
+          <span className="text-xs text-ink-400">
+            <span className="line-through">{formatMoney(coret, currency)}</span>
+            <span className="ml-1 text-ink-700 dark:text-ink-300">-{diskon}%</span>
+          </span>
+        )}
+        {aktif && kuotaAda && (
+          <div className="mt-1.5 space-y-1">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
+              <div className="h-full rounded-full bg-rose-500" style={{ width: `${persenTerjual}%` }} />
+            </div>
+            <span className="text-[11px] text-ink-500">
+              Terjual {formatNumber(Number(item.sold_qty))} dari {formatNumber(Number(item.quota_qty))}
+            </span>
+          </div>
+        )}
+      </div>
+    </Link>
+  );
 }
 
 function Ubin({ to, judul, teks, ikon: Ikon }: { to: string; judul: string; teks: string; ikon: LucideIcon }) {
@@ -683,6 +855,7 @@ function HasilCari({
   merekUrl,
   kategoriUrl,
   urutUrl,
+  petaFlash,
 }: {
   data: PublicCatalogData;
   kelompok: KelompokProduk[];
@@ -691,6 +864,7 @@ function HasilCari({
   merekUrl: string;
   kategoriUrl: string;
   urutUrl: string;
+  petaFlash: Map<string, PublicFlashSaleItem>;
 }) {
   const { store, categories } = data;
   const [kategori, setKategori] = useState<string[]>(kategoriUrl ? [kategoriUrl] : []);
@@ -1019,13 +1193,26 @@ function HasilCari({
         ) : tampilan === 'kisi' ? (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {potongan.map((k) => (
-              <KartuProduk key={k.key} kelompok={k} currency={store?.currency} gaya="cari" lokasi={lokasiToko(store)} />
+              <KartuProduk
+                key={k.key}
+                kelompok={k}
+                currency={store?.currency}
+                gaya="cari"
+                lokasi={lokasiToko(store)}
+                flash={flashUntukKelompok(k, petaFlash)}
+              />
             ))}
           </div>
         ) : (
           <div className="mt-2 divide-y divide-ink-100 dark:divide-ink-800">
             {potongan.map((k) => (
-              <BarisDaftar key={k.key} k={k} currency={store?.currency} lokasi={lokasiToko(store)} />
+              <BarisDaftar
+                key={k.key}
+                k={k}
+                currency={store?.currency}
+                lokasi={lokasiToko(store)}
+                flash={flashUntukKelompok(k, petaFlash)}
+              />
             ))}
           </div>
         )}
@@ -1100,8 +1287,20 @@ function DaftarLipat({ baris, batas = 8 }: { baris: ReactNode[]; batas?: number 
   );
 }
 
-function BarisDaftar({ k, currency, lokasi }: { k: KelompokProduk; currency?: string; lokasi: string }) {
+function BarisDaftar({
+  k,
+  currency,
+  lokasi,
+  flash,
+}: {
+  k: KelompokProduk;
+  currency?: string;
+  lokasi: string;
+  /** Sama seperti KartuProduk: tampilan daftar tidak boleh memakai harga normal saat produknya sedang flash sale. */
+  flash?: FlashKartuInfo | null;
+}) {
   const p = k.wakil;
+  const harga = flash ? flash.hargaFlash : k.hargaMin;
   return (
     <Link
       to={`/toko/produk?id=${p.id}`}
@@ -1116,13 +1315,31 @@ function BarisDaftar({ k, currency, lokasi }: { k: KelompokProduk; currency?: st
             <ShoppingBag size={30} />
           </div>
         )}
+        {flash && (
+          <span className="absolute left-1 top-1 rounded-sm bg-rose-600 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+            Flash Sale
+          </span>
+        )}
         {k.habis && (
-          <span className="absolute left-1 top-1 rounded-sm bg-ink-800/80 px-1.5 py-0.5 text-[11px] text-white">Stok habis</span>
+          // Turun ke bawah hanya kalau badge flash sale sudah memakai sudut kiri atas.
+          <span
+            className={cn(
+              'absolute left-1 rounded-sm bg-ink-800/80 px-1.5 py-0.5 text-[11px] text-white',
+              flash ? 'bottom-1' : 'top-1',
+            )}
+          >
+            Stok habis
+          </span>
         )}
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <div className="line-clamp-2 text-base text-ink-800 dark:text-ink-100">{p.name}</div>
-        <div className="text-lg text-brand-600">{formatMoney(k.hargaMin, currency)}</div>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-lg text-brand-600">{formatMoney(harga, currency)}</span>
+          {flash && flash.hargaCoret > harga && (
+            <span className="text-xs text-ink-400 line-through">{formatMoney(flash.hargaCoret, currency)}</span>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-500">
           {k.ratingCount > 0 && (
             <>
