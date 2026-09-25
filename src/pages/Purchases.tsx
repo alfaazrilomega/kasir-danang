@@ -542,7 +542,10 @@ export function Purchases() {
     );
     const total =
       subtotal - Number(form.discount || 0) + Number(form.tax || 0) + Number(form.other_cost || 0);
-    const dpAmount = (total * Number(form.dp_percent || 0)) / 100;
+    // DP dihitung dari nilai barang (subtotal), bukan dari total nota — client
+    // memesan "100jt dp 20%" maksudnya 20jt dari nilai barangnya, pajak dan
+    // biaya lain baru masuk hitungan di sisa pelunasan.
+    const dpAmount = (subtotal * Number(form.dp_percent || 0)) / 100;
 
     const rest = total - dpAmount;
     const keIdr = (n: number) => (isUsd ? n * rate : n);
@@ -1293,29 +1296,32 @@ export function Purchases() {
               <div className="border-b border-brand-100 pb-2 dark:border-brand-500/20 sm:col-span-2">
                 <SummaryLine label="Total qty" value={`${formatNumber(totalQty)} pcs`} />
               </div>
+              {/* Baris utama memakai mata uang NOTA (form.currency), bukan mata
+                  uang toko — nota USD ditulis dalam dolar, baris kedua di
+                  bawahnya baru padanan rupiahnya. */}
               <SummaryLine
                 label="Subtotal harga"
-                value={formatMoney(formTotals.subtotal, currency)}
+                value={formatMoney(formTotals.subtotal, form.currency)}
                 secondary={
                   formTotals.isUsd ? formatMoney(formTotals.subtotalIdr, 'IDR') : undefined
                 }
               />
               <SummaryLine
                 label="Total nota"
-                value={formatMoney(formTotals.total, currency)}
+                value={formatMoney(formTotals.total, form.currency)}
                 secondary={formTotals.isUsd ? formatMoney(formTotals.totalIdr, 'IDR') : undefined}
                 strong
               />
               <SummaryLine
-                label={`DP ${formatNumber(Number(form.dp_percent || 0))}%`}
-                value={formatMoney(formTotals.dpAmount, currency)}
+                label={`DP ${formatNumber(Number(form.dp_percent || 0))}% dari nilai barang`}
+                value={formatMoney(formTotals.dpAmount, form.currency)}
                 secondary={
                   formTotals.isUsd ? formatMoney(formTotals.dpAmountIdr, 'IDR') : undefined
                 }
               />
               <SummaryLine
                 label="Sisa pelunasan"
-                value={formatMoney(formTotals.rest, currency)}
+                value={formatMoney(formTotals.rest, form.currency)}
                 secondary={formTotals.isUsd ? formatMoney(formTotals.restIdr, 'IDR') : undefined}
               />
             </div>
@@ -1487,7 +1493,16 @@ function PurchaseDetail({
 }) {
   const rest = outstandingOf(purchase);
   const days = daysUntilDue(purchase);
-  const dpTarget = (Number(purchase.total) * Number(purchase.dp_percent)) / 100;
+  // DP dihitung dari nilai barang (subtotal), sama seperti di formulir —
+  // supaya angkanya tidak berbeda antara formulir dan detail nota.
+  const dpTarget = (Number(purchase.subtotal) * Number(purchase.dp_percent)) / 100;
+
+  // Nilai tersimpan selalu rupiah. Untuk nota USD, padanan dolarnya dihitung
+  // dari kurs NOTA ini (bukan kurs supplier hari ini), supaya angka nota lama
+  // tidak ikut bergeser saat kurs supplier berubah.
+  const isUsd = purchase.currency === 'USD';
+  const kursNota = Number(purchase.exchange_rate) > 0 ? Number(purchase.exchange_rate) : 1;
+  const keDolar = (nilaiRupiah: number) => nilaiRupiah / kursNota;
 
   return (
     <div className="space-y-5">
@@ -1505,15 +1520,29 @@ function PurchaseDetail({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <DetailStat label="Total Nota" value={formatMoney(purchase.total, currency)} />
         <DetailStat
-          label={`Target DP ${formatNumber(purchase.dp_percent)}%`}
-          value={formatMoney(dpTarget, currency)}
+          label="Total Nota"
+          value={isUsd ? formatMoney(keDolar(Number(purchase.total)), 'USD') : formatMoney(purchase.total, currency)}
+          secondary={isUsd ? formatMoney(purchase.total, 'IDR') : undefined}
         />
-        <DetailStat label="Sudah Dibayar" value={formatMoney(purchase.paid_amount, currency)} />
+        <DetailStat
+          label={`Target DP ${formatNumber(purchase.dp_percent)}% dari nilai barang`}
+          value={isUsd ? formatMoney(keDolar(dpTarget), 'USD') : formatMoney(dpTarget, currency)}
+          secondary={isUsd ? formatMoney(dpTarget, 'IDR') : undefined}
+        />
+        <DetailStat
+          label="Sudah Dibayar"
+          value={
+            isUsd
+              ? formatMoney(keDolar(Number(purchase.paid_amount)), 'USD')
+              : formatMoney(purchase.paid_amount, currency)
+          }
+          secondary={isUsd ? formatMoney(purchase.paid_amount, 'IDR') : undefined}
+        />
         <DetailStat
           label="Sisa Utang"
-          value={formatMoney(rest, currency)}
+          value={isUsd ? formatMoney(keDolar(rest), 'USD') : formatMoney(rest, currency)}
+          secondary={isUsd ? formatMoney(rest, 'IDR') : undefined}
           tone={rest > 0 ? 'warning' : 'default'}
         />
       </div>
@@ -1681,10 +1710,13 @@ function PurchaseDetail({
 function DetailStat({
   label,
   value,
+  secondary,
   tone = 'default',
 }: {
   label: string;
   value: string;
+  /** Padanan rupiah, untuk nota berkurs (USD). */
+  secondary?: string;
   tone?: 'default' | 'warning';
 }) {
   return (
@@ -1705,6 +1737,11 @@ function DetailStat({
         {label}
       </div>
       <div className="mt-1 text-lg font-bold tabular-nums">{value}</div>
+      {secondary && (
+        <div className="text-xs font-normal tabular-nums text-ink-500 dark:text-ink-400">
+          {secondary}
+        </div>
+      )}
     </div>
   );
 }
@@ -1735,7 +1772,8 @@ function PaymentModal({
   const [busy, setBusy] = useState(false);
 
   const rest = purchase ? outstandingOf(purchase) : 0;
-  const dpTarget = purchase ? (Number(purchase.total) * Number(purchase.dp_percent)) / 100 : 0;
+  // DP dihitung dari nilai barang (subtotal), sama seperti formulir dan detail.
+  const dpTarget = purchase ? (Number(purchase.subtotal) * Number(purchase.dp_percent)) / 100 : 0;
   const hasDp = existing.some((p) => p.type === 'dp');
 
   // Saran nominal: DP dulu kalau belum ada, sisanya pelunasan.
@@ -1878,11 +1916,14 @@ function PaymentModal({
             onChange={(e) => setAmount(e.target.value)}
             hint={
               // Pembayaran dicatat dalam rupiah, sama seperti seluruh nilai nota.
-              // Untuk nota USD padanan dolarnya ikut ditampilkan supaya bisa
-              // dicocokkan dengan invoice supplier.
+              // Untuk nota USD, kalimat pertama menegaskan satuannya supaya
+              // kasir tidak salah ketik angka dolar di kolom rupiah, dan
+              // padanan dolarnya ikut ditampilkan supaya bisa dicocokkan
+              // dengan invoice supplier.
               [
+                purchase.currency === 'USD' ? 'Nominal dicatat dalam Rupiah, bukan dolar.' : '',
                 dpTarget > 0
-                  ? `Target DP ${formatNumber(purchase.dp_percent)}% = ${formatMoney(dpTarget, currency)}`
+                  ? `Target DP ${formatNumber(purchase.dp_percent)}% dari nilai barang = ${formatMoney(dpTarget, currency)}`
                   : '',
                 purchase.currency === 'USD' && Number(amount || 0) > 0
                   ? `≈ ${formatMoney(Number(amount || 0) / noteRate(purchase), 'USD')} (kurs ${formatNumber(noteRate(purchase))})`
