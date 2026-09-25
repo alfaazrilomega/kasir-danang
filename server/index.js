@@ -352,6 +352,25 @@ const TABLE_ROLE_ACCESS = {
     update: ['admin'],
     delete: ['admin'],
   },
+  // Admin-only lewat /api/query: layar kelola sesi ada di /promos (rute itu
+  // sendiri sudah dibatasi capability managePromos, admin-only). Storefront
+  // publik dan harga saat checkout tidak lewat sini sama sekali — keduanya
+  // baca langsung dari SQL (/api/public/flash-sale dan alur order), jadi
+  // cashier/customer tidak perlu jalur select ke tabel ini.
+  flash_sales: {
+    select: ['admin'],
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  flash_sale_items: {
+    select: ['admin'],
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
   shifts: {
     select: POS_ROLES,
     insert: POS_ROLES,
