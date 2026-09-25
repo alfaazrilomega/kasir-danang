@@ -117,8 +117,13 @@ const orderIds = [];
     try {
       const page = await (await browser.newContext({ viewport: { width: 1400, height: 1000 } })).newPage();
       trackApi(page);
-      await page.goto(BASE_URL + '/toko', { waitUntil: 'networkidle' });
-      await waitForApiIdle(page, { idleMs: 2000, minWaitMs: 1500 });
+      // Sengaja BUKAN networkidle: gambar produk toko ini dimuat dari situs
+      // klien (gnnkracing.id), dan saat situs itu lambat permintaan gambarnya
+      // menggantung sehingga networkidle tidak pernah tercapai walau halaman
+      // sudah siap. waitForApiIdle hanya menunggu permintaan API aplikasi.
+      await page.goto(BASE_URL + '/toko', { waitUntil: 'domcontentloaded' });
+      await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 2000 });
+      await page.waitForSelector('section#terlaris, section#flash-sale', { timeout: 60000 });
       const blok = page.locator('section#flash-sale');
       record('Blok Flash Sale tampil di beranda toko', (await blok.count()) > 0);
       const kartu = blok.locator('a[data-kartu-produk]').filter({ hasText: TAG });
