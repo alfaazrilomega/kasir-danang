@@ -20,6 +20,7 @@ import {
   TrendingUp,
   UserCog,
   Wallet,
+  Zap,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -46,7 +47,7 @@ import {
   num as csvNum,
   text as csvText,
 } from '@/lib/csvFormat';
-import type { Order, OrderItem, PaymentMethod, Product, Shift } from '@/types';
+import type { FlashSale, Order, OrderItem, PaymentMethod, Product, Shift } from '@/types';
 
 type Tab = 'daily' | 'shift' | 'cashier' | 'channel' | 'pnl' | 'best';
 type Preset = 'today' | '7d' | '30d' | 'this-month' | 'last-month' | 'custom';
@@ -98,6 +99,7 @@ export function Reports() {
   const [to, setTo] = useState(() => presetRange('7d')!.to);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [detailCashier, setDetailCashier] = useState<string | null>(null);
+  const [flashSales, setFlashSales] = useState<FlashSale[]>([]);
 
   useEffect(() => {
     if (storeId) {
@@ -120,6 +122,31 @@ export function Reports() {
       alive = false;
     };
   }, [storeId, canSeeCashierReport]);
+
+  // flash_sales BUKAN tabel Dexie (lihat db.ts) -- diambil langsung dari
+  // backend tiap kali toko aktif berganti, pola sama seperti loadFlashData
+  // di Promos.tsx.
+  useEffect(() => {
+    if (!storeId) return;
+    let alive = true;
+    async function loadFlashSales() {
+      try {
+        const { data, error } = await getBackendClient()
+          .from('flash_sales')
+          .select('*')
+          .eq('store_id', storeId)
+          .order('starts_at', { ascending: false });
+        if (error) throw error;
+        if (alive) setFlashSales((data ?? []) as FlashSale[]);
+      } catch {
+        // Laporan tetap tampil tanpa bagian flash sale bila gagal dimuat.
+      }
+    }
+    void loadFlashSales();
+    return () => {
+      alive = false;
+    };
+  }, [storeId]);
 
   const orders =
     useLiveQuery(() => db.orders.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
@@ -212,6 +239,43 @@ export function Reports() {
     () => computeStats(cur, items, productById, curRefunds),
     [cur, items, productById, curRefunds],
   );
+
+  /**
+   * Ringkasan penjualan per sesi flash sale (terbaru di atas, maksimal 5
+   * sesi). Dihitung lepas dari filter tanggal/channel di atas -- tiap sesi
+   * sudah punya rentang waktunya sendiri, dan pemilik toko ingin tahu total
+   * penjualan selama jendela promo berjalan, bukan cuma yang berisi produk
+   * flash sale.
+   */
+  const flashSessionSummaries = useMemo(() => {
+    const sesiTerbaru = [...flashSales]
+      .sort((a, b) => new Date(b.starts_at).getTime() - new Date(a.starts_at).getTime())
+      .slice(0, 5);
+    return sesiTerbaru.map((fs) => {
+      const start = new Date(fs.starts_at).getTime();
+      const end = new Date(fs.ends_at).getTime();
+      const ordersInRange = orders.filter((o) => {
+        const ts = new Date(o.created_at).getTime();
+        return ts >= start && ts <= end && countsAsSale(o);
+      });
+      const stats = computeStats(ordersInRange, items, productById, sumRefunds(start, end));
+
+      const orderIds = new Set(ordersInRange.map((o) => o.id));
+      const tally = new Map<string, { name: string; qty: number }>();
+      for (const it of items as OrderItem[]) {
+        if (!orderIds.has(it.order_id)) continue;
+        const key = it.product_id ?? it.name;
+        const prev = tally.get(key) ?? { name: it.name, qty: 0 };
+        prev.qty += it.qty;
+        tally.set(key, prev);
+      }
+      const topProducts = Array.from(tally.values())
+        .sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name))
+        .slice(0, 3);
+
+      return { flashSale: fs, stats, topProducts };
+    });
+  }, [flashSales, orders, items, productById, orderReturns]);
 
   // Pengeluaran operasional pada rentang aktif. Hanya tabel expenses yang
   // dibaca — cash_movements 'out' sengaja diabaikan supaya biaya yang dibayar
@@ -801,6 +865,63 @@ export function Reports() {
           </button>
         ))}
       </div>
+
+      {/* Hanya di tab Harian: bagian ini memakai rentang waktu tiap sesi, jadi
+          menaruhnya di semua tab membuatnya bertabrakan dengan filter tanggal
+          dan tidak berkaitan dengan isi tab shift/kasir/channel. */}
+      {tab === 'daily' && flashSessionSummaries.length > 0 && (
+        <Card className="p-5">
+          <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
+            <Zap size={15} className="text-brand-600" /> Penjualan Periode Flash Sale
+          </div>
+          <p className="mb-3 text-xs text-ink-500">
+            Angka di bawah mengikuti jadwal tiap sesi, bukan filter tanggal di atas.
+          </p>
+          <div className="space-y-3">
+            {flashSessionSummaries.map(({ flashSale, stats, topProducts }) => (
+              <div
+                key={flashSale.id}
+                className="rounded-xl border border-ink-100 p-4 dark:border-ink-800"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{flashSale.name}</div>
+                    <div className="text-xs text-ink-500">
+                      {formatDateTime(flashSale.starts_at)} → {formatDateTime(flashSale.ends_at)}
+                    </div>
+                  </div>
+                  <div className="flex gap-5 text-right">
+                    <div>
+                      <div className="text-[11px] text-ink-500">Pesanan</div>
+                      <div className="font-semibold tabular-nums">{formatNumber(stats.count)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-ink-500">Penjualan</div>
+                      <div className="font-semibold tabular-nums">
+                        {formatMoney(stats.sales, store?.currency)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {topProducts.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {topProducts.map((p, idx) => (
+                      <span
+                        key={p.name + idx}
+                        className="rounded-full bg-ink-100 px-2.5 py-1 text-xs dark:bg-ink-800"
+                      >
+                        {idx + 1}. {p.name} · {formatNumber(p.qty)} terjual
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-ink-500">Belum ada produk terjual pada rentang ini.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {tab === 'daily' && (
         <Card className="p-5">

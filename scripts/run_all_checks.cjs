@@ -15,6 +15,7 @@ const SUITES = [
   'verify_settlement_import',
   'verify_client_additions',
   'verify_guest_checkout',
+  'verify_flash_sale',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {
