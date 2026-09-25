@@ -59,8 +59,12 @@ const record = (nama, ok, ket) => {
     // ================= 2.3: duplikat produk =================
     await page.goto(BASE + '/products', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
-    const namaAsal = await page.locator('tbody tr').first().locator('td').nth(0).innerText();
-    await page.locator('tbody tr').first().locator('button[title="Duplikat"]').click();
+    // Baris tbody paling atas bisa jadi baris INDUK kelompok bervarian (Task 4)
+    // yang tidak punya tombol Duplikat sendiri -- jadi dicari baris pertama
+    // yang benar-benar punya tombol itu, bukan diasumsikan baris pertama.
+    const barisDuplikat = page.locator('tbody tr').filter({ has: page.locator('button[title="Duplikat"]') }).first();
+    const namaAsal = await barisDuplikat.locator('td').nth(0).innerText();
+    await barisDuplikat.locator('button[title="Duplikat"]').click();
     await page.waitForTimeout(2000);
 
     const form23 = modal();
@@ -86,6 +90,43 @@ const record = (nama, ok, ket) => {
     const [namaTersimpan, stokTersimpan] = produkBaru.split('|');
     record('Produk salinan tersimpan sebagai produk baru dengan stok 0',
       (namaTersimpan || '').includes('(Salinan)') && Number(stokTersimpan) === 0, produkBaru);
+
+    // ================= Pengelompokan daftar produk per varian (kunciKelompok) =================
+    //
+    // Bug yang pernah diprotes client: dua produk BERNAMA SAMA PERSIS tapi
+    // dengan SKU Induk (parent_sku) berbeda malah digabung jadi satu baris.
+    // kunciKelompok mengelompokkan lewat parent_sku dulu, baru jatuh ke nama
+    // kalau parent_sku kosong — jadi dua parent_sku berbeda WAJIB tetap dua
+    // baris induk terpisah walau namanya identik.
+    const storeIdKelompok = psql('select id from public.stores order by created_at limit 1;').split('\n')[0].trim();
+    const namaKelompokUji = `Produk Uji Kelompok ${CAP}`;
+    const indukA = `UJIKEL-A-${CAP}`;
+    const indukB = `UJIKEL-B-${CAP}`;
+    psql(`insert into public.products(store_id, name, sku, parent_sku, base_price, is_active, track_stock)
+          values ('${storeIdKelompok}', '${namaKelompokUji}', 'UJIKEL-A1-${CAP}', '${indukA}', 50000, true, false),
+                 ('${storeIdKelompok}', '${namaKelompokUji}', 'UJIKEL-A2-${CAP}', '${indukA}', 55000, true, false),
+                 ('${storeIdKelompok}', '${namaKelompokUji}', 'UJIKEL-B1-${CAP}', '${indukB}', 60000, true, false),
+                 ('${storeIdKelompok}', '${namaKelompokUji}', 'UJIKEL-B2-${CAP}', '${indukB}', 65000, true, false);`);
+
+    // Halaman produk memuat gambar dari domain client dan bisa berat; ditunggu
+    // lewat kesepian API + selektor baris, bukan networkidle.
+    await page.goto(BASE + '/products', { waitUntil: 'domcontentloaded' });
+    await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
+    await page.waitForSelector('tbody tr', { timeout: 60000 });
+    const cariKelompok = page.getByPlaceholder(/Cari nama/i).first();
+    await cariKelompok.fill(namaKelompokUji);
+    await page.waitForTimeout(2000);
+
+    const teksKelompok = await page.locator('tbody').innerText();
+    const barisIndukKelompok = page.locator('tbody tr').filter({ hasText: /varian/ });
+    record('Kelompok bervarian tampil sebagai satu baris induk (2 varian)',
+      (teksKelompok.match(/2 varian/g) || []).length === 2,
+      (teksKelompok.match(/\d+ varian/g) || []).join(', '));
+    record('Nama sama, SKU Induk berbeda tetap jadi DUA baris induk terpisah',
+      await barisIndukKelompok.count() === 2, (await barisIndukKelompok.count()) + ' baris induk');
+
+    await cariKelompok.fill('');
+    await page.waitForTimeout(800);
 
     // ================= 3.3: kolom channel & no. pesanan di ekspor mutasi =================
     await page.goto(BASE + '/stock-mutation', { waitUntil: 'networkidle' });
@@ -387,6 +428,7 @@ const record = (nama, ok, ket) => {
     await browser.close();
     try {
       psql(`delete from public.products where sku = 'UJIDUP-${CAP}';`);
+      psql(`delete from public.products where sku like 'UJIKEL-%-${CAP}';`);
       psql(`delete from public.customers where name like '%Uji%${CAP}%' or phone = '0811${CAP}';`);
       psql(`delete from public.expenses where description like '%uji ${CAP}%';`);
       psql(`delete from public.orders where order_number like 'UJI-ORD-${CAP}%';`);

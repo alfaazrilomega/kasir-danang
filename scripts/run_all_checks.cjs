@@ -14,6 +14,7 @@ const SUITES = [
   'verify_opname_import',
   'verify_settlement_import',
   'verify_client_additions',
+  'verify_purchase_currency',
   'verify_guest_checkout',
   'verify_flash_sale',
 ];
