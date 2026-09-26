@@ -843,7 +843,7 @@ export function PublicProductDetail() {
                   <button
                     type="button"
                     onClick={() => setGaleri((galeri - 1 + media.length) % media.length)}
-                    className="absolute left-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-white/80 text-ink-700 shadow lg:hidden"
+                    className="absolute left-2 top-1/2 grid h-[44px] w-[44px] -translate-y-1/2 place-items-center rounded-full bg-white/80 text-ink-700 shadow lg:hidden"
                     aria-label="Media sebelumnya"
                   >
                     <ChevronLeft size={16} />
@@ -851,7 +851,7 @@ export function PublicProductDetail() {
                   <button
                     type="button"
                     onClick={() => setGaleri((galeri + 1) % media.length)}
-                    className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-white/80 text-ink-700 shadow lg:hidden"
+                    className="absolute right-2 top-1/2 grid h-[44px] w-[44px] -translate-y-1/2 place-items-center rounded-full bg-white/80 text-ink-700 shadow lg:hidden"
                     aria-label="Media berikutnya"
                   >
                     <ChevronRight size={16} />

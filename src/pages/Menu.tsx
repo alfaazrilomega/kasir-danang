@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowDownAZ,
   ArrowDownUp,
-  Coffee,
+  Boxes,
+  ImageOff,
   Flame,
   Keyboard,
   LayoutGrid,
@@ -482,9 +483,9 @@ export function MenuPage() {
           <CategoryTile
             active={category === 'all'}
             onClick={() => setCategory('all')}
-            label="All Menu"
+            label="Semua Produk"
             count={totalItems}
-            Icon={Coffee}
+            Icon={Boxes}
           />
           {categories.map((c) => {
             const count = products.filter((p) => p.category_id === c.id).length;
@@ -550,7 +551,7 @@ export function MenuPage() {
                       />
                     ) : (
                       <div className="grid h-full w-full place-items-center text-ink-400">
-                        <Coffee size={28} />
+                        <ImageOff size={28} />
                       </div>
                     )}
                     <div className="absolute top-2 left-2 flex flex-col gap-1">
@@ -1035,7 +1036,7 @@ function CategoryTile({
   label: string;
   count: number;
   onClick: () => void;
-  Icon: typeof Coffee;
+  Icon: typeof Boxes;
 }) {
   return (
     <button

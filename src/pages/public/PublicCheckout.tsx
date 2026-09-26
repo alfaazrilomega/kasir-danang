@@ -10,6 +10,14 @@ import { Link, useLocation, useNavigate } from '@/lib/router';
 import { usePublicCart, type PublicCartLine } from '@/stores/publicCart';
 import { submitPublicOrder } from '@/lib/publicOrders';
 import { PUBLIC_STORE_ID } from '@/lib/config';
+import {
+  fetchPublicCatalog,
+  fetchPublicFlashSale,
+  hargaBerlaku,
+  petaFlashAktif,
+  type PublicCatalogProduct,
+  type PublicFlashSaleItem,
+} from '@/lib/publicCatalog';
 import { updateCustomerMe, useCustomer } from '@/lib/customerAccount';
 import { useBukaMasuk, useTokoPublik } from '@/components/public/KerangkaAuth';
 import { biayaKanal, fetchKanalBayar, type KanalBayar } from '@/lib/publicPayments';
@@ -106,7 +114,30 @@ export function PublicCheckout() {
     return [...peta.entries()];
   }, [kanal.channels]);
 
-  const subtotal = useMemo(() => lines.reduce((sum, l) => sum + l.price * l.qty, 0), [lines]);
+  // Harga flash sale bisa berakhir atau kehabisan kuota antara keranjang dan
+  // checkout. Server menghitung ulang harga saat pesanan dibuat, jadi layar ini
+  // harus memakai angka yang sama — kalau tidak, total yang dilihat pembeli
+  // berbeda dari yang ditagih.
+  const [katalogProduk, setKatalogProduk] = useState<PublicCatalogProduct[]>([]);
+  const [petaFlashCheckout, setPetaFlashCheckout] = useState<Map<string, PublicFlashSaleItem>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    fetchPublicCatalog(PUBLIC_STORE_ID)
+      .then((d) => alive && setKatalogProduk(d.products ?? []))
+      .catch(() => {});
+    fetchPublicFlashSale(PUBLIC_STORE_ID)
+      .then((d) => alive && setPetaFlashCheckout(petaFlashAktif(d.items)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const hargaKini = (l: { product_id: string; price: number }) =>
+    hargaBerlaku(l, katalogProduk, petaFlashCheckout);
+  const subtotal = useMemo(
+    () => lines.reduce((sum, l) => sum + hargaKini(l) * l.qty, 0),
+    [lines, katalogProduk, petaFlashCheckout],
+  );
   const totalQty = useMemo(() => lines.reduce((sum, l) => sum + l.qty, 0), [lines]);
 
   if (lines.length === 0) {
@@ -238,10 +269,10 @@ export function PublicCheckout() {
             <div className="min-w-0 flex-1">
               <div className="line-clamp-2 text-sm leading-5">{line.name}</div>
               <div className="mt-0.5 text-xs text-ink-500">
-                {line.qty} × {formatMoney(line.price)}
+                {line.qty} × {formatMoney(hargaKini(line))}
               </div>
             </div>
-            <div className="shrink-0 text-sm font-semibold tabular-nums">{formatMoney(line.price * line.qty)}</div>
+            <div className="shrink-0 text-sm font-semibold tabular-nums">{formatMoney(hargaKini(line) * line.qty)}</div>
           </li>
         ))}
       </ul>

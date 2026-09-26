@@ -148,12 +148,23 @@ export function tawaranTambahan(
     .sort(laris);
 
   // Satu varian per kelompok: menawarkan 14 ukuran gear yang sama bukan tawaran,
-  // itu daftar.
+  // itu daftar. Kelompok yang SUDAH ada di keranjang juga dicoret sejak awal —
+  // pembeli yang mengambil gear belakang 47T tidak sedang mencari 33T dari
+  // produk yang sama, dan menawarkannya membuat blok ini terlihat asal tempel.
   const hasil: PublicCatalogProduct[] = [];
-  const kelompokDipakai = new Set<string>();
+  const kelompokDipakai = new Set<string>(
+    products.filter((p) => dipakai.has(p.id)).map((p) => kunciKelompok(p)),
+  );
+  // Nama yang sudah ada di keranjang juga dicoret. Di katalog client ada dua
+  // kelompok berbeda dengan NAMA IDENTIK (SKU Induknya beda), dan menawarkan
+  // kembaran itu membuat blok ini terlihat seperti salah tampil bagi pembeli,
+  // walaupun secara data memang produk lain.
+  const namaDipakai = new Set(
+    products.filter((p) => dipakai.has(p.id)).map((p) => p.name.trim().toLowerCase()),
+  );
   for (const p of [...serumpun, ...sisanya]) {
     const k = kunciKelompok(p);
-    if (kelompokDipakai.has(k)) continue;
+    if (kelompokDipakai.has(k) || namaDipakai.has(p.name.trim().toLowerCase())) continue;
     kelompokDipakai.add(k);
     hasil.push(p);
     if (hasil.length >= maks) break;
@@ -359,6 +370,27 @@ export function flashUntukKelompok(
     if (item && (!terpilih || Number(item.flash_price) < Number(terpilih.flash_price))) terpilih = item;
   }
   return terpilih ? { hargaFlash: Number(terpilih.flash_price), hargaCoret: Number(terpilih.base_price) } : null;
+}
+
+/**
+ * Harga yang BERLAKU SEKARANG untuk satu baris keranjang.
+ *
+ * Keranjang menyimpan harga saat barang dimasukkan. Kalau sesi flash sale
+ * berakhir atau kuotanya habis sebelum pembeli checkout, angka itu jadi basi:
+ * layar menjanjikan harga flash sementara server menagih harga normal, dan
+ * pembeli baru tahu setelah pesanan jadi. Fungsi ini memakai harga flash bila
+ * masih aktif, kalau tidak memakai harga katalog terbaru, dan hanya jatuh ke
+ * harga simpanan kalau produknya tidak ada lagi di katalog.
+ */
+export function hargaBerlaku(
+  baris: { product_id: string; price: number },
+  produk: PublicCatalogProduct[],
+  petaFlash: Map<string, PublicFlashSaleItem>,
+): number {
+  const flash = petaFlash.get(baris.product_id);
+  if (flash) return Number(flash.flash_price);
+  const p = produk.find((x) => x.id === baris.product_id);
+  return p ? Number(p.base_price) : Number(baris.price);
 }
 
 /**

@@ -73,7 +73,22 @@ function cocok(k: KelompokProduk, needle: string): boolean {
   );
 }
 
-function urutkan(list: KelompokProduk[], sort: SortKey): KelompokProduk[] {
+/**
+ * Harga yang DIPAKAI untuk mengurutkan harus sama dengan harga yang TERTULIS di
+ * kartu. Saat flash sale berjalan, kartu menampilkan harga flash sementara
+ * pengurutan memakai harga normal, sehingga "harga terendah" menghasilkan
+ * urutan yang terlihat acak bagi pembeli.
+ */
+function hargaUrut(k: KelompokProduk, petaFlash?: Map<string, PublicFlashSaleItem>): number {
+  const flash = petaFlash ? flashUntukKelompok(k, petaFlash) : null;
+  return flash ? flash.hargaFlash : k.hargaMin;
+}
+
+function urutkan(
+  list: KelompokProduk[],
+  sort: SortKey,
+  petaFlash?: Map<string, PublicFlashSaleItem>,
+): KelompokProduk[] {
   const hasil = [...list];
   switch (sort) {
     case 'terlaris':
@@ -81,9 +96,9 @@ function urutkan(list: KelompokProduk[], sort: SortKey): KelompokProduk[] {
     case 'rating':
       return hasil.sort((a, b) => b.ratingAvg - a.ratingAvg || b.ratingCount - a.ratingCount);
     case 'harga-asc':
-      return hasil.sort((a, b) => a.hargaMin - b.hargaMin);
+      return hasil.sort((a, b) => hargaUrut(a, petaFlash) - hargaUrut(b, petaFlash));
     case 'harga-desc':
-      return hasil.sort((a, b) => b.hargaMin - a.hargaMin);
+      return hasil.sort((a, b) => hargaUrut(b, petaFlash) - hargaUrut(a, petaFlash));
     case 'nama-asc':
       return hasil.sort((a, b) => a.wakil.name.localeCompare(b.wakil.name, 'id'));
     default:
@@ -508,9 +523,16 @@ function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: 
             <ShoppingBag size={30} />
           </div>
         )}
-        {aktif && (
+        {aktif ? (
           <span className="absolute left-1.5 top-1.5 rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
             Flash Sale
+          </span>
+        ) : (
+          // Tanpa penanda ini, kartu berharga normal di dalam blok Flash Sale
+          // terlihat seperti salah tampil. Produknya sengaja tidak dibuang dari
+          // daftar karena pembeli sudah terlanjur melihatnya.
+          <span className="absolute left-1.5 top-1.5 rounded-sm bg-ink-700/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Kuota habis
           </span>
         )}
         {stokHabis && (
@@ -914,13 +936,17 @@ function HasilCari({
       if (kategori.length && !kategori.includes(p.category_id ?? '')) return false;
       if (merekKecil.length && !merekKecil.includes((p.brand ?? '').trim().toLowerCase())) return false;
       if (stokAda && k.habis) return false;
-      if (diskonSaja && !(Number(p.compare_at_price ?? 0) > k.hargaMin)) return false;
+      // Harga efektif: saat flash sale berjalan, yang dipakai menyaring harus
+      // harga yang benar-benar tertulis di kartu, bukan harga normalnya.
+      const hargaEfektif = hargaUrut(k, petaFlash);
+      const sedangFlash = flashUntukKelompok(k, petaFlash) !== null;
+      if (diskonSaja && !sedangFlash && !(Number(p.compare_at_price ?? 0) > k.hargaMin)) return false;
       if (minRating && k.ratingAvg < minRating) return false;
-      if (rentang && (k.hargaMin < rentang[0] || k.hargaMin > rentang[1])) return false;
+      if (rentang && (hargaEfektif < rentang[0] || hargaEfektif > rentang[1])) return false;
       return true;
     });
-    return urutkan(list, sort);
-  }, [dasar, kategori, merek, stokAda, diskonSaja, minRating, rentang, sort]);
+    return urutkan(list, sort, petaFlash);
+  }, [dasar, kategori, merek, stokAda, diskonSaja, minRating, rentang, sort, petaFlash]);
 
   useEffect(() => setHalaman(1), [kategori, merek, stokAda, diskonSaja, minRating, rentang, sort]);
 

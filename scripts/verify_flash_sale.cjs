@@ -130,6 +130,56 @@ const orderIds = [];
       record('Kartu produk uji tampil di dalam blok Flash Sale', (await kartu.count()) > 0);
       record('Badge "Flash Sale" tampil di kartu produknya',
         (await kartu.first().getByText('Flash Sale', { exact: true }).count()) > 0);
+
+      // ---------- 3b. Harga yang tertulis = harga yang dipakai mengurutkan ----------
+      // Kartu menampilkan harga flash sementara pengurutan dulu memakai harga
+      // normal, sehingga "harga terendah" menghasilkan urutan yang terlihat acak.
+      await page.goto(BASE_URL + '/toko?semua=1&urut=harga-asc', { waitUntil: 'domcontentloaded' });
+      await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
+      await page.waitForSelector('[data-kartu-produk]', { timeout: 60000 });
+      const hargaTampil = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('[data-kartu-produk]'))
+          .slice(0, 12)
+          .map((el) => {
+            const m = (el.textContent || '').match(/Rp\s?[\d.]+/);
+            return m ? Number(m[0].replace(/\D/g, '')) : null;
+          })
+          .filter((n) => n !== null));
+      record('Urut harga terendah menaik walau ada flash sale berjalan',
+        hargaTampil.every((n, i, arr) => i === 0 || arr[i - 1] <= n), hargaTampil.slice(0, 6).join(' <= '));
+
+      // ---------- 3c. Keranjang memakai harga yang berlaku saat itu ----------
+      await page.goto(BASE_URL + '/toko/produk?id=' + productId, { waitUntil: 'domcontentloaded' });
+      await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 2000 });
+      await page.waitForTimeout(1000);
+      await page.getByRole('button', { name: /Keranjang/i }).first().click();
+      await page.waitForTimeout(1500);
+      const lembar = page.locator('div.fixed.inset-0');
+      if (await lembar.count()) {
+        const tombolLembar = lembar.last().getByRole('button', { name: '+ Keranjang', exact: true });
+        if (await tombolLembar.count()) {
+          await tombolLembar.last().click();
+          await page.waitForTimeout(1200);
+        }
+      }
+      await page.goto(BASE_URL + '/toko/keranjang', { waitUntil: 'domcontentloaded' });
+      await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 2000 });
+      await page.waitForTimeout(1200);
+      const keranjangFlash = await page.locator('body').innerText();
+      record('Keranjang memakai harga flash selama kuota masih ada',
+        keranjangFlash.includes('60.000') && !/Harga diperbarui/.test(keranjangFlash),
+        (keranjangFlash.match(/Rp\s?[\d.]+/g) || []).slice(0, 3).join(' '));
+
+      // Kuota dihabiskan seolah pembeli lain menyerobot duluan.
+      psql(`update public.flash_sale_items set sold_qty = quota_qty where product_id = '${productId}';`);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 2000 });
+      await page.waitForTimeout(1200);
+      const keranjangHabis = await page.locator('body').innerText();
+      record('Kuota habis: keranjang kembali ke harga normal dan pembeli diberi tahu',
+        keranjangHabis.includes('100.000') && /Harga diperbarui/.test(keranjangHabis),
+        (keranjangHabis.match(/Rp\s?[\d.]+/g) || []).slice(0, 3).join(' '));
+      psql(`update public.flash_sale_items set sold_qty = 0 where product_id = '${productId}';`);
     } finally {
       await browser.close();
     }

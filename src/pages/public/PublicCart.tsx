@@ -5,7 +5,15 @@ import { PublicShell } from '@/components/layout/PublicShell';
 import { cn, formatMoney } from '@/lib/format';
 import { Link, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
-import { fetchPublicCatalog, tawaranTambahan, type PublicCatalogProduct } from '@/lib/publicCatalog';
+import {
+  fetchPublicCatalog,
+  fetchPublicFlashSale,
+  hargaBerlaku,
+  petaFlashAktif,
+  tawaranTambahan,
+  type PublicCatalogProduct,
+  type PublicFlashSaleItem,
+} from '@/lib/publicCatalog';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { usePublicCart } from '@/stores/publicCart';
@@ -35,6 +43,7 @@ export function PublicCart() {
   const me = useCustomer((s) => s.me);
   const [namaToko, setNamaToko] = useState('');
   const [katalog, setKatalog] = useState<PublicCatalogProduct[]>([]);
+  const [petaFlash, setPetaFlash] = useState<Map<string, PublicFlashSaleItem>>(new Map());
   const [pilih, setPilih] = useState<string[]>(() => lines.map((l) => l.product_id));
 
   useEffect(() => {
@@ -51,13 +60,26 @@ export function PublicCart() {
     };
   }, []);
 
+  // Sesi flash sale diambil ulang tiap keranjang dibuka: harga yang tersimpan
+  // di keranjang bisa sudah basi kalau kuotanya habis atau sesinya berakhir.
+  useEffect(() => {
+    let alive = true;
+    fetchPublicFlashSale(PUBLIC_STORE_ID)
+      .then((d) => alive && setPetaFlash(petaFlashAktif(d.items)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Barang yang dihapus ikut keluar dari pilihan.
   useEffect(() => {
     setPilih((p) => p.filter((id) => lines.some((l) => l.product_id === id)));
   }, [lines]);
 
   const terpilih = useMemo(() => lines.filter((l) => pilih.includes(l.product_id)), [lines, pilih]);
-  const subtotal = terpilih.reduce((sum, l) => sum + l.price * l.qty, 0);
+  const hargaKini = (l: { product_id: string; price: number }) => hargaBerlaku(l, katalog, petaFlash);
+  const subtotal = terpilih.reduce((sum, l) => sum + hargaKini(l) * l.qty, 0);
   const qtyTerpilih = terpilih.reduce((sum, l) => sum + l.qty, 0);
   const semua = lines.length > 0 && terpilih.length === lines.length;
 
@@ -172,7 +194,16 @@ export function PublicCart() {
                       {line.name}
                     </Link>
                     <div className="mt-1 lg:mt-0 lg:text-center">
-                      <div className="text-lg text-brand-600">{formatMoney(line.price)}</div>
+                      <div className="text-lg text-brand-600">{formatMoney(hargaKini(line))}</div>
+                      {hargaKini(line) !== line.price && (
+                        // Harga berubah sejak barang dimasukkan (sesi flash sale
+                        // berakhir, kuotanya habis, atau harga tokonya disetel
+                        // ulang). Lebih baik pembeli tahu di sini daripada kaget
+                        // setelah pesanan jadi.
+                        <div className="text-[11px] text-amber-600 dark:text-amber-500">
+                          Harga diperbarui dari {formatMoney(line.price)}
+                        </div>
+                      )}
                       <div className="mt-1 flex gap-3 text-ink-400 lg:justify-center">
                         <button
                           type="button"
