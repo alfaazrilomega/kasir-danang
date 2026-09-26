@@ -76,7 +76,11 @@ async function tungguTenang(batasMs = 90000) {
       .catch(() => {});
 
     await page.goto('http://localhost:5173/reports', { waitUntil: 'networkidle' });
-    await waitForApiIdle(page, { idleMs: 2000, minWaitMs: 800 });
+    // Angka di layar dibaca dari cache Dexie yang baru saja disinkronkan. Dengan
+    // data yang besar, sinkronnya belum selesai pada jeda 2 detik, sehingga UI
+    // dan SQL dibandingkan pada isi yang berbeda dan suite merah palsu saat
+    // dijalankan beruntun setelah suite lain menulis data.
+    await waitForApiIdle(page, { idleMs: 4000, minWaitMs: 2500 });
 
     const dates = page.locator('input[type="date"]');
     await dates.nth(0).fill(FROM);
