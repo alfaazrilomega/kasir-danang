@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Facebook, Flame, Instagram, MessageCircle, Music2, Search, ShoppingCart, Star, Store, UserRound, Youtube } from 'lucide-react';
+import { ChevronDown, Facebook, Flame, Instagram, MessageCircle, Search, ShoppingCart, Star, Store, UserRound, Youtube } from 'lucide-react';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { cn } from '@/lib/format';
@@ -26,6 +26,29 @@ const TAUTAN_KECIL = 'transition-colors duration-200 hover:text-brand-600';
  * footer abu-abu dan tombol "Pesan" mengambang. Sengaja TIDAK memakai
  * TopNav/useAuth karena halaman ini dikunjungi tanpa login staf.
  */
+/**
+ * Logo TikTok digambar sendiri sebagai SVG karena lucide tidak punya ikonnya.
+ * Sebelumnya dipakai ikon not musik, dan QC menilainya membingungkan: berjajar
+ * dengan tiga logo asli, not musik polos lebih terbaca sebagai tombol suara.
+ * Bentuknya mengikuti tanda resmi TikTok, memakai `currentColor` supaya ikut
+ * warna teks footer seperti ikon lucide lainnya.
+ */
+function IkonTikTok({ size = 18, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
+      <path d="M12.53 1h3.3a4.9 4.9 0 0 0 1.4 3.06A4.94 4.94 0 0 0 20.5 5.4v3.32a8.3 8.3 0 0 1-3.86-1.13v6.8a6.3 6.3 0 1 1-6.3-6.3c.3 0 .6.02.9.07v3.4a2.9 2.9 0 1 0 2.1 2.79V1Z" />
+    </svg>
+  );
+}
+
 export function PublicShell({
   children,
   wide = false,
@@ -104,7 +127,7 @@ export function PublicShell({
     [
       { url: store?.social_facebook, nama: 'Facebook', Ikon: Facebook },
       { url: store?.social_instagram, nama: 'Instagram', Ikon: Instagram },
-      { url: store?.social_tiktok, nama: 'TikTok', Ikon: Music2 },
+      { url: store?.social_tiktok, nama: 'TikTok', Ikon: IkonTikTok },
       { url: store?.social_youtube, nama: 'YouTube', Ikon: Youtube },
     ] as { url: string | null | undefined; nama: string; Ikon: typeof Facebook }[]
   ).filter((s): s is { url: string; nama: string; Ikon: typeof Facebook } => !!s.url);
