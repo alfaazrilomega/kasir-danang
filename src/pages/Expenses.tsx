@@ -50,6 +50,9 @@ interface FormState {
   amount: number;
   expense_date: string;
   payment_method: ExpensePaymentMethod;
+  // Dipakai untuk menandai form edit yang sumbernya nota pembelian, supaya
+  // modal bisa menampilkan peringatan "akan tertimpa" tanpa mengunci field.
+  purchaseId?: string | null;
 }
 
 function todayIso() {
@@ -67,6 +70,7 @@ const emptyForm: FormState = {
   amount: 0,
   expense_date: todayIso(),
   payment_method: 'cash',
+  purchaseId: null,
 };
 
 export function Expenses() {
@@ -137,6 +141,7 @@ export function Expenses() {
       amount: Number(e.amount),
       expense_date: e.expense_date,
       payment_method: e.payment_method,
+      purchaseId: e.purchase_id ?? null,
     });
     setOpen(true);
   }
@@ -227,7 +232,12 @@ export function Expenses() {
   }
 
   async function remove(e: Expense) {
-    if (!confirm(`Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}?`)) return;
+    // Baris dari nota PO dibuat ulang tiap nota disimpan, jadi hapus di sini
+    // bersifat sementara — perlu diberitahukan supaya tidak dikira permanen.
+    const confirmMessage = e.purchase_id
+      ? `Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}? Angka ini berasal dari nota pembelian dan akan muncul lagi kalau notanya disimpan ulang.`
+      : `Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}?`;
+    if (!confirm(confirmMessage)) return;
     try {
       const api = getBackendClient();
       if (navigator.onLine) {
@@ -386,7 +396,15 @@ export function Expenses() {
                       <Badge>{expenseCategoryLabel(e.category)}</Badge>
                     </td>
                     <td className="py-3 text-ink-600 dark:text-ink-300">
-                      {e.description || <span className="text-ink-400">—</span>}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span>{e.description || <span className="text-ink-400">—</span>}</span>
+                        {e.purchase_id && (
+                          // Penanda supaya biaya dari nota tidak dicatat manual lagi.
+                          <Badge tone="info" className="shrink-0">
+                            dari nota PO
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 text-xs">
                       {expenseMethodLabel(e.payment_method)}
@@ -494,6 +512,15 @@ export function Expenses() {
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             placeholder="cth. Sewa ruko bulan Agustus"
           />
+
+          {form.id && form.purchaseId && (
+            // Baris ini akan ditulis ulang oleh nota pembelian, jadi edit di sini
+            // hanya sementara sampai notanya disimpan lagi. Field tetap bisa diubah.
+            <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+              Pengeluaran ini berasal dari nota pembelian. Perubahan di sini akan tertimpa
+              kalau notanya disimpan ulang.
+            </p>
+          )}
 
           {!form.id && form.payment_method === 'cash' && (
             <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
