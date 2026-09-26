@@ -184,6 +184,18 @@ function detectPreset(from: string, to: string): string | null {
   return null;
 }
 
+/**
+ * Status pesanan ditulis dalam bahasa Indonesia. Sebelumnya nilai mentah dari
+ * database ikut tampil apa adanya, jadi kasir melihat "done" dan "pending" di
+ * layar yang seluruhnya berbahasa Indonesia.
+ */
+const LABEL_STATUS_PESANAN: Record<string, string> = {
+  done: 'Selesai',
+  pending: 'Pending',
+  canceled: 'Dibatalkan',
+  awaiting_confirmation: 'Menunggu konfirmasi',
+};
+
 export function Orders() {
   const navigate = useNavigate();
   const { profile, store } = useAuth();
@@ -561,7 +573,7 @@ export function Orders() {
     <div className="space-y-5">
       <div className="rounded-3xl bg-brand-600 text-white p-6 md:p-8 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Order History</h1>
+          <h1 className="text-2xl font-bold">Riwayat Pesanan</h1>
           <p className="opacity-80 text-sm">
             {summary.count} order · {formatMoney(summary.sales, store?.currency)}
             {summary.count > 0 && (
@@ -603,7 +615,7 @@ export function Orders() {
             <Upload size={16} /> Impor Penjualan
           </Button>
           <Button onClick={() => navigate('/menu')} variant="onBrand">
-            <Plus size={16} /> Add New Order
+            <Plus size={16} /> Pesanan Baru
           </Button>
         </div>
       </div>
@@ -850,14 +862,18 @@ export function Orders() {
                       />
                     </th>
                   )}
-                  <th className="py-2">Order ID</th>
-                  <th className="py-2">Date</th>
-                  {features.useOrderType && <th className="py-2">Type</th>}
-                  <th className="py-2">Customer</th>
-                  <th className="py-2">Amount</th>
-                  <th className="py-2">Payment</th>
+                  {/* Di layar HP kolom Jenis, Pelanggan, dan Bayar disembunyikan:
+                      dengan sembilan kolom tabelnya 560px di layar 393px dan
+                      kolom Status maupun tombol aksinya jatuh di luar layar.
+                      Nama pelanggan ikut tampil di bawah nomor pesanan. */}
+                  <th className="py-2">No. Pesanan</th>
+                  <th className="hidden py-2 sm:table-cell">Tanggal</th>
+                  {features.useOrderType && <th className="hidden py-2 lg:table-cell">Jenis</th>}
+                  <th className="hidden py-2 lg:table-cell">Pelanggan</th>
+                  <th className="py-2">Nilai</th>
+                  <th className="hidden py-2 sm:table-cell">Bayar</th>
                   <th className="py-2">Status</th>
-                  <th className="py-2 text-right">Action</th>
+                  <th className="py-2 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody>
@@ -873,22 +889,34 @@ export function Orders() {
                         />
                       </td>
                     )}
-                    <td className="py-3 font-semibold">
-                      {o.order_number}
+                    <td className="max-w-[112px] py-3 font-semibold sm:max-w-none">
+                      <div className="truncate sm:whitespace-normal" title={o.order_number}>
+                        {o.order_number}
+                      </div>
                       {o.external_order_no && (
                         <div className="font-mono text-[10px] font-normal text-ink-500">
                           {o.external_order_no}
                         </div>
                       )}
+                      {/* Kolom Pelanggan dan Tanggal disembunyikan di HP supaya
+                          tabelnya muat tanpa digeser; keduanya ikut di sini. */}
+                      <div className="text-[11px] font-normal text-ink-500 lg:hidden">
+                        {o.customer_id
+                          ? customerName.get(o.customer_id) ?? '—'
+                          : o.customer_name || 'walk-in'}
+                      </div>
+                      <div className="text-[11px] font-normal text-ink-500 sm:hidden">
+                        {formatDateTime(o.created_at)}
+                      </div>
                     </td>
-                    <td className="py-3">{formatDateTime(o.created_at)}</td>
+                    <td className="hidden py-3 sm:table-cell">{formatDateTime(o.created_at)}</td>
                     {features.useOrderType && (
-                      <td className="py-3 text-xs">
+                      <td className="hidden py-3 text-xs lg:table-cell">
                         {o.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}
                         {o.table_number && <span className="text-ink-500"> · {o.table_number}</span>}
                       </td>
                     )}
-                    <td className="py-3 text-xs">
+                    <td className="hidden py-3 text-xs lg:table-cell">
                       {o.customer_id
                         ? customerName.get(o.customer_id) ?? '—'
                         : o.customer_name
@@ -896,7 +924,7 @@ export function Orders() {
                           : <span className="text-ink-400">walk-in</span>}
                     </td>
                     <td className="py-3 font-mono">{formatMoney(o.total, store?.currency)}</td>
-                    <td className="py-3 capitalize">{o.payment_method}</td>
+                    <td className="hidden py-3 capitalize sm:table-cell">{o.payment_method}</td>
                     <td className="py-3">
                       <Badge
                         tone={
@@ -909,7 +937,7 @@ export function Orders() {
                             : 'neutral'
                         }
                       >
-                        {o.order_status === 'awaiting_confirmation' ? 'menunggu konfirmasi' : o.order_status}
+                        {LABEL_STATUS_PESANAN[o.order_status] ?? o.order_status}
                       </Badge>
                     </td>
                     <td className="py-3">
@@ -942,14 +970,14 @@ export function Orders() {
                         </button>
                         <button
                           onClick={() => reprint(o, 'invoice')}
-                          className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                          className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800"
                           title="Cetak faktur A4 / simpan PDF"
                         >
                           <FileText size={14} />
                         </button>
                         <button
                           onClick={() => shareWA(o)}
-                          className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                          className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800"
                           title="Kirim via WhatsApp"
                         >
                           <MessageCircle size={14} />
