@@ -47,6 +47,12 @@ export interface PublicCatalogStore {
   bank_account_number?: string | null;
   bank_account_name?: string | null;
   qris_image_url?: string | null;
+  social_facebook?: string | null;
+  social_instagram?: string | null;
+  social_tiktok?: string | null;
+  social_youtube?: string | null;
+  footer_links?: { label: string; url: string }[] | null;
+  chat_enabled?: boolean;
 }
 
 export interface PublicCatalogData {

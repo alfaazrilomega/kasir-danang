@@ -13,6 +13,7 @@ import {
   Monitor,
   Lock,
   LockOpen,
+  Plus,
   Receipt as ReceiptIcon,
   RefreshCcw,
   Settings as SettingsIcon,
@@ -87,6 +88,20 @@ interface FormState {
   bankAccountNumber: string;
   bankAccountName: string;
   qrisImage: string | null;
+  socialFacebook: string;
+  socialInstagram: string;
+  socialTiktok: string;
+  socialYoutube: string;
+  footerLinks: { label: string; url: string }[];
+  chatEnabled: boolean;
+}
+
+/** Batas baris tautan artikel di footer toko online, biar daftarnya tidak kepanjangan. */
+const MAX_FOOTER_LINKS = 8;
+
+/** "Seadanya": cukup pastikan skemanya http/https, tidak perlu parser URL penuh. */
+function hasUrlScheme(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
 }
 
 function snapshot(store: Store | null): FormState {
@@ -113,6 +128,12 @@ function snapshot(store: Store | null): FormState {
     bankAccountNumber: store?.bank_account_number ?? '',
     bankAccountName: store?.bank_account_name ?? '',
     qrisImage: store?.qris_image_url ?? null,
+    socialFacebook: store?.social_facebook ?? '',
+    socialInstagram: store?.social_instagram ?? '',
+    socialTiktok: store?.social_tiktok ?? '',
+    socialYoutube: store?.social_youtube ?? '',
+    footerLinks: store?.footer_links ?? [],
+    chatEnabled: store?.chat_enabled ?? true,
   };
 }
 
@@ -228,6 +249,42 @@ export function Settings() {
 
   async function saveStore() {
     if (!store || !canManageStore) return;
+
+    // Validasi URL seadanya: kolom kosong sah (berarti tidak dipakai), yang
+    // diisi wajib berskema http/https supaya ikon/tautan di toko online tidak
+    // menunjuk ke alamat yang salah.
+    const socialInputs: [string, string][] = [
+      ['Facebook', form.socialFacebook],
+      ['Instagram', form.socialInstagram],
+      ['TikTok', form.socialTiktok],
+      ['YouTube', form.socialYoutube],
+    ];
+    for (const [nama, value] of socialInputs) {
+      if (value.trim() && !hasUrlScheme(value)) {
+        toast.error(`URL ${nama} harus diawali http:// atau https://.`);
+        return;
+      }
+    }
+
+    const footerLinks: { label: string; url: string }[] = [];
+    for (let i = 0; i < form.footerLinks.length; i += 1) {
+      const url = form.footerLinks[i].url.trim();
+      const label = form.footerLinks[i].label.trim();
+      // Baris yang benar-benar kosong memang belum dipakai. Tapi baris yang
+      // judulnya sudah diketik lalu URL-nya lupa diisi jangan dibuang diam-diam:
+      // orangnya mengira tersimpan, padahal hilang begitu halaman dimuat ulang.
+      if (!url && !label) continue;
+      if (!url) {
+        toast.error(`Tautan artikel baris ${i + 1} belum punya URL. Isi URL-nya atau hapus barisnya.`);
+        return;
+      }
+      if (!hasUrlScheme(url)) {
+        toast.error(`URL tautan artikel baris ${i + 1} harus diawali http:// atau https://.`);
+        return;
+      }
+      footerLinks.push({ label, url });
+    }
+
     const payload = {
       name: form.storeName,
       address: form.address,
@@ -251,6 +308,12 @@ export function Settings() {
       bank_account_number: form.bankAccountNumber.trim() || null,
       bank_account_name: form.bankAccountName.trim() || null,
       qris_image_url: form.qrisImage,
+      social_facebook: form.socialFacebook.trim() || null,
+      social_instagram: form.socialInstagram.trim() || null,
+      social_tiktok: form.socialTiktok.trim() || null,
+      social_youtube: form.socialYoutube.trim() || null,
+      footer_links: footerLinks,
+      chat_enabled: form.chatEnabled,
     };
     setBusy(true);
     const api = getBackendClient();
@@ -820,6 +883,109 @@ export function Settings() {
                   )}
                 </div>
               </div>
+
+              <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 text-sm font-semibold dark:border-ink-800">
+                Media sosial
+                <p className="mt-0.5 text-xs font-normal text-ink-500">
+                  Tampil sebagai ikon di footer toko online. Kosongkan untuk menyembunyikan ikonnya.
+                </p>
+              </div>
+              <Input
+                name="social_facebook"
+                label="Facebook"
+                placeholder="https://facebook.com/namatoko"
+                value={form.socialFacebook}
+                onChange={(e) => patch('socialFacebook', e.target.value)}
+              />
+              <Input
+                name="social_instagram"
+                label="Instagram"
+                placeholder="https://instagram.com/namatoko"
+                value={form.socialInstagram}
+                onChange={(e) => patch('socialInstagram', e.target.value)}
+              />
+              <Input
+                name="social_tiktok"
+                label="TikTok"
+                placeholder="https://tiktok.com/@namatoko"
+                value={form.socialTiktok}
+                onChange={(e) => patch('socialTiktok', e.target.value)}
+              />
+              <Input
+                name="social_youtube"
+                label="YouTube"
+                placeholder="https://youtube.com/@namatoko"
+                value={form.socialYoutube}
+                onChange={(e) => patch('socialYoutube', e.target.value)}
+              />
+
+              <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 text-sm font-semibold dark:border-ink-800">
+                Jelajahi GNNK Racing
+                <p className="mt-0.5 text-xs font-normal text-ink-500">
+                  Tautan artikel yang tampil di footer toko online, maksimal {MAX_FOOTER_LINKS} baris. Urutan baris
+                  menentukan urutan tampil.
+                </p>
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                {form.footerLinks.map((row, i) => (
+                  <div
+                    key={i}
+                    className="rounded-xl border border-ink-100 p-2.5 dark:border-ink-800"
+                  >
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-medium text-ink-500">Tautan {i + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => patch('footerLinks', form.footerLinks.filter((_, idx) => idx !== i))}
+                        className="flex h-[44px] w-[44px] items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                        aria-label={`Hapus tautan ${i + 1}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Input
+                        placeholder="Judul artikel"
+                        value={row.label}
+                        onChange={(e) => {
+                          const next = form.footerLinks.map((r, idx) =>
+                            idx === i ? { ...r, label: e.target.value } : r,
+                          );
+                          patch('footerLinks', next);
+                        }}
+                      />
+                      <Input
+                        placeholder="https://..."
+                        value={row.url}
+                        onChange={(e) => {
+                          const next = form.footerLinks.map((r, idx) =>
+                            idx === i ? { ...r, url: e.target.value } : r,
+                          );
+                          patch('footerLinks', next);
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+                {form.footerLinks.length < MAX_FOOTER_LINKS && (
+                  <button
+                    type="button"
+                    onClick={() => patch('footerLinks', [...form.footerLinks, { label: '', url: '' }])}
+                    className="flex min-h-[44px] w-full items-center justify-center gap-1 rounded-lg border border-dashed border-ink-300 px-3 text-xs font-medium text-ink-600 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800 sm:w-auto"
+                  >
+                    <Plus size={12} /> Tambah tautan artikel
+                  </button>
+                )}
+              </div>
+
+              <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 dark:border-ink-800">
+                <FeatureToggle
+                  label="Tampilkan tombol chat di toko online"
+                  hint="Matikan sementara bila admin sedang tidak bisa membalas chat pembeli."
+                  checked={form.chatEnabled}
+                  onChange={(v) => patch('chatEnabled', v)}
+                />
+              </div>
             </div>
           </Section>
 
@@ -1309,8 +1475,22 @@ function shallowEqualForm(a: FormState, b: FormState): boolean {
     a.bankName === b.bankName &&
     a.bankAccountNumber === b.bankAccountNumber &&
     a.bankAccountName === b.bankAccountName &&
-    a.qrisImage === b.qrisImage
+    a.qrisImage === b.qrisImage &&
+    a.socialFacebook === b.socialFacebook &&
+    a.socialInstagram === b.socialInstagram &&
+    a.socialTiktok === b.socialTiktok &&
+    a.socialYoutube === b.socialYoutube &&
+    a.chatEnabled === b.chatEnabled &&
+    sameFooterLinks(a.footerLinks, b.footerLinks)
   );
+}
+
+function sameFooterLinks(
+  a: { label: string; url: string }[],
+  b: { label: string; url: string }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((row, i) => row.label === b[i].label && row.url === b[i].url);
 }
 
 function displayEditableProfileName(value: string | null | undefined): string {

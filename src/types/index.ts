@@ -43,6 +43,15 @@ export interface Store {
   /** Kota toko, tampil di kartu produk toko online. */
   shop_city?: string | null;
   invoice_signer_name?: string | null;
+  /** Tautan media sosial toko, tampil sebagai ikon di footer toko online. */
+  social_facebook?: string | null;
+  social_instagram?: string | null;
+  social_tiktok?: string | null;
+  social_youtube?: string | null;
+  /** Tautan artikel "Jelajahi" di footer toko online, urutan array = urutan tampil. */
+  footer_links?: { label: string; url: string }[] | null;
+  /** Tombol chat penjual di toko online bisa dimatikan tanpa menghapus nomor WhatsApp-nya. */
+  chat_enabled?: boolean;
 }
 
 export interface Profile {

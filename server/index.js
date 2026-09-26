@@ -70,6 +70,8 @@ const TABLES = {
       'features', 'created_at', 'invoice_signature_url', 'invoice_signer_name',
       'shop_phone', 'return_policy', 'warranty_info', 'pdp_banner_url', 'shop_city',
       'bank_name', 'bank_account_number', 'bank_account_name', 'qris_image_url',
+      'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
+      'footer_links', 'chat_enabled',
     ],
     kind: 'store',
   },
@@ -2267,7 +2269,9 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
 
   const storeRes = await pool.query(
     `select id, name, currency, logo_url, shop_phone, pdp_banner_url, shop_city,
-            bank_name, bank_account_number, bank_account_name, qris_image_url
+            bank_name, bank_account_number, bank_account_name, qris_image_url,
+            social_facebook, social_instagram, social_tiktok, social_youtube,
+            footer_links, chat_enabled
        from public.stores where id = $1`,
     [storeId],
   );
