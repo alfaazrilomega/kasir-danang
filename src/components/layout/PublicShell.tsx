@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Flame, MessageCircle, Search, ShoppingCart, Star, Store, UserRound } from 'lucide-react';
+import { ChevronDown, Facebook, Flame, Instagram, MessageCircle, Music2, Search, ShoppingCart, Star, Store, UserRound, Youtube } from 'lucide-react';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { cn } from '@/lib/format';
@@ -96,6 +96,20 @@ export function PublicShell({
 
   const namaToko = store?.name ?? 'TokoKu';
   const wa = tautanWhatsApp(store?.shop_phone, 'Halo, saya mau bertanya.');
+  // Chat (tombol mengambang + tautan footer) butuh nomor toko DAN saklar chat_enabled;
+  // saklar belum diisi (undefined) dianggap menyala mengikuti default kolomnya di database.
+  const chatAktif = !!wa && (store?.chat_enabled ?? true);
+  // Ikon media sosial: hanya yang URL-nya terisi yang tampil di footer.
+  const tautanSosial = (
+    [
+      { url: store?.social_facebook, nama: 'Facebook', Ikon: Facebook },
+      { url: store?.social_instagram, nama: 'Instagram', Ikon: Instagram },
+      { url: store?.social_tiktok, nama: 'TikTok', Ikon: Music2 },
+      { url: store?.social_youtube, nama: 'YouTube', Ikon: Youtube },
+    ] as { url: string | null | undefined; nama: string; Ikon: typeof Facebook }[]
+  ).filter((s): s is { url: string; nama: string; Ikon: typeof Facebook } => !!s.url);
+  // Tautan artikel footer dari pengaturan toko; kosong berarti pakai navigasi bawaan (Beranda/kategori).
+  const tautanFooter = store?.footer_links ?? [];
   const tautanPesanan = token ? '/toko/akun?tab=pesanan' : `/toko/masuk?next=${encodeURIComponent('/toko/akun?tab=pesanan')}`;
   // Di layar lebar tautan masuk/daftar membuka pop-up, bukan pindah halaman.
   const klikMasuk = useKlikMasuk();
@@ -300,7 +314,7 @@ export function PublicShell({
                   </Link>
                 </li>
               </ul>
-              {wa && (
+              {wa && chatAktif && (
                 <a
                   href={wa}
                   target="_blank"
@@ -314,41 +328,73 @@ export function PublicShell({
             <div>
               <h3 className="mb-2 text-sm text-ink-800 dark:text-ink-100">Jelajahi {namaToko}</h3>
               <ul className="space-y-1 text-ink-600 dark:text-ink-300">
-                <li>
-                  <Link to="/toko" className={TAUTAN_KECIL}>
-                    Beranda
-                  </Link>
-                </li>
-                <li>
-                  <Link to="/toko?semua=1" className={TAUTAN_KECIL}>
-                    Semua Produk
-                  </Link>
-                </li>
-                {categories.slice(0, 6).map((c) => (
-                  <li key={c.id}>
-                    <Link to={`/toko?kategori=${c.id}`} className={TAUTAN_KECIL}>
-                      {c.name}
-                    </Link>
-                  </li>
-                ))}
+                {tautanFooter.length > 0 ? (
+                  tautanFooter.map((tautan, i) => (
+                    <li key={i}>
+                      <a href={tautan.url} target="_blank" rel="noreferrer" className={TAUTAN_KECIL}>
+                        {tautan.label}
+                      </a>
+                    </li>
+                  ))
+                ) : (
+                  <>
+                    <li>
+                      <Link to="/toko" className={TAUTAN_KECIL}>
+                        Beranda
+                      </Link>
+                    </li>
+                    <li>
+                      <Link to="/toko?semua=1" className={TAUTAN_KECIL}>
+                        Semua Produk
+                      </Link>
+                    </li>
+                    {categories.slice(0, 6).map((c) => (
+                      <li key={c.id}>
+                        <Link to={`/toko?kategori=${c.id}`} className={TAUTAN_KECIL}>
+                          {c.name}
+                        </Link>
+                      </li>
+                    ))}
+                  </>
+                )}
               </ul>
             </div>
-            {store?.logo_url ? (
-              <div className="space-y-2">
-                <span className="inline-flex rounded-lg bg-white p-2">
-                  <img src={store.logo_url} alt={namaToko} className="h-12 w-auto max-w-[220px] object-contain" />
-                </span>
-                <div className="text-ink-600 dark:text-ink-300">Belanja online, dikirim ke alamatmu.</div>
-              </div>
-            ) : (
-              <div className="flex items-start gap-3">
-                {logo('h-12 w-12', 22)}
-                <div>
-                  <div className="text-sm font-semibold text-brand-600">{namaToko}</div>
+            <div>
+              {store?.logo_url ? (
+                <div className="space-y-2">
+                  <span className="inline-flex rounded-lg bg-white p-2">
+                    <img src={store.logo_url} alt={namaToko} className="h-12 w-auto max-w-[220px] object-contain" />
+                  </span>
                   <div className="text-ink-600 dark:text-ink-300">Belanja online, dikirim ke alamatmu.</div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="flex items-start gap-3">
+                  {logo('h-12 w-12', 22)}
+                  <div>
+                    <div className="text-sm font-semibold text-brand-600">{namaToko}</div>
+                    <div className="text-ink-600 dark:text-ink-300">Belanja online, dikirim ke alamatmu.</div>
+                  </div>
+                </div>
+              )}
+              {tautanSosial.length > 0 && (
+                // -ml-2.5 menarik baris ikon kembali sejajar dengan teks di atasnya:
+                // target sentuh 44px sengaja lebih lebar dari ikonnya sendiri.
+                <nav aria-label="Media sosial" className="-ml-2.5 mt-1 flex flex-wrap gap-1">
+                  {tautanSosial.map(({ url, nama, Ikon }) => (
+                    <a
+                      key={nama}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`${nama} ${namaToko}`}
+                      className={cn(TAUTAN_KECIL, 'grid h-[44px] w-[44px] shrink-0 place-items-center text-ink-600 dark:text-ink-300')}
+                    >
+                      <Ikon size={20} />
+                    </a>
+                  ))}
+                </nav>
+              )}
+            </div>
           </div>
         </div>
         <div className="bg-white py-6 dark:bg-ink-950">
@@ -377,7 +423,7 @@ export function PublicShell({
         </div>
       </footer>
 
-      {wa && (
+      {wa && chatAktif && (
         <a
           href={wa}
           target="_blank"

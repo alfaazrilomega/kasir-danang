@@ -1686,7 +1686,10 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
   if (!isUuidLike(storeId) || !isUuidLike(id)) throw new HttpError(400, 'Parameter tidak valid.');
 
   const storeRes = await pool.query(
-    `select id, name, currency, logo_url, shop_phone, return_policy, warranty_info, pdp_banner_url, created_at
+    // chat_enabled ikut di-select: halaman detail produk punya dua tombol chat
+    // sendiri, dan tanpa kolom ini saklarnya tidak sampai ke sana.
+    `select id, name, currency, logo_url, shop_phone, return_policy, warranty_info, pdp_banner_url,
+            chat_enabled, created_at
        from public.stores where id = $1`,
     [storeId],
   );

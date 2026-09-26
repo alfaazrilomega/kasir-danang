@@ -274,11 +274,17 @@ export function PublicProductDetail() {
   const variasi = [...variants].sort((a, b) =>
     labelVarian(a).localeCompare(labelVarian(b), 'id', { numeric: true, sensitivity: 'base' }),
   );
-  const chatUrl = store.shop_phone
-    ? `https://wa.me/${store.shop_phone.replace(/\D/g, '').replace(/^0/, '62')}?text=${encodeURIComponent(
-        `Halo, saya mau tanya tentang ${product.name}${product.variant_name ? ` (${product.variant_name})` : ''}.`,
-      )}`
-    : null;
+  // Saklar chat di Pengaturan mematikan SEMUA pintu chat, termasuk dua tombol
+  // di halaman ini (kartu penjual dan bilah bawah HP) — kalau hanya tombol
+  // mengambang yang ikut saklar, pembeli tetap punya jalan masuk dan saklarnya
+  // jadi bohong. Saklar yang belum pernah diisi dianggap menyala.
+  const chatDiizinkan = store.chat_enabled ?? true;
+  const chatUrl =
+    chatDiizinkan && store.shop_phone
+      ? `https://wa.me/${store.shop_phone.replace(/\D/g, '').replace(/^0/, '62')}?text=${encodeURIComponent(
+          `Halo, saya mau tanya tentang ${product.name}${product.variant_name ? ` (${product.variant_name})` : ''}.`,
+        )}`
+      : null;
 
   // Pengembalian & garansi: jaminan toko (satu per baris di Pengaturan) + garansi produk.
   const garansiProduk = [product.warranty_period, product.warranty_type].filter(Boolean).join(' ');
