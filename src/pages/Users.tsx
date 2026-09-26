@@ -435,8 +435,8 @@ export function UsersPage() {
                   <tr>
                     <th className="py-2">User</th>
                     <th className="py-2">Role</th>
-                    <th className="py-2">Akses</th>
-                    <th className="py-2">Dibuat</th>
+                    <th className="hidden py-2 lg:table-cell">Akses</th>
+                    <th className="hidden py-2 sm:table-cell">Dibuat</th>
                     <th className="py-2 text-right">Action</th>
                   </tr>
                 </thead>
@@ -445,14 +445,25 @@ export function UsersPage() {
                     const caps = capabilitiesForRole(user.role);
                     return (
                       <tr key={user.id} className="border-t border-ink-100 dark:border-ink-800">
-                        <td className="py-3 pr-4">
-                          <div className="font-semibold">{user.full_name || user.email}</div>
-                          <div className="text-xs text-ink-500">{user.email}</div>
+                        <td className="max-w-[185px] py-3 pr-4 sm:max-w-none">
+                          <div className="truncate font-semibold">{user.full_name || user.email}</div>
+                          <div className="truncate text-xs text-ink-500">{user.email}</div>
+                          {/* Lima kolom ini 462px di wadah 328px pada layar HP,
+                              jadi tombol aksinya tidak terlihat. Akses dan
+                              Dibuat disembunyikan, ringkasnya ikut di sini. */}
+                          <div className="mt-1 flex flex-wrap items-center gap-1 lg:hidden">
+                            {caps.slice(0, 2).map((capability) => (
+                              <Badge key={capability} tone="neutral">
+                                {CAPABILITY_LABELS[capability]}
+                              </Badge>
+                            ))}
+                            {caps.length > 2 && <Badge tone="info">+{caps.length - 2}</Badge>}
+                          </div>
                         </td>
                         <td className="py-3 pr-4">
                           <RoleBadge role={user.role} />
                         </td>
-                        <td className="py-3 pr-4">
+                        <td className="hidden py-3 pr-4 lg:table-cell">
                           <div className="flex max-w-sm flex-wrap gap-1">
                             {caps.slice(0, 3).map((capability) => (
                               <Badge key={capability} tone="neutral">
@@ -462,7 +473,7 @@ export function UsersPage() {
                             {caps.length > 3 && <Badge tone="info">+{caps.length - 3}</Badge>}
                           </div>
                         </td>
-                        <td className="py-3 pr-4 text-ink-500">{formatDateTime(user.created_at)}</td>
+                        <td className="hidden py-3 pr-4 text-ink-500 sm:table-cell">{formatDateTime(user.created_at)}</td>
                         <td className="py-3">
                           <div className="flex justify-end gap-1">
                             <button

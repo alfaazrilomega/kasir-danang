@@ -285,13 +285,13 @@ export function Customers() {
               <thead className="text-left text-ink-500 text-xs">
                 <tr>
                   <th className="py-2">Nama</th>
-                  <th className="py-2">Phone</th>
-                  <th className="py-2">Email</th>
-                  <th className="py-2">Joined</th>
-                  <th className="py-2 text-right">Order</th>
-                  <th className="py-2 text-right">Belanja</th>
-                  <th className="py-2 text-right">Poin</th>
-                  <th className="py-2">Status</th>
+                  <th className="hidden py-2 sm:table-cell">Phone</th>
+                  <th className="hidden py-2 lg:table-cell">Email</th>
+                  <th className="hidden py-2 lg:table-cell">Joined</th>
+                  <th className="hidden py-2 text-right lg:table-cell">Order</th>
+                  <th className="hidden py-2 text-right sm:table-cell">Belanja</th>
+                  <th className="hidden py-2 text-right sm:table-cell">Poin</th>
+                  <th className="hidden py-2 lg:table-cell">Status</th>
                   <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
@@ -300,18 +300,39 @@ export function Customers() {
                   const stats = orderCounts.get(c.id) ?? { count: 0, spent: 0 };
                   return (
                     <tr key={c.id} className="border-t border-ink-100 dark:border-ink-800">
-                      <td className="py-3 font-semibold">{c.name}</td>
-                      <td className="py-3">{c.phone ?? '—'}</td>
-                      <td className="py-3">{c.email ?? '—'}</td>
-                      <td className="py-3">{formatDate(c.joined_date)}</td>
-                      <td className="py-3 text-right">{stats.count}</td>
-                      <td className="py-3 text-right">{formatMoney(stats.spent, store?.currency)}</td>
-                      <td className="py-3 text-right">
+                      <td className="py-3 font-semibold">
+                        <div>{c.name}</div>
+                        {/* Tabel sembilan kolom ini 697px di layar 393px, jadi
+                            Joined sampai Action jatuh di luar layar. Kolom
+                            sekunder disembunyikan dan isinya ikut di sini. */}
+                        <div className="truncate text-[11px] font-normal text-ink-500 sm:hidden">
+                          {c.phone ?? '—'}
+                        </div>
+                        <div className="truncate text-[11px] font-normal text-ink-500 lg:hidden">
+                          {c.email ?? '—'}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-normal text-ink-500 lg:hidden">
+                          <Badge tone={c.is_active ? 'success' : 'warning'}>
+                            {c.is_active ? 'Active' : 'Inactive'}
+                          </Badge>
+                          <span>{stats.count} order</span>
+                          <span className="sm:hidden">· {c.points} poin</span>
+                          <span className="sm:hidden">
+                            · belanja {formatMoney(stats.spent, store?.currency)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="hidden py-3 sm:table-cell">{c.phone ?? '—'}</td>
+                      <td className="hidden py-3 lg:table-cell">{c.email ?? '—'}</td>
+                      <td className="hidden py-3 lg:table-cell">{formatDate(c.joined_date)}</td>
+                      <td className="hidden py-3 text-right lg:table-cell">{stats.count}</td>
+                      <td className="hidden py-3 text-right sm:table-cell">{formatMoney(stats.spent, store?.currency)}</td>
+                      <td className="hidden py-3 text-right sm:table-cell">
                         <span className="inline-flex items-center gap-1 font-semibold text-brand-600">
                           <Sparkles size={12} /> {c.points}
                         </span>
                       </td>
-                      <td className="py-3">
+                      <td className="hidden py-3 lg:table-cell">
                         <Badge tone={c.is_active ? 'success' : 'warning'}>
                           {c.is_active ? 'Active' : 'Inactive'}
                         </Badge>

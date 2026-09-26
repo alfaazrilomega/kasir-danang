@@ -1109,17 +1109,17 @@ export function Purchases() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full text-sm lg:min-w-[1000px]">
               <thead className="bg-brand-50 text-left text-xs font-semibold uppercase tracking-wide text-brand-700 dark:bg-brand-950/40 dark:text-brand-200">
                 <tr>
                   <th className="rounded-l-lg px-3 py-2.5">Nota</th>
-                  <th className="px-3 py-2.5">Supplier</th>
-                  <th className="px-3 py-2.5">Tanggal</th>
-                  <th className="px-3 py-2.5">Jatuh Tempo</th>
-                  <th className="px-3 py-2.5 text-right">Total</th>
-                  <th className="px-3 py-2.5">Progres Bayar</th>
-                  <th className="px-3 py-2.5 text-right">Sisa</th>
-                  <th className="px-3 py-2.5">Status</th>
+                  <th className="hidden px-3 py-2.5 lg:table-cell">Supplier</th>
+                  <th className="hidden px-3 py-2.5 lg:table-cell">Tanggal</th>
+                  <th className="hidden px-3 py-2.5 lg:table-cell">Jatuh Tempo</th>
+                  <th className="hidden px-3 py-2.5 text-right lg:table-cell">Total</th>
+                  <th className="hidden px-3 py-2.5 lg:table-cell">Progres Bayar</th>
+                  <th className="hidden px-3 py-2.5 text-right sm:table-cell">Sisa</th>
+                  <th className="hidden px-3 py-2.5 sm:table-cell">Status</th>
                   <th className="rounded-r-lg px-3 py-2.5 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -1142,14 +1142,33 @@ export function Purchases() {
                         {purchase.received_at && (
                           <div className="text-xs text-emerald-600">Barang diterima</div>
                         )}
+                        {/* Sembilan kolom ini 1000px di wadah 328px pada layar
+                            HP, jadi Sisa, Status, dan tombolnya tidak terlihat
+                            tanpa digeser. Kolom sekunder disembunyikan dan
+                            isinya ikut di bawah nomor nota. */}
+                        <div className="text-[11px] text-ink-500 lg:hidden">
+                          {purchase.supplier_id
+                            ? supplierById.get(purchase.supplier_id)?.name ?? 'Supplier dihapus'
+                            : '—'}
+                          {' · '}
+                          {formatDate(purchase.order_date)}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-500 sm:hidden">
+                          <Badge tone={STATUS_TONES[purchase.status]}>
+                            {STATUS_LABELS[purchase.status]}
+                          </Badge>
+                          <span className={rest > 0 ? 'text-amber-600' : 'text-emerald-600'}>
+                            sisa {restUsd > 0 ? formatMoney(restUsd, 'USD') : formatMoney(rest, currency)}
+                          </span>
+                        </div>
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="hidden px-3 py-3 lg:table-cell">
                         {purchase.supplier_id
                           ? supplierById.get(purchase.supplier_id)?.name ?? 'Supplier dihapus'
                           : '—'}
                       </td>
-                      <td className="px-3 py-3 text-ink-500">{formatDate(purchase.order_date)}</td>
-                      <td className="px-3 py-3">
+                      <td className="hidden px-3 py-3 text-ink-500 lg:table-cell">{formatDate(purchase.order_date)}</td>
+                      <td className="hidden px-3 py-3 lg:table-cell">
                         {purchase.due_date ? (
                           <div>
                             <div>{formatDate(purchase.due_date)}</div>
@@ -1176,10 +1195,10 @@ export function Purchases() {
                           <span className="text-ink-400">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                      <td className="hidden px-3 py-3 text-right font-semibold tabular-nums lg:table-cell">
                         {formatMoney(purchase.total, currency)}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="hidden px-3 py-3 lg:table-cell">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
                             <div
@@ -1197,7 +1216,7 @@ export function Purchases() {
                       </td>
                       <td
                         className={cn(
-                          'px-3 py-3 text-right font-semibold tabular-nums',
+                          'hidden px-3 py-3 text-right font-semibold tabular-nums sm:table-cell',
                           rest > 0 ? 'text-amber-600' : 'text-emerald-600',
                         )}
                       >
@@ -1212,7 +1231,7 @@ export function Purchases() {
                           formatMoney(rest, currency)
                         )}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="hidden px-3 py-3 sm:table-cell">
                         <Badge tone={STATUS_TONES[purchase.status]}>
                           {STATUS_LABELS[purchase.status]}
                         </Badge>

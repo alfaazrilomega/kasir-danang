@@ -896,7 +896,7 @@ export function Orders() {
                         />
                       </td>
                     )}
-                    <td className="max-w-[112px] py-3 font-semibold sm:max-w-none">
+                    <td className="max-w-[96px] py-3 font-semibold sm:max-w-none">
                       <div className="truncate sm:whitespace-normal" title={o.order_number}>
                         {o.order_number}
                       </div>

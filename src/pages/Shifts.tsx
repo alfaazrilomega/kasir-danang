@@ -335,13 +335,13 @@ export function Shifts() {
               <thead className="text-left text-ink-500 text-xs">
                 <tr>
                   <th className="py-2">Buka</th>
-                  <th className="py-2">Tutup</th>
-                  <th className="py-2 text-right">Durasi</th>
-                  <th className="py-2 text-right">Saldo Awal</th>
+                  <th className="hidden py-2 lg:table-cell">Tutup</th>
+                  <th className="hidden py-2 text-right lg:table-cell">Durasi</th>
+                  <th className="hidden py-2 text-right lg:table-cell">Saldo Awal</th>
                   <th className="py-2 text-right">Penjualan</th>
-                  <th className="py-2 text-right">Saldo Akhir</th>
+                  <th className="hidden py-2 text-right sm:table-cell">Saldo Akhir</th>
                   <th className="py-2 text-right">Selisih</th>
-                  <th className="py-2">Status</th>
+                  <th className="hidden py-2 sm:table-cell">Status</th>
                   <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
@@ -353,16 +353,31 @@ export function Shifts() {
                     : now - new Date(s.opened_at).getTime();
                   return (
                     <tr key={s.id} className="border-t border-ink-100 dark:border-ink-800">
-                      <td className="py-2">{formatDateTime(s.opened_at)}</td>
-                      <td className="py-2">{s.closed_at ? formatDateTime(s.closed_at) : '—'}</td>
-                      <td className="py-2 text-right text-xs">{formatDuration(duration)}</td>
-                      <td className="py-2 text-right">{formatMoney(s.opening_cash, currency)}</td>
+                      <td className="py-2">
+                        <div className="lg:whitespace-nowrap">{formatDateTime(s.opened_at)}</div>
+                        {/* Sembilan kolom ini 495px di layar 393px, jadi Selisih,
+                            Status, dan tombol aksinya jatuh di luar layar dan
+                            tanggalnya pecah satu kata per baris. */}
+                        <div className="text-[11px] text-ink-500 lg:hidden">
+                          {s.closed_at ? `tutup ${formatDateTime(s.closed_at)}` : 'belum ditutup'}
+                          {' · '}
+                          {formatDuration(duration)}
+                        </div>
+                        <div className="mt-1 sm:hidden">
+                          <Badge tone={s.closed_at ? 'neutral' : 'success'}>
+                            {s.closed_at ? 'Closed' : 'Active'}
+                          </Badge>
+                        </div>
+                      </td>
+                      <td className="hidden py-2 lg:table-cell">{s.closed_at ? formatDateTime(s.closed_at) : '—'}</td>
+                      <td className="hidden py-2 text-right text-xs lg:table-cell">{formatDuration(duration)}</td>
+                      <td className="hidden py-2 text-right lg:table-cell">{formatMoney(s.opening_cash, currency)}</td>
                       <td className="py-2 text-right">{formatMoney(s.total_sales, currency)}</td>
-                      <td className="py-2 text-right">{s.closing_cash != null ? formatMoney(s.closing_cash, currency) : '—'}</td>
+                      <td className="hidden py-2 text-right sm:table-cell">{s.closing_cash != null ? formatMoney(s.closing_cash, currency) : '—'}</td>
                       <td className={`py-2 text-right font-semibold ${diff === 0 ? '' : diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {s.closing_cash != null ? formatMoney(diff, currency) : '—'}
                       </td>
-                      <td className="py-2">
+                      <td className="hidden py-2 sm:table-cell">
                         <Badge tone={s.closed_at ? 'neutral' : 'success'}>{s.closed_at ? 'Closed' : 'Active'}</Badge>
                       </td>
                       <td className="py-2">

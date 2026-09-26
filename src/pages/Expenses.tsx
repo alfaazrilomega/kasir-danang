@@ -381,9 +381,9 @@ export function Expenses() {
               <thead className="text-xs uppercase tracking-wide text-ink-500">
                 <tr>
                   <th className="pb-2">Tanggal</th>
-                  <th className="pb-2">Kategori</th>
+                  <th className="hidden pb-2 sm:table-cell">Kategori</th>
                   <th className="pb-2">Keterangan</th>
-                  <th className="pb-2">Metode</th>
+                  <th className="hidden pb-2 lg:table-cell">Metode</th>
                   <th className="pb-2 text-right">Nominal</th>
                   {canManage && <th className="pb-2" />}
                 </tr>
@@ -391,8 +391,8 @@ export function Expenses() {
               <tbody>
                 {filtered.map((e) => (
                   <tr key={e.id} className="border-t border-ink-100 dark:border-ink-800">
-                    <td className="py-3 whitespace-nowrap">{e.expense_date}</td>
-                    <td className="py-3">
+                    <td className="py-3 lg:whitespace-nowrap">{e.expense_date}</td>
+                    <td className="hidden py-3 sm:table-cell">
                       <Badge>{expenseCategoryLabel(e.category)}</Badge>
                     </td>
                     <td className="py-3 text-ink-600 dark:text-ink-300">
@@ -405,8 +405,16 @@ export function Expenses() {
                           </Badge>
                         )}
                       </div>
+                      {/* Enam kolom ini 419px di wadah 335px pada layar HP, jadi
+                          nominal dan tombolnya terpotong. Kategori dan Metode
+                          disembunyikan, isinya ikut di sini. */}
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-500 sm:hidden">
+                        <Badge>{expenseCategoryLabel(e.category)}</Badge>
+                        <span>{expenseMethodLabel(e.payment_method)}</span>
+                        {e.shift_id && <span>· dari laci</span>}
+                      </div>
                     </td>
-                    <td className="py-3 text-xs">
+                    <td className="hidden py-3 text-xs lg:table-cell">
                       {expenseMethodLabel(e.payment_method)}
                       {e.shift_id && <span className="text-ink-400"> · dari laci</span>}
                     </td>
@@ -438,9 +446,13 @@ export function Expenses() {
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-ink-200 dark:border-ink-700">
-                  <td colSpan={4} className="py-3 text-sm font-semibold">
-                    Total
-                  </td>
+                  {/* colSpan tetap tidak ikut menyusut saat kolom
+                      disembunyikan di layar HP, jadi barisnya melebar 25px
+                      melewati wadah. Strukturnya disamakan dengan baris isi. */}
+                  <td className="py-3 text-sm font-semibold">Total</td>
+                  <td className="hidden py-3 sm:table-cell" />
+                  <td className="py-3" />
+                  <td className="hidden py-3 lg:table-cell" />
                   <td className="py-3 text-right text-base font-bold text-rose-600">
                     {formatMoney(total, currency)}
                   </td>

@@ -661,13 +661,13 @@ export function Promos() {
               <thead className="text-left text-ink-500 text-xs">
                 <tr>
                   <th className="py-2">Kode</th>
-                  <th className="py-2">Nama</th>
-                  <th className="py-2">Tipe</th>
+                  <th className="hidden py-2 sm:table-cell">Nama</th>
+                  <th className="hidden py-2 lg:table-cell">Tipe</th>
                   <th className="py-2 text-right">Value</th>
-                  <th className="py-2">Periode</th>
-                  <th className="py-2 text-right">Dipakai</th>
-                  <th className="py-2 text-right">Diskon diberi</th>
-                  <th className="py-2">Status</th>
+                  <th className="hidden py-2 lg:table-cell">Periode</th>
+                  <th className="hidden py-2 text-right lg:table-cell">Dipakai</th>
+                  <th className="hidden py-2 text-right lg:table-cell">Diskon diberi</th>
+                  <th className="hidden py-2 sm:table-cell">Status</th>
                   <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
@@ -688,11 +688,25 @@ export function Promos() {
                             <Copy size={12} />
                           </button>
                         </div>
+                        {/* Sembilan kolom ini 574px di layar 393px, jadi Status
+                            dan tombol aksinya jatuh di luar layar. Kolom
+                            sekunder disembunyikan dan isinya ikut di sini. */}
+                        <div className="text-[11px] text-ink-500 sm:hidden">{p.name}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-500 sm:hidden">
+                          <Badge tone={st.tone}>{st.label}</Badge>
+                          {u && <span>{u.count}× dipakai</span>}
+                        </div>
+                        {(p.start_date || p.end_date) && (
+                          <div className="text-[11px] text-ink-500 lg:hidden">
+                            {p.start_date ? formatDate(p.start_date) : '…'} →{' '}
+                            {p.end_date ? formatDate(p.end_date) : '…'}
+                          </div>
+                        )}
                       </td>
-                      <td className="py-3">{p.name}</td>
-                      <td className="py-3 capitalize">{p.type}</td>
+                      <td className="hidden py-3 sm:table-cell">{p.name}</td>
+                      <td className="hidden py-3 capitalize lg:table-cell">{p.type}</td>
                       <td className="py-3 text-right font-semibold">{formatPromoValue(p)}</td>
-                      <td className="py-3 text-xs">
+                      <td className="hidden py-3 text-xs lg:table-cell">
                         {p.start_date || p.end_date ? (
                           <>
                             <div>
@@ -704,13 +718,13 @@ export function Promos() {
                           <span className="text-ink-400">—</span>
                         )}
                       </td>
-                      <td className="py-3 text-right">
+                      <td className="hidden py-3 text-right lg:table-cell">
                         {u ? <span className="font-semibold">{u.count}×</span> : <span className="text-ink-400">—</span>}
                       </td>
-                      <td className="py-3 text-right text-rose-600">
+                      <td className="hidden py-3 text-right text-rose-600 lg:table-cell">
                         {u ? formatMoney(u.saved, currency) : <span className="text-ink-400">—</span>}
                       </td>
-                      <td className="py-3">
+                      <td className="hidden py-3 sm:table-cell">
                         <Badge tone={st.tone}>{st.label}</Badge>
                       </td>
                       <td className="py-3">
