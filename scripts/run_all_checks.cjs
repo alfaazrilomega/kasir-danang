@@ -17,6 +17,7 @@ const SUITES = [
   'verify_purchase_currency',
   'verify_guest_checkout',
   'verify_flash_sale',
+  'verify_storefront_footer',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {
