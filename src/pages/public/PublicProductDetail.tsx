@@ -1149,19 +1149,14 @@ export function PublicProductDetail() {
         {/* ---------- Detail produk ---------- */}
         <Blok id="detail-produk" className="scroll-mt-32 space-y-5 p-4 lg:p-5">
           <h2 className="text-lg font-semibold">Detail Produk</h2>
-          <section className="space-y-3">
-            <h3 className="font-semibold">Spesifikasi</h3>
-            {daftarSpesifikasi}
-          </section>
+          <BagianLipat judul="Spesifikasi">{daftarSpesifikasi}</BagianLipat>
           {isiKotak && (
-            <section className="grid gap-1 text-sm sm:grid-cols-[220px_minmax(0,1fr)]">
-              <span className="text-xs text-ink-500">Apa yang ada di dalam kotak</span>
-              <span>{isiKotak}</span>
-            </section>
+            <BagianLipat judul="Apa yang ada di dalam kotak">
+              <span className="text-sm">{isiKotak}</span>
+            </BagianLipat>
           )}
           {(product.license_type || product.license_code) && (
-            <section className="space-y-2">
-              <h3 className="font-semibold">Kualifikasi</h3>
+            <BagianLipat judul="Kualifikasi">
               <dl className="grid gap-x-10 gap-y-2 text-sm sm:grid-cols-2">
                 <div>
                   <dt className="text-xs text-ink-500">Tipe Lisensi</dt>
@@ -1172,7 +1167,7 @@ export function PublicProductDetail() {
                   <dd className="mt-0.5">{product.license_code || '-'}</dd>
                 </div>
               </dl>
-            </section>
+            </BagianLipat>
           )}
           {sorotan.length > 0 && (
             <section className="space-y-2">
@@ -1348,6 +1343,36 @@ export function PublicProductDetail() {
         {fotoBesar && <img src={fotoBesar} alt="" className="mx-auto max-h-[70vh] rounded-lg object-contain" />}
       </Modal>
     </PublicShell>
+  );
+}
+
+/**
+ * Satu bagian di blok "Detail Produk" yang di LAYAR HP tertutup dan dibuka
+ * dengan diketuk, lalu di layar lebar selalu terbuka.
+ *
+ * Client: "bagian bawah bisa klik muncul sesuai kebutuhan, tp memanjang ke
+ * bawah full tampilan stak" — di HP semua bagian ditumpuk utuh sehingga
+ * pembeli harus menggulir jauh melewati isi yang belum tentu dia cari.
+ * Di layar lebar ruangnya cukup, jadi isinya tidak disembunyikan.
+ */
+function BagianLipat({ judul, children }: { judul: string; children: ReactNode }) {
+  const [terbuka, setTerbuka] = useState(false);
+  return (
+    <section className="border-t border-ink-100 pt-3 first:border-t-0 first:pt-0 dark:border-ink-800 lg:border-0 lg:pt-0">
+      <button
+        type="button"
+        onClick={() => setTerbuka((v) => !v)}
+        aria-expanded={terbuka}
+        className="flex min-h-[44px] w-full items-center justify-between gap-2 text-left lg:min-h-0 lg:cursor-default"
+      >
+        <h3 className="font-semibold">{judul}</h3>
+        <ChevronRight
+          size={16}
+          className={cn('shrink-0 text-ink-400 transition-transform lg:hidden', terbuka && 'rotate-90')}
+        />
+      </button>
+      <div className={cn('space-y-2 pt-2 lg:block lg:pt-2', !terbuka && 'hidden')}>{children}</div>
+    </section>
   );
 }
 

@@ -84,8 +84,9 @@ async function buka(browser, viewport, url) {
 
     // ---------- Produk uji: deskripsi panjang & pendek ----------
     idPanjang = psql(
-      `insert into public.products (store_id, name, description, base_price, is_active, sku)
-       values ('${storeId}', 'Produk Deskripsi Panjang ${TAG}', '${DESKRIPSI_PANJANG}', 150000, true, '${TAG}-P')
+      `insert into public.products (store_id, name, description, base_price, is_active, sku, spec, box_contents)
+       values ('${storeId}', 'Produk Deskripsi Panjang ${TAG}', '${DESKRIPSI_PANJANG}', 150000, true, '${TAG}-P',
+               '[{"label":"Merek","value":"Penanda ${TAG}"}]'::jsonb, 'Satu set penanda ${TAG}')
        returning id;`,
     );
     idPendek = psql(
@@ -138,6 +139,33 @@ async function buka(browser, viewport, url) {
     await pdA.getByRole('heading', { name: 'Deskripsi', exact: true }).waitFor({ timeout: 60000 });
     rec('Chat menyala: tombol Chat kartu penjual tampil', (await pdA.getByRole('link', { name: /^Chat$/ }).count()) === 1);
     rec('Chat menyala: tombol Chat bilah bawah tampil', (await pdA.locator('a[aria-label="Chat penjual"]').count()) === 1);
+
+    // --- Bagian "Detail Produk" bisa diketuk di HP (permintaan client: jangan
+    //     menumpuk panjang ke bawah, munculkan sesuai kebutuhan) ---
+    const blokDetailHp = pdA.locator('#detail-produk');
+    const barisSpek = blokDetailHp.getByRole('button', { name: /Spesifikasi/i }).first();
+    rec('HP: Spesifikasi berupa baris yang bisa diketuk',
+      (await barisSpek.count()) === 1 && (await barisSpek.getAttribute('aria-expanded')) === 'false');
+    rec('HP: isi spesifikasi tersembunyi sebelum diketuk',
+      !(await blokDetailHp.getByText(`Penanda ${TAG}`).first().isVisible().catch(() => false)));
+    const kotakBarisSpek = await barisSpek.boundingBox();
+    rec('HP: target sentuh baris lipat 44px', !!kotakBarisSpek && kotakBarisSpek.height >= 44,
+      kotakBarisSpek ? Math.round(kotakBarisSpek.height) + 'px' : 'tidak terlihat');
+    await barisSpek.click();
+    await pdA.waitForTimeout(600);
+    rec('HP: isi spesifikasi muncul setelah diketuk',
+      await blokDetailHp.getByText(`Penanda ${TAG}`).first().isVisible());
+    await barisSpek.click();
+    await pdA.waitForTimeout(500);
+    rec('HP: bagian bisa ditutup lagi',
+      !(await blokDetailHp.getByText(`Penanda ${TAG}`).first().isVisible().catch(() => false)));
+    rec('HP: "Apa yang ada di dalam kotak" juga bisa diketuk',
+      (await blokDetailHp.getByRole('button', { name: /Apa yang ada di dalam kotak/i }).count()) === 1);
+
+    const pdDesk = await buka(browser, { width: 1440, height: 900 }, '/toko/produk?id=' + idPanjang);
+    await pdDesk.getByRole('heading', { name: 'Detail Produk', exact: true }).first().waitFor({ timeout: 60000 });
+    rec('Desktop: isi spesifikasi langsung terlihat tanpa diketuk',
+      await pdDesk.locator('#detail-produk').getByText(`Penanda ${TAG}`).first().isVisible());
 
     // ================= Keadaan B: chat DIMATIKAN, tautan artikel dikosongkan =================
     psql(`update public.stores set chat_enabled = false, footer_links = '[]'::jsonb where id = '${storeId}';`);
