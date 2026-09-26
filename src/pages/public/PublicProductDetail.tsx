@@ -1126,11 +1126,14 @@ export function PublicProductDetail() {
           </div>
         </Blok>
 
-        {/* ---------- Tab halaman (desktop): menempel di bawah header, garis aktif bergeser 0,3 dtk ---------- */}
+        {/* ---------- Tab halaman: menempel di bawah header, garis aktif bergeser 0,3 dtk ----------
+             Dulu hanya tampil di desktop. Di HP pembeli jadi tidak punya cara
+             melompat ke Ulasan atau Detail Produk selain menggulir panjang,
+             padahal referensi client menampilkan tab ini justru di HP. */}
         <div
           ref={tabRef}
           className={cn(
-            'sticky top-[var(--tinggi-header,118px)] z-20 hidden rounded-lg bg-white lg:block dark:bg-ink-900',
+            'sticky top-[var(--tinggi-header,118px)] z-20 block overflow-x-auto rounded-lg bg-white dark:bg-ink-900',
             tabMenempel && 'rounded-none shadow-[0_0_0_100vmax_#fff] [clip-path:inset(0_-100vmax)] dark:shadow-none',
           )}
         >

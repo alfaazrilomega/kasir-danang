@@ -167,6 +167,24 @@ async function buka(browser, viewport, url) {
     rec('HP: "Apa yang ada di dalam kotak" juga bisa diketuk',
       (await blokDetailHp.getByRole('button', { name: /Apa yang ada di dalam kotak/i }).count()) === 1);
 
+    // --- Bilah tab di layar HP (referensi client: Lazada menampilkannya di HP) ---
+    // Tanpa ini pembeli HP tidak punya cara melompat ke Ulasan, Detail Produk,
+    // atau Rekomendasi selain menggulir panjang.
+    const tabHp = pdA.getByRole('link', { name: 'Detail Produk', exact: true })
+      .or(pdA.getByRole('button', { name: 'Detail Produk', exact: true }));
+    rec('HP: bilah tab halaman produk tersedia', (await tabHp.count()) > 0);
+    if (await tabHp.count()) {
+      await tabHp.first().click();
+      await pdA.waitForTimeout(1500);
+      const jarak = await pdA.evaluate(() => {
+        const b = document.querySelector('#detail-produk');
+        return b ? Math.round(b.getBoundingClientRect().top) : 9999;
+      });
+      rec('HP: menekan tab membawa layar ke bagian Detail Produk', Math.abs(jarak) < 260, jarak + 'px dari atas layar');
+    } else {
+      rec('HP: menekan tab membawa layar ke bagian Detail Produk', false, 'tab tidak ada');
+    }
+
     const pdDesk = await buka(browser, { width: 1440, height: 900 }, '/toko/produk?id=' + idPanjang);
     await pdDesk.getByRole('heading', { name: 'Detail Produk', exact: true }).first().waitFor({ timeout: 60000 });
     rec('Desktop: isi spesifikasi langsung terlihat tanpa diketuk',
