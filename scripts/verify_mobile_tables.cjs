@@ -12,7 +12,21 @@
 // muncul sementara wadahnya belum cukup lebar, dan di sana cacat terakhir
 // ditemukan setelah 393 sendiri sudah bersih.
 const { chromium } = require('playwright');
-const { trackApi, loginAdmin, gotoSettled } = require('./lib/harness.cjs');
+const { BASE_URL, trackApi, loginAdmin } = require('./lib/harness.cjs');
+
+const SELEKTOR_BARIS = '[class*="max-w-[1400px]"] table tbody tr';
+
+// gotoSettled menunggu jaringan benar-benar sepi. Untuk sebelas layar berdata
+// berat itu memakan lebih dari 600 detik dan suite dibunuh runner sebelum
+// mencetak ringkasan. Yang diukur di sini cuma tata letak, jadi cukup tunggu
+// sampai baris tabelnya benar-benar ada.
+async function bukaSampaiBarisAda(page, rute) {
+  await page.goto(BASE_URL + rute, { waitUntil: 'domcontentloaded' });
+  await page
+    .waitForSelector(SELEKTOR_BARIS, { timeout: 60000 })
+    .catch(() => {});
+  await page.waitForTimeout(400);
+}
 
 const RUTE = [
   ['/products', 'Produk'],
@@ -71,16 +85,31 @@ const UKUR = () => {
   try {
     await loginAdmin(page);
 
-    for (const lebar of LEBAR) {
-      await page.setViewportSize({ width: lebar, height: 852 });
-      console.log('');
-      console.log('--- lebar ' + lebar + 'px ---');
+    // Tiap rute dibuka SEKALI lalu lebarnya diubah di tempat. Membuka ulang
+    // per lebar berarti 22 navigasi dan suite melewati batas 600 detik di
+    // run_all_checks, lalu mati tanpa ringkasan.
+    for (const [rute, nama] of RUTE) {
+      await page.setViewportSize({ width: LEBAR[0], height: 852 });
+      await bukaSampaiBarisAda(page, rute);
 
-      for (const [rute, nama] of RUTE) {
+      for (const lebar of LEBAR) {
         const label = nama + ' @' + lebar + 'px';
-        await gotoSettled(page, rute);
-        await page.waitForTimeout(700);
-        const r = await page.evaluate(UKUR);
+        await page.setViewportSize({ width: lebar, height: 852 });
+        // Data masih menyusul dari sinkron; tabel bisa belum terpasang saat
+        // lebarnya diubah. Ditunggu lagi tepat sebelum diukur, bukan sekali
+        // saja setelah navigasi.
+        await page
+          .waitForSelector(SELEKTOR_BARIS, { timeout: 45000 })
+          .catch(() => {});
+        await page.waitForTimeout(500);
+        // Komponen sempat dipasang ulang saat sinkron menyusul, jadi sekali
+        // ukur bisa kebetulan jatuh di detik tabelnya tidak ada. Diulang
+        // sampai tiga kali; kalau tetap kosong, memang kosong.
+        let r = await page.evaluate(UKUR);
+        for (let coba = 0; coba < 2 && r.adaWadah && !r.adaTabel; coba += 1) {
+          await page.waitForTimeout(2500);
+          r = await page.evaluate(UKUR);
+        }
 
         if (!r.adaWadah) {
           record(label + ': wadah isi ditemukan', false, 'selektor tidak cocok, pengukuran tidak sah');
