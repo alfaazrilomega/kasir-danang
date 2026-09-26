@@ -401,10 +401,10 @@ export function StockMutation() {
                 <tr>
                   <th className="pb-2">Waktu</th>
                   <th className="pb-2">Produk</th>
-                  <th className="pb-2">Jenis</th>
-                  <th className="pb-2 pr-6 text-right">Perubahan</th>
-                  <th className="pb-2">Pesanan / Pembeli</th>
-                  <th className="pb-2 w-1/4">Alasan</th>
+                  <th className="hidden pb-2 lg:table-cell">Jenis</th>
+                  <th className="pb-2 pr-2 text-right lg:pr-6">Perubahan</th>
+                  <th className="hidden pb-2 lg:table-cell">Pesanan / Pembeli</th>
+                  <th className="hidden w-1/4 pb-2 lg:table-cell">Alasan</th>
                 </tr>
               </thead>
               <tbody>
@@ -414,26 +414,38 @@ export function StockMutation() {
                   const info = m.ref_order_id ? pesananInfo.get(m.ref_order_id) : undefined;
                   return (
                     <tr key={m.id} className="border-t border-ink-100 dark:border-ink-800">
-                      <td className="py-2.5 whitespace-nowrap text-xs">
+                      <td className="py-2.5 text-xs lg:whitespace-nowrap">
                         {formatDateTime(m.created_at)}
                       </td>
                       <td className="py-2.5">
                         <div className="font-medium">{p?.name ?? '(produk terhapus)'}</div>
                         <div className="font-mono text-[10px] text-ink-500">{p?.sku ?? '—'}</div>
+                        {/* Kolom Jenis, Pesanan, dan Alasan disembunyikan di layar
+                            sempit supaya tabelnya tidak 605px di layar 393px;
+                            isinya ikut di bawah nama produk. */}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 lg:hidden">
+                          <Badge>{TYPE_LABELS[m.type] ?? m.type}</Badge>
+                          {info && <span className="text-[11px] text-ink-500">{info.nomor}</span>}
+                        </div>
+                        {m.reason && (
+                          <div className="mt-0.5 text-[11px] text-ink-500 lg:hidden">
+                            <span className="line-clamp-2">{m.reason}</span>
+                          </div>
+                        )}
                       </td>
-                      <td className="py-2.5">
+                      <td className="hidden py-2.5 lg:table-cell">
                         <Badge>{TYPE_LABELS[m.type] ?? m.type}</Badge>
                       </td>
                       <td
                         className={cn(
-                          'py-2.5 pr-6 text-right font-semibold tabular-nums whitespace-nowrap',
+                          'py-2.5 pr-2 text-right font-semibold tabular-nums whitespace-nowrap lg:pr-6',
                           delta > 0 ? 'text-emerald-600' : 'text-rose-600',
                         )}
                       >
                         {delta > 0 ? '+' : ''}
                         {formatNumber(delta)}
                       </td>
-                      <td className="py-2.5 text-xs">
+                      <td className="hidden py-2.5 text-xs lg:table-cell">
                         {info ? (
                           <>
                             <div className="font-medium">{info.nomor}</div>
@@ -446,7 +458,7 @@ export function StockMutation() {
                           <span className="text-ink-400">—</span>
                         )}
                       </td>
-                      <td className="py-2.5 text-xs text-ink-500">
+                      <td className="hidden py-2.5 text-xs text-ink-500 lg:table-cell">
                         <span className="line-clamp-2">{m.reason ?? '—'}</span>
                       </td>
                     </tr>

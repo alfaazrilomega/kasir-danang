@@ -147,6 +147,35 @@ const sql = (q) => execFileSync(PSQL, ['-U','kasir_user','-h','127.0.0.1','-d','
     // menu muncul di sidebar
     record('Menu Mutasi Stok ada di sidebar', /Mutasi Stok/.test(bodyAdj));
 
+    // Layar HP: tabel enam kolom pernah 605px di layar 393px, sehingga nama
+    // produk terpotong satu kata per baris dan barisnya setinggi 194px.
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.waitForTimeout(1200);
+    const hp = await page.evaluate(() => {
+      const tabel = document.querySelector('table');
+      if (!tabel) return null;
+      const baris = Array.from(tabel.querySelectorAll('tbody tr')).slice(0, 10);
+      const kolomTampak = Array.from(tabel.querySelectorAll('thead th'))
+        .filter((th) => th.getBoundingClientRect().width > 0)
+        .map((th) => th.innerText.trim());
+      return {
+        lebarTabel: Math.round(tabel.getBoundingClientRect().width),
+        lebarLayar: document.documentElement.clientWidth,
+        kolomTampak,
+        tertinggi: baris.length ? Math.max(...baris.map((tr) => Math.round(tr.getBoundingClientRect().height))) : 0,
+      };
+    });
+    record('Tabel mutasi muat di layar HP tanpa digeser',
+      !!hp && hp.lebarTabel <= hp.lebarLayar + 1,
+      hp ? `tabel ${hp.lebarTabel}px vs layar ${hp.lebarLayar}px` : 'tabel tidak ditemukan');
+    record('Kolom sekunder disembunyikan di layar HP',
+      !!hp && !hp.kolomTampak.some((k) => /Pesanan|Alasan/i.test(k)),
+      hp ? hp.kolomTampak.join(' | ') : '-');
+    record('Baris tabel tidak membengkak di layar HP',
+      !!hp && hp.tertinggi > 0 && hp.tertinggi <= 140,
+      hp ? `tertinggi ${hp.tertinggi}px` : '-');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+
     console.log(''); console.log('--- RINGKASAN ---');
     const pass = results.filter(r=>r.p).length;
     console.log(pass + '/' + results.length + ' lolos');
