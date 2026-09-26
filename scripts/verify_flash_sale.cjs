@@ -109,6 +109,21 @@ const orderIds = [];
       !!itemPublik && !('cost_price' in itemPublik),
       itemPublik ? Object.keys(itemPublik).join(',') : '(item tidak ditemukan)');
 
+    // ---------- 2b. Dua sesi berjalan bersamaan ----------
+    // Kalau pemilik toko punya dua sesi aktif dan yang lebih cepat berakhir
+    // KOSONG, toko harus tetap menampilkan sesi yang berisi produk. Tanpa ini
+    // sesi kosong menutupi promo yang sedang jalan.
+    const sesiKosongId = psql(
+      `insert into public.flash_sales (store_id, name, starts_at, ends_at, is_active)
+       values ('${storeId}', '${TAG} Sesi Kosong', now() - interval '5 minutes', now() + interval '20 minutes', true)
+       returning id;`,
+    );
+    const duaSesi = await apiJson(`/api/public/flash-sale?store_id=${storeId}`);
+    record('Sesi kosong tidak menutupi sesi yang berisi produk',
+      (duaSesi.data?.items ?? []).length > 0,
+      `sesi terpilih: ${duaSesi.data?.flash_sale?.name ?? '(tidak ada)'}, ${(duaSesi.data?.items ?? []).length} produk`);
+    psql(`delete from public.flash_sales where id = '${sesiKosongId}';`);
+
     // ---------- 3. Blok Flash Sale + badge tampil di beranda toko ----------
     // Dicek SEBELUM kuota dihabiskan di langkah berikutnya -- begitu kuota
     // habis, badge memang sengaja hilang (lihat itemFlashAktif di

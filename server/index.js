@@ -2364,6 +2364,14 @@ app.get('/api/public/flash-sale', asyncHandler(async (req, res) => {
     `select id, store_id, name, starts_at, ends_at
        from public.flash_sales
       where store_id = $1 and is_active = true and now() between starts_at and ends_at
+        -- Sesi tanpa produk dilewati. Kalau pemilik toko punya dua sesi aktif
+        -- dan yang lebih cepat berakhir masih kosong, memilih sesi kosong itu
+        -- membuat promo yang sedang jalan hilang dari toko.
+        and exists (
+          select 1 from public.flash_sale_items fsi
+          join public.products p on p.id = fsi.product_id
+          where fsi.flash_sale_id = flash_sales.id and p.is_active = true
+        )
       order by ends_at asc
       limit 1`,
     [storeId],

@@ -189,6 +189,13 @@ function detectPreset(from: string, to: string): string | null {
  * database ikut tampil apa adanya, jadi kasir melihat "done" dan "pending" di
  * layar yang seluruhnya berbahasa Indonesia.
  */
+/** Status pembayaran juga ditulis Indonesia; nilai mentahnya 'paid'/'unpaid'/'partial'. */
+const LABEL_STATUS_BAYAR: Record<string, string> = {
+  paid: 'Lunas',
+  unpaid: 'Belum dibayar',
+  partial: 'Dibayar sebagian',
+};
+
 const LABEL_STATUS_PESANAN: Record<string, string> = {
   done: 'Selesai',
   pending: 'Pending',
@@ -1021,7 +1028,7 @@ export function Orders() {
                 value={selected.payment_term === 'tempo' ? 'Tempo / Piutang' : 'Bayar langsung'}
               />
               <Field label="Pembayaran" value={selected.payment_method} />
-              <Field label="Status" value={selected.payment_status} />
+              <Field label="Status" value={LABEL_STATUS_BAYAR[selected.payment_status] ?? selected.payment_status} />
               {selected.table_number && <Field label="Meja" value={selected.table_number} />}
               {customer && <Field label="Pelanggan" value={`${customer.name}${customer.phone ? ` · ${customer.phone}` : ''}`} />}
               {/* Pesanan hasil impor marketplace tidak punya baris pelanggan,
