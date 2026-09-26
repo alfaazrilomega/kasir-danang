@@ -427,6 +427,10 @@ export interface Expense {
   shift_id: string | null;
   created_by: string | null;
   created_at?: string;
+  /** Nota pembelian asal, kalau baris ini dibuat otomatis dari biaya nota. */
+  purchase_id?: string | null;
+  /** 'other' atau 'extra' -- menandai baris biaya nota mana yang membuatnya, dipakai supaya simpan ulang nota memperbarui baris ini, bukan menggandakan. */
+  purchase_cost_slot?: string | null;
 }
 
 export interface Supplier {
@@ -469,10 +473,18 @@ export interface Purchase {
   other_cost: number;
   /** Nama baris "Biaya lain", boleh kosong. Opsional: nota lama belum punya kolom ini. */
   other_cost_label?: string | null;
+  /** Tanggal pengeluaran untuk biaya lain. Opsional: nota lama belum punya kolom ini. */
+  other_cost_date?: string | null;
+  /** Kategori pengeluaran untuk biaya lain. Opsional: nota lama belum punya kolom ini. */
+  other_cost_category?: string | null;
   /** Opsional: nota lama belum punya kolom ini, dianggap 0. */
   extra_cost?: number;
   /** Nama baris biaya tambahan kedua, boleh kosong. */
   extra_cost_label?: string | null;
+  /** Tanggal pengeluaran untuk biaya tambahan. Opsional: nota lama belum punya kolom ini. */
+  extra_cost_date?: string | null;
+  /** Kategori pengeluaran untuk biaya tambahan. Opsional: nota lama belum punya kolom ini. */
+  extra_cost_category?: string | null;
   total: number;
   /** Dijaga trigger database dari daftar purchase_payments. */
   paid_amount: number;

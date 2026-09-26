@@ -44,8 +44,10 @@ import {
 } from '@/lib/purchaseImport';
 import { cn, errorMessage, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
+import { EXPENSE_CATEGORIES } from '@/lib/expenseCategories';
 import type {
   Expense,
+  ExpenseCategory,
   Purchase,
   PurchaseItem,
   PurchasePayment,
@@ -111,8 +113,12 @@ interface FormState {
   tax: string;
   other_cost: string;
   other_cost_label: string;
+  other_cost_date: string;
+  other_cost_category: ExpenseCategory;
   extra_cost: string;
   extra_cost_label: string;
+  extra_cost_date: string;
+  extra_cost_category: ExpenseCategory;
   dp_percent: string;
   notes: string;
   items: ItemDraft[];
@@ -149,8 +155,12 @@ function emptyForm(): FormState {
     tax: '0',
     other_cost: '0',
     other_cost_label: '',
+    other_cost_date: todayIso(),
+    other_cost_category: 'transport',
     extra_cost: '0',
     extra_cost_label: '',
+    extra_cost_date: todayIso(),
+    extra_cost_category: 'perlengkapan',
     dp_percent: '0',
     notes: '',
     items: [blankItem()],
@@ -323,8 +333,14 @@ export function Purchases() {
       tax: String(purchase.tax ?? 0),
       other_cost: String(purchase.other_cost ?? 0),
       other_cost_label: purchase.other_cost_label ?? '',
+      // Nota lama belum punya kolom tanggal/kategori: pakai tanggal nota dan
+      // kategori bawaan supaya baris pengeluarannya tetap masuk akal.
+      other_cost_date: purchase.other_cost_date || purchase.order_date,
+      other_cost_category: (purchase.other_cost_category as ExpenseCategory) || 'transport',
       extra_cost: String(purchase.extra_cost ?? 0),
       extra_cost_label: purchase.extra_cost_label ?? '',
+      extra_cost_date: purchase.extra_cost_date || purchase.order_date,
+      extra_cost_category: (purchase.extra_cost_category as ExpenseCategory) || 'perlengkapan',
       dp_percent: String(purchase.dp_percent ?? 0),
       notes: purchase.notes ?? '',
       items: rows.length
@@ -393,8 +409,14 @@ export function Purchases() {
       tax: String(purchase.tax ?? 0),
       other_cost: String(purchase.other_cost ?? 0),
       other_cost_label: purchase.other_cost_label ?? '',
+      // Nota salinan itu pemesanan baru, jadi tanggal biayanya ikut tanggal
+      // hari ini juga (bukan tanggal nota lama), kategorinya tetap dibawa.
+      other_cost_date: hariIni,
+      other_cost_category: (purchase.other_cost_category as ExpenseCategory) || 'transport',
       extra_cost: String(purchase.extra_cost ?? 0),
       extra_cost_label: purchase.extra_cost_label ?? '',
+      extra_cost_date: hariIni,
+      extra_cost_category: (purchase.extra_cost_category as ExpenseCategory) || 'perlengkapan',
       dp_percent: String(purchase.dp_percent ?? 0),
       notes: purchase.notes ?? '',
       items: rows.length
@@ -661,6 +683,69 @@ export function Purchases() {
     };
   }, [form]);
 
+  /**
+   * Cocokkan baris biaya nota ("Biaya lain"/"Biaya tambahan") ke satu baris
+   * `expenses` per slot, dikunci pasangan (purchase_id, purchase_cost_slot).
+   * Nominal > 0 membuat atau menimpa baris itu, nominal 0/kosong menghapusnya
+   * -- supaya simpan ulang nota tidak pernah menggandakan pengeluarannya.
+   */
+  async function syncPurchaseCostExpenses(
+    purchaseId: string,
+    invoiceNumber: string,
+    slots: {
+      slot: 'other' | 'extra';
+      amount: number;
+      date: string;
+      category: ExpenseCategory;
+      label: string;
+      fallbackLabel: string;
+    }[],
+  ): Promise<string[]> {
+    const api = getBackendClient();
+    const { data: existing, error: selectError } = await api
+      .from('expenses')
+      .select('*')
+      .eq('purchase_id', purchaseId);
+    if (selectError) {
+      return [`Tidak bisa membaca pengeluaran nota sebelumnya: ${selectError.message}`];
+    }
+    const existingRows = (existing as Expense[] | null) ?? [];
+    const gagal: string[] = [];
+
+    for (const s of slots) {
+      const row = existingRows.find((e) => e.purchase_cost_slot === s.slot);
+      if (s.amount <= 0) {
+        if (row) {
+          const { error } = await api.from('expenses').delete().eq('id', row.id);
+          if (error) gagal.push(error.message);
+          else await db.expenses.delete(row.id);
+        }
+        continue;
+      }
+      const nama = s.label.trim() || s.fallbackLabel;
+      const biaya: Expense = {
+        id: row?.id ?? uuid(),
+        store_id: storeId,
+        category: s.category,
+        description: `${nama} - nota ${invoiceNumber}`,
+        amount: s.amount,
+        expense_date: s.date,
+        // Bukan pembayaran tunai/transfer tersendiri -- biayanya menumpang di
+        // nota, jadi tidak ada metode bayar yang benar-benar cocok di sini.
+        payment_method: row?.payment_method ?? 'other',
+        shift_id: row?.shift_id ?? null,
+        created_by: row?.created_by ?? (profile?.id ?? null),
+        created_at: row?.created_at ?? new Date().toISOString(),
+        purchase_id: purchaseId,
+        purchase_cost_slot: s.slot,
+      };
+      const { error } = await api.from('expenses').upsert(biaya);
+      if (error) gagal.push(error.message);
+      else await db.expenses.put(biaya);
+    }
+    return gagal;
+  }
+
   async function save() {
     if (!storeId) return;
     if (!form.invoice_number.trim()) {
@@ -722,8 +807,12 @@ export function Purchases() {
         tax: taxInIdr,
         other_cost: otherCostInIdr,
         other_cost_label: form.other_cost_label.trim() || null,
+        other_cost_date: form.other_cost_date || form.order_date,
+        other_cost_category: form.other_cost_category,
         extra_cost: extraCostInIdr,
         extra_cost_label: form.extra_cost_label.trim() || null,
+        extra_cost_date: form.extra_cost_date || form.order_date,
+        extra_cost_category: form.extra_cost_category,
         total: totalInIdr,
         currency: form.currency || 'IDR',
         exchange_rate: isUsd ? rate : 1,
@@ -772,6 +861,40 @@ export function Purchases() {
       if (itemError) throw itemError;
 
       await pullPurchases(storeId);
+
+      // Biaya nota (ongkir, pengemasan, dll) dibukukan sebagai pengeluaran
+      // supaya ikut terhitung di Laba Rugi -- nota pembelian sendiri tidak
+      // pernah dibaca laporan itu. Gagal di sini TIDAK membatalkan nota:
+      // notanya sudah tersimpan valid di atas, jadi galatnya cukup toast
+      // terpisah, sama seperti pola biaya admin pembayaran nota.
+      try {
+        const gagalBiaya = await syncPurchaseCostExpenses(id, row.invoice_number, [
+          {
+            slot: 'other',
+            amount: otherCostInIdr,
+            date: form.other_cost_date || form.order_date,
+            category: form.other_cost_category,
+            label: form.other_cost_label,
+            fallbackLabel: 'Biaya lain',
+          },
+          {
+            slot: 'extra',
+            amount: extraCostInIdr,
+            date: form.extra_cost_date || form.order_date,
+            category: form.extra_cost_category,
+            label: form.extra_cost_label,
+            fallbackLabel: 'Biaya tambahan',
+          },
+        ]);
+        if (gagalBiaya.length) {
+          toast.error(`Nota tersimpan, tapi biaya gagal dicatat sebagai pengeluaran: ${gagalBiaya.join('; ')}`);
+        }
+      } catch (e) {
+        toast.error(
+          `Nota tersimpan, tapi biaya gagal dicatat sebagai pengeluaran: ${errorMessage(e, 'kesalahan tidak diketahui')}`,
+        );
+      }
+
       toast.success(form.id ? 'Nota pembelian diperbarui.' : 'Nota pembelian dibuat.');
       buangDraft();
       setFormOpen(false);
@@ -1453,39 +1576,101 @@ export function Purchases() {
 
           {/* Dua baris biaya tambahan terpisah, masing-masing bisa diberi nama
               sendiri (mis. "Ongkir" dan "Bea masuk") — client minta pemisahan
-              ini supaya nota tidak menumpuk semua biaya jadi satu angka buta. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label="Biaya lain"
-              type="number"
-              min={0}
-              value={form.other_cost}
-              onChange={(e) => setForm({ ...form, other_cost: e.target.value })}
-              hint="Ongkir, packing, dll."
-            />
-            <Input
-              label="Nama biaya lain"
-              value={form.other_cost_label}
-              onChange={(e) => setForm({ ...form, other_cost_label: e.target.value })}
-              placeholder="Ongkir"
-            />
+              ini supaya nota tidak menumpuk semua biaya jadi satu angka buta.
+              Tanggal & kategori dipakai untuk membukukan biayanya sebagai
+              pengeluaran (lihat catatan di bawah), bukan sekadar catatan nota. */}
+          <div className="space-y-3 rounded-2xl border border-ink-100 p-3 dark:border-ink-800">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Biaya lain"
+                type="number"
+                min={0}
+                value={form.other_cost}
+                onChange={(e) => setForm({ ...form, other_cost: e.target.value })}
+                hint="Ongkir, packing, dll."
+              />
+              <Input
+                label="Nama biaya lain"
+                value={form.other_cost_label}
+                onChange={(e) => setForm({ ...form, other_cost_label: e.target.value })}
+                placeholder="Ongkir"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Tanggal pengeluaran"
+                type="date"
+                value={form.other_cost_date}
+                onChange={(e) => setForm({ ...form, other_cost_date: e.target.value })}
+              />
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-ink-700 dark:text-ink-200">
+                  Kategori pengeluaran
+                </label>
+                <select
+                  className="input"
+                  value={form.other_cost_category}
+                  onChange={(e) =>
+                    setForm({ ...form, other_cost_category: e.target.value as ExpenseCategory })
+                  }
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label="Biaya tambahan"
-              type="number"
-              min={0}
-              value={form.extra_cost}
-              onChange={(e) => setForm({ ...form, extra_cost: e.target.value })}
-              hint="Bea masuk, asuransi, dll."
-            />
-            <Input
-              label="Nama biaya tambahan"
-              value={form.extra_cost_label}
-              onChange={(e) => setForm({ ...form, extra_cost_label: e.target.value })}
-              placeholder="Bea masuk"
-            />
+          <div className="space-y-3 rounded-2xl border border-ink-100 p-3 dark:border-ink-800">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Biaya tambahan"
+                type="number"
+                min={0}
+                value={form.extra_cost}
+                onChange={(e) => setForm({ ...form, extra_cost: e.target.value })}
+                hint="Bea masuk, asuransi, dll."
+              />
+              <Input
+                label="Nama biaya tambahan"
+                value={form.extra_cost_label}
+                onChange={(e) => setForm({ ...form, extra_cost_label: e.target.value })}
+                placeholder="Bea masuk"
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                label="Tanggal pengeluaran"
+                type="date"
+                value={form.extra_cost_date}
+                onChange={(e) => setForm({ ...form, extra_cost_date: e.target.value })}
+              />
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-ink-700 dark:text-ink-200">
+                  Kategori pengeluaran
+                </label>
+                <select
+                  className="input"
+                  value={form.extra_cost_category}
+                  onChange={(e) =>
+                    setForm({ ...form, extra_cost_category: e.target.value as ExpenseCategory })
+                  }
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
+          <p className="text-xs text-ink-500">
+            Biaya lain dan biaya tambahan yang diisi nominalnya otomatis tercatat sebagai
+            pengeluaran di menu Pengeluaran, jadi tidak perlu dicatat ulang manual di sana.
+          </p>
 
           <div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-4 dark:border-brand-500/20 dark:bg-brand-950/25">
             {/* Nota dalam USD selalu ditampilkan berikut nilai rupiahnya. Yang

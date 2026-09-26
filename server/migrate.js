@@ -99,7 +99,8 @@ const REQUIRED_COLUMNS = {
   purchases: [
     'id', 'store_id', 'supplier_id', 'invoice_number', 'status', 'order_date',
     'expected_date', 'due_date', 'subtotal', 'discount', 'tax', 'other_cost',
-    'other_cost_label', 'extra_cost', 'extra_cost_label',
+    'other_cost_label', 'other_cost_date', 'other_cost_category',
+    'extra_cost', 'extra_cost_label', 'extra_cost_date', 'extra_cost_category',
     'total', 'paid_amount', 'dp_percent', 'received_at', 'notes', 'created_by',
     'created_at', 'currency', 'exchange_rate',
   ],
@@ -135,6 +136,7 @@ const REQUIRED_COLUMNS = {
   expenses: [
     'id', 'store_id', 'category', 'description', 'amount', 'expense_date',
     'payment_method', 'shift_id', 'created_by', 'created_at',
+    'purchase_id', 'purchase_cost_slot',
   ],
   product_channel_mappings: [
     'id', 'store_id', 'product_id', 'channel_code', 'external_sku',
