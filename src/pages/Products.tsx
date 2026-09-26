@@ -747,7 +747,12 @@ export function Products() {
             <div className="h-10 w-10 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
               {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
             </div>
-            <div className="font-semibold">{p.name}</div>
+            {/* Baris anak menampilkan NAMA VARIASI-nya, bukan mengulang nama
+                induk 13 kali — yang membedakan varian memang variasinya, dan
+                nama panjang yang sama berderet justru menyamarkan bedanya. */}
+            <div className="font-semibold">
+              {anggotaKelompok ? p.variant_name?.trim() || p.sku || p.name : p.name}
+            </div>
           </div>
         </td>
         <td className="py-3">
@@ -862,8 +867,20 @@ export function Products() {
     const baris = (
       <tr key={g.key} className="border-t border-ink-100 dark:border-ink-800">
         <td className="py-3">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
+          <div className="flex items-center gap-2">
+            {/* Tombol buka/tutup ditaruh di kolom pertama, bukan kolom aksi
+                paling kanan: di layar HP tabel ini harus digeser horizontal
+                untuk sampai ke kolom kanan, jadi kelompoknya tidak bisa
+                dibuka tanpa menggeser dulu. */}
+            <button
+              onClick={() => bukaTutupKelompok(g.key, bukaOtomatis)}
+              className="inline-flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800"
+              aria-label={terbuka ? `Tutup varian ${wakil.name}` : `Buka varian ${wakil.name}`}
+              aria-expanded={terbuka}
+            >
+              <ChevronRight size={16} className={cn('transition-transform', terbuka && 'rotate-90')} />
+            </button>
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
               {wakil.image_url && <img src={wakil.image_url} alt={wakil.name} className="h-full w-full object-cover" />}
             </div>
             <div>
@@ -898,18 +915,7 @@ export function Products() {
             {semuaAktif ? 'Aktif' : semuaNonaktif ? 'Nonaktif' : 'Campuran'}
           </Badge>
         </td>
-        <td className="py-3">
-          <div className="flex justify-end">
-            <button
-              onClick={() => bukaTutupKelompok(g.key, bukaOtomatis)}
-              className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800"
-              aria-label={terbuka ? `Tutup varian ${wakil.name}` : `Buka varian ${wakil.name}`}
-              aria-expanded={terbuka}
-            >
-              <ChevronRight size={16} className={cn('transition-transform', terbuka && 'rotate-90')} />
-            </button>
-          </div>
-        </td>
+        <td className="py-3" />
       </tr>
     );
     return terbuka ? [baris, ...anggota.map((p) => renderBarisProduk(p, true))] : [baris];
@@ -2340,7 +2346,13 @@ function SeksiPenamaanVariasi({
       <div className="space-y-2 rounded-lg border border-ink-100 p-3 dark:border-ink-800">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-medium">SKU dalam kelompok ini</span>
-          <Button type="button" variant="secondary" size="sm" onClick={tambahBarisSku}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="min-h-[44px] shrink-0"
+            onClick={tambahBarisSku}
+          >
             <Plus size={12} /> Tambah SKU
           </Button>
         </div>
@@ -2369,21 +2381,21 @@ function SeksiPenamaanVariasi({
               // dipecah jadi dua kolom, tombol hapus turun ke baris sendiri.
               <div key={d.key} className="grid grid-cols-2 gap-1.5 sm:flex">
                 <input
-                  className="input !py-1.5 text-sm font-mono min-w-0 sm:flex-1"
+                  className="input !py-1.5 text-sm font-mono min-h-[44px] min-w-0 sm:min-h-0 sm:flex-1"
                   aria-label="SKU variasi baru"
                   placeholder="SKU (wajib)"
                   value={d.sku}
                   onChange={(e) => ubahBarisSku(d.key, { sku: e.target.value })}
                 />
                 <input
-                  className="input !py-1.5 text-sm min-w-0 sm:flex-1"
+                  className="input !py-1.5 text-sm min-h-[44px] min-w-0 sm:min-h-0 sm:flex-1"
                   aria-label="Nama variasi baru"
                   placeholder="Nama variasi"
                   value={d.variant_name}
                   onChange={(e) => ubahBarisSku(d.key, { variant_name: e.target.value })}
                 />
                 <input
-                  className="input !py-1.5 text-sm min-w-0 sm:flex-1"
+                  className="input !py-1.5 text-sm min-h-[44px] min-w-0 sm:min-h-0 sm:flex-1"
                   aria-label="Harga jual variasi baru"
                   type="number"
                   placeholder="Harga jual"
@@ -2391,7 +2403,7 @@ function SeksiPenamaanVariasi({
                   onChange={(e) => ubahBarisSku(d.key, { base_price: e.target.value })}
                 />
                 <input
-                  className="input !py-1.5 text-sm min-w-0 sm:flex-1"
+                  className="input !py-1.5 text-sm min-h-[44px] min-w-0 sm:min-h-0 sm:flex-1"
                   aria-label="Stok awal variasi baru"
                   type="number"
                   placeholder="Stok awal"
