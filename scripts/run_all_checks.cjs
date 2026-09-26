@@ -15,6 +15,7 @@ const SUITES = [
   'verify_settlement_import',
   'verify_client_additions',
   'verify_purchase_currency',
+  'verify_purchase_cost_expense',
   'verify_guest_checkout',
   'verify_flash_sale',
   'verify_storefront_footer',
