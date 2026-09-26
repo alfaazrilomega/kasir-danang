@@ -138,6 +138,9 @@ export function PublicProductDetail() {
   const [tabMenempel, setTabMenempel] = useState(false);
   const [miniTampil, setMiniTampil] = useState(false);
   const [garis, setGaris] = useState({ kiri: 0, lebar: 0 });
+  const deskripsiRef = useRef<HTMLParagraphElement>(null);
+  const [deskripsiTerbentang, setDeskripsiTerbentang] = useState(false);
+  const [deskripsiTerpotong, setDeskripsiTerpotong] = useState(false);
 
   const add = usePublicCart((s) => s.add);
   const setBuyNow = usePublicCart((s) => s.setBuyNow);
@@ -155,6 +158,7 @@ export function PublicProductDetail() {
     setQtyText('1');
     setHalaman(1);
     setLembar(null);
+    setDeskripsiTerbentang(false);
     window.scrollTo({ top: 0 });
     fetchPublicProduct(PUBLIC_STORE_ID, productId)
       .then((d) => alive && setData(d))
@@ -210,6 +214,31 @@ export function PublicProductDetail() {
     const el = tabItemRef.current[tabAktif];
     if (el) setGaris({ kiri: el.offsetLeft, lebar: el.offsetWidth });
   }, [tabAktif, data]);
+
+  // Tombol "Lihat lebih banyak" hanya muncul kalau deskripsi memang terpotong
+  // oleh line-clamp. Dicek lewat tinggi elemen (scrollHeight vs clientHeight),
+  // bukan jumlah karakter, karena deskripsi produk banyak memakai baris baru
+  // pendek yang bikin hitungan karakter menyesatkan. Diukur ulang tiap ganti
+  // produk supaya tidak memakai hasil ukur produk sebelumnya.
+  useEffect(() => {
+    const el = deskripsiRef.current;
+    if (!el) {
+      setDeskripsiTerpotong(false);
+      return;
+    }
+    // Saat sudah terbentang, klemnya dilepas sehingga scrollHeight == clientHeight.
+    // Mengukur dalam keadaan itu akan menyimpulkan "tidak terpotong" dan
+    // menghilangkan tombol "Lihat lebih sedikit", jadi nilainya dipertahankan.
+    if (deskripsiTerbentang) return;
+    const ukur = () => setDeskripsiTerpotong(el.scrollHeight > el.clientHeight + 1);
+    ukur();
+    // Lebar layar berubah (putar HP, jendela diperkecil) mengubah jumlah baris,
+    // jadi hasil ukur tadi bisa basi: teks jadi terpotong tanpa tombol, dan
+    // sisanya tidak bisa dijangkau sama sekali.
+    const pengamat = new ResizeObserver(ukur);
+    pengamat.observe(el);
+    return () => pengamat.disconnect();
+  }, [data?.product.id, data?.product.description, deskripsiTerbentang]);
 
   const lainnya = useMemo(() => {
     if (!catalog || !data) return { sama: [], suka: [] };
@@ -1157,9 +1186,32 @@ export function PublicProductDetail() {
           )}
           <section className="space-y-2">
             <h3 className="font-semibold">Deskripsi</h3>
-            <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
-              {product.description || 'Belum ada deskripsi untuk produk ini.'}
-            </p>
+            {product.description ? (
+              <>
+                <p
+                  ref={deskripsiRef}
+                  className={cn(
+                    'whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200',
+                    !deskripsiTerbentang && 'line-clamp-6',
+                  )}
+                >
+                  {product.description}
+                </p>
+                {deskripsiTerpotong && (
+                  <button
+                    type="button"
+                    onClick={() => setDeskripsiTerbentang((v) => !v)}
+                    className="inline-flex min-h-[44px] items-center text-sm font-semibold text-brand-600"
+                  >
+                    {deskripsiTerbentang ? 'Lihat lebih sedikit' : 'Lihat lebih banyak'}
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
+                Belum ada deskripsi untuk produk ini.
+              </p>
+            )}
             {(product.images ?? []).length > 0 && (
               <div className="space-y-2">
                 {product.images.map((src, i) => (
