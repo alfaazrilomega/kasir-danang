@@ -138,7 +138,7 @@ export function PublicProductDetail() {
   const [tabMenempel, setTabMenempel] = useState(false);
   const [miniTampil, setMiniTampil] = useState(false);
   const [garis, setGaris] = useState({ kiri: 0, lebar: 0 });
-  const deskripsiRef = useRef<HTMLParagraphElement>(null);
+  const deskripsiRef = useRef<HTMLDivElement>(null);
   const [deskripsiTerbentang, setDeskripsiTerbentang] = useState(false);
   const [deskripsiTerpotong, setDeskripsiTerpotong] = useState(false);
 
@@ -215,11 +215,11 @@ export function PublicProductDetail() {
     if (el) setGaris({ kiri: el.offsetLeft, lebar: el.offsetWidth });
   }, [tabAktif, data]);
 
-  // Tombol "Lihat lebih banyak" hanya muncul kalau deskripsi memang terpotong
-  // oleh line-clamp. Dicek lewat tinggi elemen (scrollHeight vs clientHeight),
-  // bukan jumlah karakter, karena deskripsi produk banyak memakai baris baru
-  // pendek yang bikin hitungan karakter menyesatkan. Diukur ulang tiap ganti
-  // produk supaya tidak memakai hasil ukur produk sebelumnya.
+  // Tombol "Lihat lebih banyak" hanya pantas muncul kalau yang disembunyikan
+  // MEMANG BANYAK. Versi pertama memunculkannya begitu isi melebihi klem satu
+  // piksel pun, hasilnya tombol yang membuka dua kata — tidak ada gunanya bagi
+  // pembeli. Sekarang batasnya SISA_MINIMAL: kalau sisanya lebih pendek dari
+  // itu, deskripsi ditampilkan utuh tanpa tombol sama sekali.
   useEffect(() => {
     const el = deskripsiRef.current;
     if (!el) {
@@ -230,14 +230,31 @@ export function PublicProductDetail() {
     // Mengukur dalam keadaan itu akan menyimpulkan "tidak terpotong" dan
     // menghilangkan tombol "Lihat lebih sedikit", jadi nilainya dipertahankan.
     if (deskripsiTerbentang) return;
-    const ukur = () => setDeskripsiTerpotong(el.scrollHeight > el.clientHeight + 1);
+    const SISA_MINIMAL = 120;
+    const ukur = () => {
+      // scrollHeight selalu melaporkan tinggi isi SEBENARNYA, terklem maupun
+      // tidak, jadi perbandingannya memakai batas klem yang kita pasang sendiri
+      // di CSS (240px, atau 360px mulai breakpoint sm = 640px). Memakai
+      // clientHeight tidak bisa: saat klem belum terpasang, nilainya sama
+      // dengan scrollHeight sehingga isi sepanjang apa pun dinilai pendek.
+      const batasKlem = window.innerWidth >= 640 ? 360 : 240;
+      setDeskripsiTerpotong(el.scrollHeight > batasKlem + SISA_MINIMAL);
+    };
     ukur();
+    // Gambar deskripsi baru punya tinggi setelah dimuat, jadi pengukuran diulang
+    // begitu tiap gambar selesai — kalau tidak, isi yang panjang bisa dinilai
+    // pendek hanya karena gambarnya belum sempat termuat.
+    const gambar = Array.from(el.querySelectorAll('img'));
+    gambar.forEach((img) => img.addEventListener('load', ukur));
     // Lebar layar berubah (putar HP, jendela diperkecil) mengubah jumlah baris,
     // jadi hasil ukur tadi bisa basi: teks jadi terpotong tanpa tombol, dan
     // sisanya tidak bisa dijangkau sama sekali.
     const pengamat = new ResizeObserver(ukur);
     pengamat.observe(el);
-    return () => pengamat.disconnect();
+    return () => {
+      gambar.forEach((img) => img.removeEventListener('load', ukur));
+      pengamat.disconnect();
+    };
   }, [data?.product.id, data?.product.description, deskripsiTerbentang]);
 
   const lainnya = useMemo(() => {
@@ -1183,15 +1200,33 @@ export function PublicProductDetail() {
             <h3 className="font-semibold">Deskripsi</h3>
             {product.description ? (
               <>
-                <p
+                {/* Yang dipotong adalah SELURUH isi deskripsi: teksnya DAN
+                    gambar-gambar panjangnya. Memotong teksnya saja tidak ada
+                    gunanya — gambar banner setinggi 640px tetap memenuhi layar,
+                    dan tombolnya cuma menyembunyikan satu dua baris. */}
+                <div
                   ref={deskripsiRef}
                   className={cn(
-                    'whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200',
-                    !deskripsiTerbentang && 'line-clamp-6',
+                    'relative space-y-3 overflow-hidden',
+                    !deskripsiTerbentang && deskripsiTerpotong && 'max-h-[240px] sm:max-h-[360px]',
                   )}
                 >
-                  {product.description}
-                </p>
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
+                    {product.description}
+                  </p>
+                  {(product.images ?? []).length > 0 && (
+                    <div className="space-y-2">
+                      {product.images.map((src, i) => (
+                        <img key={i} src={src} alt="" className="mx-auto max-h-[640px] object-contain" />
+                      ))}
+                    </div>
+                  )}
+                  {!deskripsiTerbentang && deskripsiTerpotong && (
+                    // Gradasi di tepi bawah memberi tahu bahwa isinya masih
+                    // berlanjut, bukan berhenti mendadak di tengah kalimat.
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-white dark:to-ink-900" />
+                  )}
+                </div>
                 {deskripsiTerpotong && (
                   <button
                     type="button"
@@ -1203,16 +1238,18 @@ export function PublicProductDetail() {
                 )}
               </>
             ) : (
-              <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
-                Belum ada deskripsi untuk produk ini.
-              </p>
-            )}
-            {(product.images ?? []).length > 0 && (
-              <div className="space-y-2">
-                {product.images.map((src, i) => (
-                  <img key={i} src={src} alt="" className="mx-auto max-h-[640px] object-contain" />
-                ))}
-              </div>
+              <>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
+                  Belum ada deskripsi untuk produk ini.
+                </p>
+                {(product.images ?? []).length > 0 && (
+                  <div className="space-y-2">
+                    {product.images.map((src, i) => (
+                      <img key={i} src={src} alt="" className="mx-auto max-h-[640px] object-contain" />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </section>
           {chatUrl && (

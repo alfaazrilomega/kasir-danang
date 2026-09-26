@@ -41,9 +41,14 @@ const rec = (nama, ok, ket) => {
   console.log((ok ? 'PASS  ' : 'FAIL  ') + nama + (ket ? ' - ' + ket : ''));
 };
 
+// Harus jauh lebih tinggi daripada batas klem (360px di desktop) ditambah sisa
+// minimal 120px: tombol memang sengaja TIDAK muncul untuk isi yang cuma lebih
+// panjang sedikit — itu keluhan client, tombol yang membuka dua kata.
 const DESKRIPSI_PANJANG = Array.from(
-  { length: 14 },
-  (_, i) => `Baris deskripsi ke-${i + 1} untuk produk uji ${TAG}.`,
+  { length: 60 },
+  (_, i) =>
+    `Baris deskripsi ke-${i + 1} untuk produk uji ${TAG}: bahan baja pilihan, presisi saat dipasang, ` +
+    'cocok untuk pemakaian harian maupun balap, dan sudah melewati pengujian ketahanan.',
 ).join('\n');
 
 async function buka(browser, viewport, url) {
@@ -210,27 +215,32 @@ async function buka(browser, viewport, url) {
     // membuktikan potongan adalah posisi baris terakhir jatuh di luar kotak
     // yang tampil (dibandingkan lewat Range, bukan hitungan karakter).
     const ukur = await pDesk.evaluate(() => {
-      const p = document.querySelector('p.line-clamp-6');
-      if (!p) return null;
-      const kotak = p.getBoundingClientRect();
-      const jangkauan = document.createRange();
-      jangkauan.selectNodeContents(p);
-      return { bawahTampil: Math.round(kotak.bottom), bawahIsi: Math.round(jangkauan.getBoundingClientRect().bottom) };
+      const h = Array.from(document.querySelectorAll('h3')).find((el) => el.textContent.trim() === 'Deskripsi');
+      const wadah = h?.parentElement?.querySelector('div.relative.overflow-hidden');
+      if (!wadah) return null;
+      return { tampil: Math.round(wadah.clientHeight), isi: Math.round(wadah.scrollHeight) };
     });
     rec(
       'Isi deskripsi melampaui kotak yang tampil (memang terpotong)',
-      !!ukur && ukur.bawahIsi > ukur.bawahTampil + 1,
-      ukur ? `kotak berakhir di ${ukur.bawahTampil}px, isi sampai ${ukur.bawahIsi}px` : 'tidak terukur',
+      !!ukur && ukur.isi > ukur.tampil + 1,
+      ukur ? `tampil ${ukur.tampil}px, isi ${ukur.isi}px` : 'tidak terukur',
+    );
+    rec(
+      'Yang disembunyikan banyak, bukan cuma satu dua baris',
+      !!ukur && ukur.isi - ukur.tampil > 120,
+      ukur ? `${ukur.isi - ukur.tampil}px tersembunyi` : 'tidak terukur',
     );
 
     await tombolBanyak.first().click();
     await pDesk.waitForTimeout(800);
     rec('Setelah diklik, tombol berubah jadi "Lihat lebih sedikit"', (await pDesk.getByRole('button', { name: /Lihat lebih sedikit/i }).count()) === 1);
-    rec('Setelah dibentangkan, baris terakhir deskripsi terlihat penuh', await pDesk.getByText('Baris deskripsi ke-14').first().isVisible());
+    rec('Setelah dibentangkan, baris terakhir deskripsi terlihat penuh', await pDesk.getByText(/Baris deskripsi ke-60/).first().isVisible());
 
     const pPendek = await buka(browser, { width: 1440, height: 900 }, '/toko/produk?id=' + idPendek);
     await pPendek.getByRole('heading', { name: 'Deskripsi', exact: true }).waitFor({ timeout: 60000 });
     await pPendek.waitForTimeout(1200);
+    // Produk pendek ini juga tidak punya gambar deskripsi, jadi memang tidak
+    // ada apa pun yang pantas disembunyikan.
     rec(
       'Deskripsi pendek tidak menampilkan tombol apa pun',
       (await pPendek.getByRole('button', { name: /Lihat lebih (banyak|sedikit)/i }).count()) === 0,
