@@ -1073,8 +1073,11 @@ export function PublicProductDetail() {
         </Blok>
 
         {/* ---------- Kartu penjual ---------- */}
-        <Blok className="flex flex-wrap items-center gap-4 p-4 lg:p-5">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+        {/* Di layar HP kartu ini ditumpuk. Sebelumnya nama toko dan angka
+            statistik berebut satu baris: blok kirinya menyusut sampai hampir
+            nol dan tulisan "Toko Baru" meluber menimpa "Nilai Toko". */}
+        <Blok className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4 lg:p-5">
+          <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto sm:flex-1">
             {store.logo_url ? (
               <span className="flex h-12 w-24 shrink-0 items-center justify-center rounded-md bg-white p-1 ring-1 ring-ink-100 dark:ring-ink-800">
                 <img src={store.logo_url} alt={store.name} className="max-h-full max-w-full object-contain" />
@@ -1086,10 +1089,10 @@ export function PublicProductDetail() {
             )}
             <div className="min-w-0">
               <div className="truncate font-semibold">{store.name}</div>
-              <div className="text-xs text-ink-500">{umurTahun >= 1 ? `Toko ${umurTahun}-Tahun` : 'Toko Baru'}</div>
+              <div className="truncate text-xs text-ink-500">{umurTahun >= 1 ? `Toko ${umurTahun}-Tahun` : 'Toko Baru'}</div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4 text-center text-xs lg:flex lg:gap-6 lg:text-left">
+          <div className="grid w-full grid-cols-3 gap-4 text-center text-xs sm:w-auto lg:flex lg:gap-6 lg:text-left">
             <div>
               <div className="font-semibold text-ink-800 dark:text-ink-100">{nilaiToko === null ? '-' : `${nilaiToko}%`}</div>
               <div className="text-ink-500">Nilai Toko</div>

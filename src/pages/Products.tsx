@@ -744,18 +744,23 @@ export function Products() {
       >
         <td className="py-3">
           <div className={cn('flex items-center gap-3', anggotaKelompok && 'pl-4 border-l-2 border-ink-200 dark:border-ink-700')}>
-            <div className="h-10 w-10 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
+            <div className="hidden h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-ink-100 sm:block dark:bg-ink-800">
               {p.image_url && <img src={p.image_url} alt={p.name} className="h-full w-full object-cover" />}
             </div>
-            {/* Baris anak menampilkan NAMA VARIASI-nya, bukan mengulang nama
-                induk 13 kali — yang membedakan varian memang variasinya, dan
-                nama panjang yang sama berderet justru menyamarkan bedanya. */}
-            <div className="font-semibold">
-              {anggotaKelompok ? p.variant_name?.trim() || p.sku || p.name : p.name}
+            <div className="min-w-0">
+              {/* Baris anak menampilkan NAMA VARIASI-nya, bukan mengulang nama
+                  induk 13 kali — yang membedakan varian memang variasinya, dan
+                  nama panjang yang sama berderet justru menyamarkan bedanya. */}
+              <div className="line-clamp-2 font-semibold">
+                {anggotaKelompok ? p.variant_name?.trim() || p.sku || p.name : p.name}
+              </div>
+              {/* Kolom SKU disembunyikan di layar HP, jadi SKU-nya ikut di sini:
+                  client bekerja lewat SKU, tidak boleh sampai hilang. */}
+              <div className="truncate font-mono text-[11px] text-ink-500 sm:hidden">{p.sku || '—'}</div>
             </div>
           </div>
         </td>
-        <td className="py-3">
+        <td className="hidden py-3 sm:table-cell">
           <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{p.sku ?? '—'}</div>
           <div className="text-[10px] text-ink-500 font-mono">{p.barcode ?? '—'}</div>
           <div className="mt-0.5 flex flex-wrap gap-1">
@@ -775,10 +780,10 @@ export function Products() {
             )}
           </div>
         </td>
-        <td className="py-3">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
+        <td className="hidden py-3 lg:table-cell">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
         <td className="py-3">{formatMoney(price, store?.currency)}</td>
-        <td className="py-3 text-ink-500">{formatMoney(cost, store?.currency)}</td>
-        <td className={cn('py-3 font-semibold', marginTone)}>
+        <td className="hidden py-3 text-ink-500 lg:table-cell">{formatMoney(cost, store?.currency)}</td>
+        <td className={cn('hidden py-3 font-semibold lg:table-cell', marginTone)}>
           {cost === 0 ? (
             '—'
           ) : (
@@ -806,7 +811,7 @@ export function Products() {
             <span className="text-ink-400">—</span>
           )}
         </td>
-        <td className="py-3">
+        <td className="hidden py-3 sm:table-cell">
           <Badge tone={p.is_active ? 'success' : 'warning'}>
             {p.is_active ? 'Aktif' : 'Nonaktif'}
           </Badge>
@@ -815,7 +820,7 @@ export function Products() {
           <div className="flex justify-end gap-1">
             <button
               onClick={() => navigate(`/stock-mutation?q=${encodeURIComponent(p.sku || p.name)}`)}
-              className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+              className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800"
               title="Riwayat keluar-masuk"
             >
               <History size={14} />
@@ -825,7 +830,7 @@ export function Products() {
                 setLabelIds([p.id]);
                 setLabelOpen(true);
               }}
-              className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+              className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800"
               title="Cetak label barcode"
             >
               <Barcode size={14} />
@@ -833,7 +838,7 @@ export function Products() {
             <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Edit">
               <Pencil size={14} />
             </button>
-            <button onClick={() => startDuplicate(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Duplikat">
+            <button onClick={() => startDuplicate(p)} className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800" title="Duplikat">
               <Copy size={14} />
             </button>
             <button onClick={() => remove(p)} className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Hapus">
@@ -880,26 +885,38 @@ export function Products() {
             >
               <ChevronRight size={16} className={cn('transition-transform', terbuka && 'rotate-90')} />
             </button>
-            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-ink-100 dark:bg-ink-800">
+            <div className="hidden h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-ink-100 sm:block dark:bg-ink-800">
               {wakil.image_url && <img src={wakil.image_url} alt={wakil.name} className="h-full w-full object-cover" />}
             </div>
-            <div>
-              <div className="font-semibold">{wakil.name}</div>
-              <div className="text-xs text-ink-500">{anggota.length} varian</div>
+            <div className="min-w-0">
+              <div className="line-clamp-3 font-semibold sm:line-clamp-2">{wakil.name}</div>
+              <div className="text-xs text-ink-500">
+                {anggota.length} varian
+                <span className="ml-1 font-mono text-[11px] sm:hidden">· {wakil.parent_sku ?? 'tanpa SKU induk'}</span>
+              </div>
             </div>
           </div>
         </td>
-        <td className="py-3">
+        <td className="hidden py-3 sm:table-cell">
           <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{wakil.parent_sku ?? '—'}</div>
         </td>
-        <td className="py-3">{categories.find((c) => c.id === wakil.category_id)?.name ?? '—'}</td>
+        <td className="hidden py-3 lg:table-cell">{categories.find((c) => c.id === wakil.category_id)?.name ?? '—'}</td>
         <td className="py-3">
-          {hargaMin === hargaMax
-            ? formatMoney(hargaMin, store?.currency)
-            : `${formatMoney(hargaMin, store?.currency)} – ${formatMoney(hargaMax, store?.currency)}`}
+          {hargaMin === hargaMax ? (
+            <span className="whitespace-nowrap">{formatMoney(hargaMin, store?.currency)}</span>
+          ) : (
+            <>
+              {/* Di HP rentang harga penuh memakan dua sampai tiga baris dan
+                  menggencet nama produk, jadi cukup harga terendahnya. */}
+              <span className="whitespace-nowrap sm:hidden">dari {formatMoney(hargaMin, store?.currency)}</span>
+              <span className="hidden whitespace-nowrap sm:inline">
+                {formatMoney(hargaMin, store?.currency)} – {formatMoney(hargaMax, store?.currency)}
+              </span>
+            </>
+          )}
         </td>
-        <td className="py-3 text-ink-400">—</td>
-        <td className="py-3 text-ink-400">—</td>
+        <td className="hidden py-3 text-ink-400 lg:table-cell">—</td>
+        <td className="hidden py-3 text-ink-400 lg:table-cell">—</td>
         <td className="py-3">
           {dilacak.length === 0 ? (
             <span className="text-ink-400">—</span>
@@ -910,7 +927,7 @@ export function Products() {
             </div>
           )}
         </td>
-        <td className="py-3">
+        <td className="hidden py-3 sm:table-cell">
           <Badge tone={semuaAktif ? 'success' : semuaNonaktif ? 'warning' : 'neutral'}>
             {semuaAktif ? 'Aktif' : semuaNonaktif ? 'Nonaktif' : 'Campuran'}
           </Badge>
@@ -1015,15 +1032,20 @@ export function Products() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-ink-500 text-xs">
+                {/* Di layar HP kolom Kategori, Modal, Margin, dan Status
+                    disembunyikan. Dengan sembilan kolom, nama produk terhimpit
+                    sampai pecah delapan baris dan harganya terpotong — tidak
+                    terbaca sama sekali. Yang disembunyikan tetap ada di layar
+                    lebar dan di formulir tiap produk. */}
                 <tr>
-                  <th className="py-2">Produk</th>
-                  <th className="py-2">SKU / Barcode</th>
-                  <th className="py-2">Kategori</th>
+                  <th className="w-1/2 py-2 sm:w-auto">Produk</th>
+                  <th className="hidden py-2 sm:table-cell">SKU / Barcode</th>
+                  <th className="hidden py-2 lg:table-cell">Kategori</th>
                   <th className="py-2">Harga</th>
-                  <th className="py-2">Modal</th>
-                  <th className="py-2">Margin</th>
+                  <th className="hidden py-2 lg:table-cell">Modal</th>
+                  <th className="hidden py-2 lg:table-cell">Margin</th>
                   <th className="py-2">Stok</th>
-                  <th className="py-2">Status</th>
+                  <th className="hidden py-2 sm:table-cell">Status</th>
                   <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
