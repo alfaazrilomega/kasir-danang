@@ -241,18 +241,14 @@ export function PublicProductDetail() {
       setDeskripsiTerpotong(el.scrollHeight > batasKlem + SISA_MINIMAL);
     };
     ukur();
-    // Gambar deskripsi baru punya tinggi setelah dimuat, jadi pengukuran diulang
-    // begitu tiap gambar selesai — kalau tidak, isi yang panjang bisa dinilai
-    // pendek hanya karena gambarnya belum sempat termuat.
-    const gambar = Array.from(el.querySelectorAll('img'));
-    gambar.forEach((img) => img.addEventListener('load', ukur));
+    // Isinya sekarang teks saja, jadi tidak ada lagi gambar yang tingginya
+    // baru diketahui setelah dimuat; penantian muat gambar dihapus.
     // Lebar layar berubah (putar HP, jendela diperkecil) mengubah jumlah baris,
     // jadi hasil ukur tadi bisa basi: teks jadi terpotong tanpa tombol, dan
     // sisanya tidak bisa dijangkau sama sekali.
     const pengamat = new ResizeObserver(ukur);
     pengamat.observe(el);
     return () => {
-      gambar.forEach((img) => img.removeEventListener('load', ukur));
       pengamat.disconnect();
     };
   }, [data?.product.id, data?.product.description, deskripsiTerbentang]);
@@ -1217,16 +1213,18 @@ export function PublicProductDetail() {
                     !deskripsiTerbentang && deskripsiTerpotong && 'max-h-[240px] sm:max-h-[360px]',
                   )}
                 >
+                  {/* Tanpa gambar di sini. Blok ini dulu me-render ulang
+                      product.images, yaitu foto galeri yang sama persis dengan
+                      yang sudah dilihat pembeli di atas halaman: empat foto
+                      640x640, 2751px, sementara teks deskripsinya sendiri cuma
+                      54 karakter. Akibatnya tombol "Lihat lebih banyak"
+                      menyembunyikan 87% foto duplikat, bukan deskripsi.
+                      Diperiksa di lapak client sendiri: di Tokopedia dan di
+                      gnnkracing.id deskripsi produk berisi teks saja, fotonya
+                      ada di galeri. */}
                   <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
                     {product.description}
                   </p>
-                  {(product.images ?? []).length > 0 && (
-                    <div className="space-y-2">
-                      {product.images.map((src, i) => (
-                        <img key={i} src={src} alt="" className="mx-auto max-h-[640px] object-contain" />
-                      ))}
-                    </div>
-                  )}
                   {!deskripsiTerbentang && deskripsiTerpotong && (
                     // Gradasi di tepi bawah memberi tahu bahwa isinya masih
                     // berlanjut, bukan berhenti mendadak di tengah kalimat.
@@ -1248,13 +1246,6 @@ export function PublicProductDetail() {
                 <p className="whitespace-pre-line text-sm leading-relaxed text-ink-700 dark:text-ink-200">
                   Belum ada deskripsi untuk produk ini.
                 </p>
-                {(product.images ?? []).length > 0 && (
-                  <div className="space-y-2">
-                    {product.images.map((src, i) => (
-                      <img key={i} src={src} alt="" className="mx-auto max-h-[640px] object-contain" />
-                    ))}
-                  </div>
-                )}
               </>
             )}
           </section>
