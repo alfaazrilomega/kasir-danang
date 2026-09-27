@@ -68,7 +68,7 @@ const cek = (butir, nama, ok, bukti) => {
   const produkHp = await hp.evaluate(() => {
     const blok = Array.from(document.querySelectorAll('div'))
       .find((d) => /relative space-y-3 overflow-hidden/.test(String(d.className)) && d.getBoundingClientRect().width > 0);
-    const tombol = Array.from(document.querySelectorAll('button')).find((x) => /Lihat lebih banyak/.test(x.innerText || ''));
+    const tombol = Array.from(document.querySelectorAll('button')).find((x) => /Lihat lebih banyak/i.test(x.innerText || ''));
     const lipat = Array.from(document.querySelectorAll('button'))
       .filter((b) => /^(Spesifikasi|Apa yang ada di dalam kotak|Kualifikasi|Sorotan)/i.test((b.innerText || '').trim()));
     return {
@@ -86,12 +86,12 @@ const cek = (butir, nama, ok, bukti) => {
     'tampak ' + produkHp.tampak + 'px dari ' + produkHp.isi + 'px, gambar di deskripsi=' + produkHp.gambar);
 
   if (produkHp.adaTombol) {
-    await hp.getByRole('button', { name: /Lihat lebih banyak/ }).first().click();
+    await hp.getByRole('button', { name: /Lihat lebih banyak/i }).first().click();
     await hp.waitForTimeout(900);
     const sesudah = await hp.evaluate(() => {
       const blok = Array.from(document.querySelectorAll('div'))
         .find((d) => /relative space-y-3 overflow-hidden/.test(String(d.className)) && d.getBoundingClientRect().width > 0);
-      const tutup = Array.from(document.querySelectorAll('button')).some((x) => /Lihat lebih sedikit/.test(x.innerText || ''));
+      const tutup = Array.from(document.querySelectorAll('button')).some((x) => /Lihat lebih sedikit/i.test(x.innerText || ''));
       return { tampak: blok ? Math.round(blok.getBoundingClientRect().height) : null, isi: blok ? blok.scrollHeight : null, tutup };
     });
     cek(10, 'Tombol membuka deskripsi sampai penuh',

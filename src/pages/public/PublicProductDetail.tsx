@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Heart,
@@ -47,11 +48,17 @@ const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 const PER_HALAMAN = 5;
 const KUNCI_HELPFUL = 'tokoku.helpful.v1';
 // Deskripsi dipotong lima baris sebelum tombol "Lihat lebih banyak", sesuai
-// permintaan client di PERMINTAAN-CLIENT.md butir 10. Satu baris text-sm
-// leading-relaxed di huruf dasar 14px kira-kira 20px, jadi lima baris 96px.
-// Angka ini dipakai dua kali - di CSS klem dan saat mengukur - jadi ditulis
-// sekali di sini supaya tidak bisa berbeda.
-const BATAS_KLEM_PX = 96;
+// permintaan client di PERMINTAAN-CLIENT.md butir 10.
+//
+// Yang ditulis di sini jumlah BARIS, bukan pikselnya. Versi sebelumnya
+// menyimpan hasil perkalian "lima baris kali dua puluh piksel" sebagai
+// angka 96, dan angka itu diam-diam salah begitu ukuran huruf, jarak baris,
+// atau huruf dasar aplikasi berubah. Tinggi sebenarnya diukur dari
+// line-height yang berlaku saat itu juga.
+const BARIS_KLEM = 5;
+// Kalau yang disembunyikan kurang dari dua baris, tombolnya tidak ada
+// gunanya - itu cacat pertama dulu, tombol yang cuma membuka dua kata.
+const BARIS_SISA_MINIMAL = 2;
 const TOMBOL_BELI =
   'rounded-[4px] border border-brand-600 bg-white text-brand-600 transition-colors duration-150 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-ink-900';
 const TOMBOL_TROLI =
@@ -147,6 +154,8 @@ export function PublicProductDetail() {
   const deskripsiRef = useRef<HTMLDivElement>(null);
   const [deskripsiTerbentang, setDeskripsiTerbentang] = useState(false);
   const [deskripsiTerpotong, setDeskripsiTerpotong] = useState(false);
+  // Tinggi klem dalam piksel, dihitung dari line-height yang berlaku.
+  const [batasKlem, setBatasKlem] = useState(0);
 
   const add = usePublicCart((s) => s.add);
   const setBuyNow = usePublicCart((s) => s.setBuyNow);
@@ -226,7 +235,10 @@ export function PublicProductDetail() {
   // piksel pun, hasilnya tombol yang membuka dua kata — tidak ada gunanya bagi
   // pembeli. Sekarang batasnya SISA_MINIMAL: kalau sisanya lebih pendek dari
   // itu, deskripsi ditampilkan utuh tanpa tombol sama sekali.
-  useEffect(() => {
+  // useLayoutEffect, bukan useEffect: klemnya dipasang sebelum layar
+  // digambar. Dengan useEffect ada satu frame deskripsi tampil penuh lalu
+  // mengkerut - kedip yang tidak perlu dilihat pembeli.
+  useLayoutEffect(() => {
     const el = deskripsiRef.current;
     if (!el) {
       setDeskripsiTerpotong(false);
@@ -238,18 +250,23 @@ export function PublicProductDetail() {
     if (deskripsiTerbentang) return;
     // Client: "ga di show semua langsung bagian deskripsi", leader: "nanti ada
     // tombol lihat lebih banyak trus nanti baru menampilkan penuh". Jadi
-    // deskripsi yang lebih panjang dari lima baris WAJIB terpotong dan punya
-    // tombol. Sisa 40px kira-kira dua baris: di bawah itu tombolnya cuma
-    // membuka satu baris dan tidak ada gunanya, jadi deskripsi pendek tampil
-    // utuh tanpa tombol.
-    const SISA_MINIMAL = 40;
+    // deskripsi yang lebih panjang dari BARIS_KLEM WAJIB terpotong dan punya
+    // tombol.
     const ukur = () => {
+      // Tinggi satu baris dibaca dari gaya yang benar-benar berlaku, bukan
+      // ditebak. Kalau line-height-nya "normal" (bukan angka), dipakai
+      // perkiraan 1,5 kali ukuran huruf.
+      const teks = el.querySelector('p');
+      const gaya = getComputedStyle(teks ?? el);
+      const tinggiBaris =
+        parseFloat(gaya.lineHeight) || parseFloat(gaya.fontSize) * 1.5 || 20;
+      setBatasKlem(Math.round(tinggiBaris * BARIS_KLEM));
       // scrollHeight selalu melaporkan tinggi isi SEBENARNYA, terklem maupun
-      // tidak, jadi perbandingannya memakai batas klem yang kita pasang sendiri
-      // di CSS. Memakai clientHeight tidak bisa: saat klem belum terpasang,
+      // tidak. Memakai clientHeight tidak bisa: saat klem belum terpasang,
       // nilainya sama dengan scrollHeight sehingga isi sepanjang apa pun
       // dinilai pendek.
-      setDeskripsiTerpotong(el.scrollHeight > BATAS_KLEM_PX + SISA_MINIMAL);
+      const batas = tinggiBaris * (BARIS_KLEM + BARIS_SISA_MINIMAL);
+      setDeskripsiTerpotong(el.scrollHeight > batas);
     };
     ukur();
     // Isinya sekarang teks saja, jadi tidak ada lagi gambar yang tingginya
@@ -1222,7 +1239,7 @@ export function PublicProductDetail() {
                   className={cn('relative space-y-3 overflow-hidden')}
                   style={
                     !deskripsiTerbentang && deskripsiTerpotong
-                      ? { maxHeight: BATAS_KLEM_PX }
+                      ? { maxHeight: batasKlem || undefined }
                       : undefined
                   }
                 >
@@ -1245,13 +1262,28 @@ export function PublicProductDetail() {
                   )}
                 </div>
                 {deskripsiTerpotong && (
-                  <button
-                    type="button"
-                    onClick={() => setDeskripsiTerbentang((v) => !v)}
-                    className="inline-flex min-h-[44px] items-center text-sm font-semibold text-brand-600"
-                  >
-                    {deskripsiTerbentang ? 'Lihat lebih sedikit' : 'Lihat lebih banyak'}
-                  </button>
+                  /* Bentuknya mengikuti referensi yang client lingkari sendiri,
+                     docs/permintaan-client/2026-09-26_16.png: tombol di tengah,
+                     berbingkai kotak, huruf besar, dengan panah ke bawah.
+                     Panahnya berputar saat dibentangkan supaya arah bukanya
+                     terbaca tanpa harus membaca tulisannya. */
+                  <div className="flex justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setDeskripsiTerbentang((v) => !v)}
+                      aria-expanded={deskripsiTerbentang}
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-ink-200 px-5 text-sm font-semibold uppercase tracking-wide text-ink-700 transition-[transform,background-color] duration-150 ease-out hover:bg-ink-50 active:scale-[0.97] dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+                    >
+                      {deskripsiTerbentang ? 'Lihat lebih sedikit' : 'Lihat lebih banyak'}
+                      <ChevronDown
+                        size={16}
+                        className={cn(
+                          'transition-transform duration-200 ease-out',
+                          deskripsiTerbentang && 'rotate-180',
+                        )}
+                      />
+                    </button>
+                  </div>
                 )}
               </>
             ) : (

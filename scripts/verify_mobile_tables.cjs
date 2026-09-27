@@ -110,7 +110,10 @@ const UKUR = () => {
         // ukur bisa kebetulan jatuh di detik tabelnya tidak ada. Diulang
         // sampai tiga kali; kalau tetap kosong, memang kosong.
         let r = await page.evaluate(UKUR);
-        for (let coba = 0; coba < 2 && r.adaWadah && !r.adaTabel; coba += 1) {
+        // Diulang juga saat tabelnya ADA tapi barisnya belum termuat:
+        // sinkron kadang menyusul, dan sekali ukur bisa jatuh tepat di detik
+        // tabel masih kosong. Tanpa ini suite merah palsu di lari panjang.
+        for (let coba = 0; coba < 3 && r.adaWadah && (!r.adaTabel || r.jumlahBaris === 0); coba += 1) {
           await page.waitForTimeout(2500);
           r = await page.evaluate(UKUR);
         }
