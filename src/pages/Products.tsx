@@ -780,10 +780,10 @@ export function Products() {
             )}
           </div>
         </td>
-        <td className="hidden py-3 lg:table-cell">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
+        <td className="hidden py-3 xl:table-cell">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
         <td className="py-3">{formatMoney(price, store?.currency)}</td>
-        <td className="hidden py-3 text-ink-500 lg:table-cell">{formatMoney(cost, store?.currency)}</td>
-        <td className={cn('hidden py-3 font-semibold lg:table-cell', marginTone)}>
+        <td className="hidden py-3 text-ink-500 xl:table-cell">{formatMoney(cost, store?.currency)}</td>
+        <td className={cn('hidden py-3 font-semibold xl:table-cell', marginTone)}>
           {cost === 0 ? (
             '—'
           ) : (
@@ -900,7 +900,7 @@ export function Products() {
         <td className="hidden py-3 md:table-cell">
           <div className="text-xs font-mono font-semibold text-ink-800 dark:text-ink-200">{wakil.parent_sku ?? '—'}</div>
         </td>
-        <td className="hidden py-3 lg:table-cell">{categories.find((c) => c.id === wakil.category_id)?.name ?? '—'}</td>
+        <td className="hidden py-3 xl:table-cell">{categories.find((c) => c.id === wakil.category_id)?.name ?? '—'}</td>
         <td className="py-3">
           {hargaMin === hargaMax ? (
             <span className="whitespace-nowrap">{formatMoney(hargaMin, store?.currency)}</span>
@@ -915,8 +915,8 @@ export function Products() {
             </>
           )}
         </td>
-        <td className="hidden py-3 text-ink-400 lg:table-cell">—</td>
-        <td className="hidden py-3 text-ink-400 lg:table-cell">—</td>
+        <td className="hidden py-3 text-ink-400 xl:table-cell">—</td>
+        <td className="hidden py-3 text-ink-400 xl:table-cell">—</td>
         <td className="py-3">
           {dilacak.length === 0 ? (
             <span className="text-ink-400">—</span>
@@ -1040,10 +1040,10 @@ export function Products() {
                 <tr>
                   <th className="w-1/2 py-2 sm:w-auto">Produk</th>
                   <th className="hidden py-2 md:table-cell">SKU / Barcode</th>
-                  <th className="hidden py-2 lg:table-cell">Kategori</th>
+                  <th className="hidden py-2 xl:table-cell">Kategori</th>
                   <th className="py-2">Harga</th>
-                  <th className="hidden py-2 lg:table-cell">Modal</th>
-                  <th className="hidden py-2 lg:table-cell">Margin</th>
+                  <th className="hidden py-2 xl:table-cell">Modal</th>
+                  <th className="hidden py-2 xl:table-cell">Margin</th>
                   <th className="py-2">Stok</th>
                   <th className="hidden py-2 sm:table-cell">Status</th>
                   <th className="py-2 text-right">Action</th>

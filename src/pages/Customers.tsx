@@ -286,12 +286,12 @@ export function Customers() {
                 <tr>
                   <th className="py-2">Nama</th>
                   <th className="hidden py-2 sm:table-cell">Phone</th>
-                  <th className="hidden py-2 lg:table-cell">Email</th>
-                  <th className="hidden py-2 lg:table-cell">Joined</th>
-                  <th className="hidden py-2 text-right lg:table-cell">Order</th>
+                  <th className="hidden py-2 xl:table-cell">Email</th>
+                  <th className="hidden py-2 xl:table-cell">Joined</th>
+                  <th className="hidden py-2 text-right xl:table-cell">Order</th>
                   <th className="hidden py-2 text-right sm:table-cell">Belanja</th>
                   <th className="hidden py-2 text-right sm:table-cell">Poin</th>
-                  <th className="hidden py-2 lg:table-cell">Status</th>
+                  <th className="hidden py-2 xl:table-cell">Status</th>
                   <th className="py-2 text-right">Action</th>
                 </tr>
               </thead>
@@ -308,10 +308,10 @@ export function Customers() {
                         <div className="truncate text-[11px] font-normal text-ink-500 sm:hidden">
                           {c.phone ?? '—'}
                         </div>
-                        <div className="truncate text-[11px] font-normal text-ink-500 lg:hidden">
+                        <div className="truncate text-[11px] font-normal text-ink-500 xl:hidden">
                           {c.email ?? '—'}
                         </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-normal text-ink-500 lg:hidden">
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-normal text-ink-500 xl:hidden">
                           <Badge tone={c.is_active ? 'success' : 'warning'}>
                             {c.is_active ? 'Active' : 'Inactive'}
                           </Badge>
@@ -323,16 +323,16 @@ export function Customers() {
                         </div>
                       </td>
                       <td className="hidden py-3 sm:table-cell">{c.phone ?? '—'}</td>
-                      <td className="hidden py-3 lg:table-cell">{c.email ?? '—'}</td>
-                      <td className="hidden py-3 lg:table-cell">{formatDate(c.joined_date)}</td>
-                      <td className="hidden py-3 text-right lg:table-cell">{stats.count}</td>
+                      <td className="hidden py-3 xl:table-cell">{c.email ?? '—'}</td>
+                      <td className="hidden py-3 xl:table-cell">{formatDate(c.joined_date)}</td>
+                      <td className="hidden py-3 text-right xl:table-cell">{stats.count}</td>
                       <td className="hidden py-3 text-right sm:table-cell">{formatMoney(stats.spent, store?.currency)}</td>
                       <td className="hidden py-3 text-right sm:table-cell">
                         <span className="inline-flex items-center gap-1 font-semibold text-brand-600">
                           <Sparkles size={12} /> {c.points}
                         </span>
                       </td>
-                      <td className="hidden py-3 lg:table-cell">
+                      <td className="hidden py-3 xl:table-cell">
                         <Badge tone={c.is_active ? 'success' : 'warning'}>
                           {c.is_active ? 'Active' : 'Inactive'}
                         </Badge>

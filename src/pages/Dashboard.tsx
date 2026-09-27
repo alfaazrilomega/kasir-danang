@@ -693,7 +693,10 @@ export function Dashboard() {
                   </div>
                 </Card>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                {/* min-w-0 juga di sini: grid ini sendiri item grid, dan
+                    selama min-width-nya auto ia melebar mengikuti isi kartu
+                    di dalamnya lalu menyeret jalur grid induknya. */}
+                <div className="grid min-w-0 gap-4 md:grid-cols-3">
                   <AdminKpi
                     icon={Target}
                     label="AOV"
@@ -715,7 +718,11 @@ export function Dashboard() {
                     tone={pendingOrders > 0 ? 'warning' : 'default'}
                   />
 
-                  <Card className="p-5 md:col-span-2">
+                  {/* min-w-0: tanpa ini kartu tidak boleh menyusut, jadi tabel
+                      di dalamnya memaksa jalur grid selebar isi tabel (448px di
+                      layar 393px) dan kartu Business Health di jalur yang sama
+                      ikut melebar sampai angka 83% terpotong di tepi layar. */}
+                  <Card className="min-w-0 p-5 md:col-span-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="font-semibold">Performa Kasir</h3>
                       <div className="flex items-center gap-2">
@@ -740,9 +747,9 @@ export function Dashboard() {
                           <thead className="text-left text-xs text-ink-500">
                             <tr>
                               <th className="py-2">Kasir</th>
-                              <th className="py-2">Order</th>
+                              <th className="hidden py-2 sm:table-cell">Order</th>
                               <th className="py-2">Penjualan</th>
-                              <th className="py-2">Terakhir</th>
+                              <th className="hidden py-2 xl:table-cell">Terakhir</th>
                               <th className="py-2 text-right">Detail</th>
                             </tr>
                           </thead>
@@ -753,10 +760,16 @@ export function Dashboard() {
                                 onClick={() => navigate('/reports?tab=cashier')}
                                 className="cursor-pointer border-t border-ink-100 transition-colors hover:bg-brand-50/50 dark:border-ink-800 dark:hover:bg-brand-950/20"
                               >
-                                <td className="py-3 font-semibold">{row.name}</td>
-                                <td className="py-3">{formatNumber(row.orders)}</td>
+                                <td className="py-3 font-semibold">
+                                  <div className="truncate">{row.name}</div>
+                                  <div className="text-[11px] font-normal text-ink-500 xl:hidden">
+                                    <span className="sm:hidden">{formatNumber(row.orders)} order · </span>
+                                    {row.lastOrder ? formatDateTime(row.lastOrder) : 'Belum ada'}
+                                  </div>
+                                </td>
+                                <td className="hidden py-3 sm:table-cell">{formatNumber(row.orders)}</td>
                                 <td className="py-3">{formatMoney(row.sales, store?.currency)}</td>
-                                <td className="py-3 text-ink-500">
+                                <td className="hidden py-3 text-ink-500 xl:table-cell">
                                   {row.lastOrder ? formatDateTime(row.lastOrder) : 'Belum ada'}
                                 </td>
                                 <td className="py-3 text-right">
@@ -770,7 +783,13 @@ export function Dashboard() {
                     </div>
                   </Card>
 
-                  <Card className="p-5">
+                  {/* min-w-0 di kartu, dan di bawah pada nama produknya: tanpa
+                      itu truncate tidak pernah bekerja di dalam flex, nama
+                      "Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing
+                      Product" memaksa kartu ini 448px di layar 393px, dan
+                      seluruh jalur grid ikut melebar sampai kartu Business
+                      Health terpotong di tepi layar. */}
+                  <Card className="min-w-0 p-5">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold">Stok Kritis</h3>
                       <Badge tone={criticalStock.length > 0 ? 'warning' : 'success'}>
@@ -791,8 +810,12 @@ export function Dashboard() {
                               className="w-full rounded-xl border border-ink-100 p-3 text-left hover:border-brand-300 hover:bg-brand-50 dark:border-ink-800 dark:hover:bg-brand-950/30"
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-sm font-semibold">{product.name}</span>
-                                <span className="text-sm font-bold text-amber-600">{formatNumber(qty)}</span>
+                                <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                                  {product.name}
+                                </span>
+                                <span className="shrink-0 text-sm font-bold text-amber-600">
+                                  {formatNumber(qty)}
+                                </span>
                               </div>
                               <div className="mt-1 text-xs text-ink-500">Minimum {formatNumber(min)}</div>
                             </button>

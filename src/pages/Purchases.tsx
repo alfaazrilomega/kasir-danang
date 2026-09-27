@@ -1109,15 +1109,15 @@ export function Purchases() {
           />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm lg:min-w-[1000px]">
+            <table className="w-full text-sm xl:min-w-[920px]">
               <thead className="bg-brand-50 text-left text-xs font-semibold uppercase tracking-wide text-brand-700 dark:bg-brand-950/40 dark:text-brand-200">
                 <tr>
                   <th className="rounded-l-lg px-3 py-2.5">Nota</th>
-                  <th className="hidden px-3 py-2.5 lg:table-cell">Supplier</th>
-                  <th className="hidden px-3 py-2.5 lg:table-cell">Tanggal</th>
-                  <th className="hidden px-3 py-2.5 lg:table-cell">Jatuh Tempo</th>
-                  <th className="hidden px-3 py-2.5 text-right lg:table-cell">Total</th>
-                  <th className="hidden px-3 py-2.5 lg:table-cell">Progres Bayar</th>
+                  <th className="hidden px-3 py-2.5 xl:table-cell">Supplier</th>
+                  <th className="hidden px-3 py-2.5 xl:table-cell">Tanggal</th>
+                  <th className="hidden px-3 py-2.5 xl:table-cell">Jatuh Tempo</th>
+                  <th className="hidden px-3 py-2.5 text-right xl:table-cell">Total</th>
+                  <th className="hidden px-3 py-2.5 xl:table-cell">Progres Bayar</th>
                   <th className="hidden px-3 py-2.5 text-right sm:table-cell">Sisa</th>
                   <th className="hidden px-3 py-2.5 sm:table-cell">Status</th>
                   <th className="rounded-r-lg px-3 py-2.5 text-right">Aksi</th>
@@ -1146,7 +1146,7 @@ export function Purchases() {
                             HP, jadi Sisa, Status, dan tombolnya tidak terlihat
                             tanpa digeser. Kolom sekunder disembunyikan dan
                             isinya ikut di bawah nomor nota. */}
-                        <div className="text-[11px] text-ink-500 lg:hidden">
+                        <div className="text-[11px] text-ink-500 xl:hidden">
                           {purchase.supplier_id
                             ? supplierById.get(purchase.supplier_id)?.name ?? 'Supplier dihapus'
                             : '—'}
@@ -1162,13 +1162,13 @@ export function Purchases() {
                           </span>
                         </div>
                       </td>
-                      <td className="hidden px-3 py-3 lg:table-cell">
+                      <td className="hidden px-3 py-3 xl:table-cell">
                         {purchase.supplier_id
                           ? supplierById.get(purchase.supplier_id)?.name ?? 'Supplier dihapus'
                           : '—'}
                       </td>
-                      <td className="hidden px-3 py-3 text-ink-500 lg:table-cell">{formatDate(purchase.order_date)}</td>
-                      <td className="hidden px-3 py-3 lg:table-cell">
+                      <td className="hidden px-3 py-3 text-ink-500 xl:table-cell">{formatDate(purchase.order_date)}</td>
+                      <td className="hidden px-3 py-3 xl:table-cell">
                         {purchase.due_date ? (
                           <div>
                             <div>{formatDate(purchase.due_date)}</div>
@@ -1195,10 +1195,10 @@ export function Purchases() {
                           <span className="text-ink-400">—</span>
                         )}
                       </td>
-                      <td className="hidden px-3 py-3 text-right font-semibold tabular-nums lg:table-cell">
+                      <td className="hidden px-3 py-3 text-right font-semibold tabular-nums xl:table-cell">
                         {formatMoney(purchase.total, currency)}
                       </td>
-                      <td className="hidden px-3 py-3 lg:table-cell">
+                      <td className="hidden px-3 py-3 xl:table-cell">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
                             <div

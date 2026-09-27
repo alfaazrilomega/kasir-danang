@@ -39,10 +39,14 @@ const RUTE = [
   ['/stock-opname', 'Opname Stok'],
   ['/expenses', 'Pengeluaran'],
   ['/reports', 'Laporan'],
+  ['/', 'Dashboard'],
   ['/users', 'User'],
 ];
 
-const LEBAR = [393, 640];
+// 393 HP. 640 titik sm menyala. 1024 titik lg menyala DAN bilah sisi ikut
+// melebar, jadi wadah isinya justru menyempit jadi 681px. 1280 titik xl.
+// Tiga cacat terakhir masing-masing muncul tepat di salah satu titik ini.
+const LEBAR = [393, 640, 1024, 1280];
 
 const UKUR = () => {
   // AdminLayout tidak memakai <main>; wadah isinya div max-w-[1400px].
@@ -89,7 +93,7 @@ const UKUR = () => {
     // per lebar berarti 22 navigasi dan suite melewati batas 600 detik di
     // run_all_checks, lalu mati tanpa ringkasan.
     for (const [rute, nama] of RUTE) {
-      await page.setViewportSize({ width: LEBAR[0], height: 852 });
+      await page.setViewportSize({ width: LEBAR[0], height: 900 });
       await bukaSampaiBarisAda(page, rute);
 
       for (const lebar of LEBAR) {
@@ -130,7 +134,10 @@ const UKUR = () => {
         // ketiadaan baris dilaporkan, bukan dilewat.
         record(label + ': ada baris isi untuk diukur', r.jumlahBaris > 0,
           'baris terbaca ' + r.jumlahBaris);
-        record(label + ': baris tidak membengkak',
+        // Baris tinggi di layar sempit berarti kolom terhimpit. Di layar
+        // lebar tinggi yang sama datang dari isi yang memang kaya (lencana
+        // marketplace, dua tombol aksi), dan tidak ada yang tersembunyi.
+        if (lebar <= 640) record(label + ': baris tidak membengkak',
           r.jumlahBaris > 0 && r.tertinggi <= 140,
           'tertinggi ' + r.tertinggi + 'px dari ' + r.jumlahBaris + ' baris');
       }

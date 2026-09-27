@@ -187,7 +187,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <header className="relative z-30 flex items-center gap-3 border-b border-ink-100 bg-white px-4 py-3 dark:border-ink-800 dark:bg-ink-900 md:px-6">
+          {/* flex-wrap: di layar 393px kontrol milik halaman cuma kebagian 42px
+              dari 287px yang dibutuhkan, jadi penyaring periode Dasbor terbaca
+              "Har" saja. Di bawah lg kontrolnya turun ke baris sendiri selebar
+              layar; dari lg ke atas tetap satu baris seperti semula. */}
+          <header className="relative z-30 flex flex-wrap items-center gap-3 border-b border-ink-100 bg-white px-4 py-3 dark:border-ink-800 dark:bg-ink-900 md:px-6 lg:flex-nowrap">
             <button
               onClick={() => setDrawerOpen(true)}
               className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-700 lg:hidden dark:bg-ink-800 dark:text-ink-200"
@@ -223,9 +227,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               /* Bilah gulir disembunyikan, jadi tepi kanan dibuat memudar sebagai
                  tanda masih ada kontrol lain di sebelahnya. Di layar lebar tidak
                  ada yang tersembunyi, jadi tanpa efek. */
-              className="peer tanpa-bilah flex min-w-0 shrink items-center gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-18px),transparent)] lg:[mask-image:none]"
+              className="peer tanpa-bilah order-last flex w-full min-w-0 shrink items-center gap-2 overflow-x-auto [mask-image:linear-gradient(to_right,#000_calc(100%-18px),transparent)] empty:hidden lg:order-none lg:w-auto lg:[mask-image:none]"
             />
-            <div className="ml-1 hidden h-7 w-px shrink-0 bg-ink-200 peer-[:not(:empty)]:block dark:bg-ink-700" />
+            {/* Pemisah ini memisahkan kontrol halaman dari tombol akun. Di
+                bawah lg kontrolnya sudah pindah ke baris sendiri, jadi garis
+                ini tidak memisahkan apa pun dan ikut disembunyikan. */}
+            <div className="ml-1 hidden h-7 w-px shrink-0 bg-ink-200 dark:bg-ink-700 lg:peer-[:not(:empty)]:block" />
             <NavActions tone="surface" />
           </header>
 
