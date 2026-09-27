@@ -36,8 +36,8 @@ WhatsApp.
 | # | Permintaan (kutipan) | Letak di aplikasi |
 |---|---|---|
 | 7 | "Bagian bawah ada media sosial FB / IG / Tiktok / Ytb" | Kaki halaman toko online |
-| 8 | "bagian jelajahi GNNK Racing apa bisa buat jadi links artikel" | Kaki halaman toko online |
-| 9 | "Fitur chat bisa di nonaktifkan / dan aktifkan manual tergantung kondisi. Jd bisa kondisional" | Pengaturan → Toko Online, tombol chat di toko |
+| 8 | "bagian jelajahi GNNK Racing apa bisa buat jadi links artikel" ([tangkapan layar](docs/permintaan-client/2026-09-26_14.png)) | Kaki halaman toko online |
+| 9 | "Fitur chat bisa di nonaktifkan / dan aktifkan manual tergantung kondisi. Jd bisa kondisional" ([tangkapan layar](docs/permintaan-client/2026-09-26_15.png)) | Pengaturan → Toko Online, tombol chat di toko |
 | 10 | **"Ouh, jadi ga di show semua langsung bagian deskripsi"** → leader: **"Iya mas, trus nanti ada tombol lihat lebih banyak trus nanti baru menampilkan penuh"** | Halaman produk toko online, bagian Deskripsi |
 
 **Butir 10 itu dua hal sekaligus, dan keduanya wajib:**
@@ -45,7 +45,8 @@ WhatsApp.
 2. Harus ada tombol "Lihat lebih banyak" yang membuka isinya sampai penuh.
 
 Kalau deskripsi tampil penuh tanpa tombol, butir ini gagal — sekalipun
-alasannya "isinya sudah pendek". Acuan awal: dipotong kira-kira 6 baris.
+alasannya "isinya sudah pendek". Klem sekarang lima baris, 96px.
+Bukti kegagalannya pernah terjadi: [tangkapan layar produksi](docs/permintaan-client/2026-09-27_24.png).
 
 ## Gelombang 4 — Detail produk yang menumpuk
 
@@ -61,6 +62,9 @@ alasannya "isinya sudah pendek". Acuan awal: dipotong kira-kira 6 baris.
 
 Keputusan yang diambil bersama user: tanggal tiap biaya diisi sendiri, jadi
 satu nota bisa melahirkan beberapa pengeluaran dengan tanggal berbeda.
+
+Tangkapan layar aslinya ada di [docs/permintaan-client/](docs/permintaan-client/)
+berikut indeksnya.
 
 ---
 
