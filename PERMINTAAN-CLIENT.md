@@ -19,7 +19,7 @@ WhatsApp.
 
 | # | Permintaan | Letak di aplikasi |
 |---|---|---|
-| 1 | Flash sale dengan kuota, penanda di produk, dan laporannya | Admin Promo tab Flash Sale, toko online, Laporan |
+| 1 | Flash sale dengan kuota, penanda di produk, dan laporannya ([referensi](docs/permintaan-client/2026-09-25_13.png)) | Admin Promo tab Flash Sale, toko online, Laporan |
 
 ## Gelombang 2 — Nota pembelian (PO)
 
@@ -28,14 +28,14 @@ WhatsApp.
 | 2 | "terkait halaman total usd dan jumlah rupiah kmren blm sinkron" — nota USD ditulis dalam dollar | Pembelian Supplier, cetak nota |
 | 3 | DP dihitung dari nilai barang, bukan dari total setelah biaya | Pembelian Supplier, form nota |
 | 4 | Baris biaya kedua yang bisa diberi nama sendiri | Pembelian Supplier, form nota |
-| 5 | "dibagian menu produk bagian multi sku blm muncul" — satu nama produk, banyak SKU | POS Kasir, Daftar Produk, toko online |
+| 5 | "dibagian menu produk bagian multi sku blm muncul" — satu nama produk, banyak SKU ([tangkapan layar](docs/permintaan-client/2026-09-25_11.png)) | POS Kasir, Daftar Produk, toko online |
 | 6 | "di proses pembuatan po bisa uplod templete juga mas" | Pembelian Supplier, impor item |
 
 ## Gelombang 3 — Toko online bagian bawah
 
 | # | Permintaan (kutipan) | Letak di aplikasi |
 |---|---|---|
-| 7 | "Bagian bawah ada media sosial FB / IG / Tiktok / Ytb" | Kaki halaman toko online |
+| 7 | "Bagian bawah ada media sosial FB / IG / Tiktok / Ytb" ([tangkapan layar](docs/permintaan-client/2026-09-26_14.png)) | Kaki halaman toko online |
 | 8 | "bagian jelajahi GNNK Racing apa bisa buat jadi links artikel" ([tangkapan layar](docs/permintaan-client/2026-09-26_14.png)) | Kaki halaman toko online |
 | 9 | "Fitur chat bisa di nonaktifkan / dan aktifkan manual tergantung kondisi. Jd bisa kondisional" ([tangkapan layar](docs/permintaan-client/2026-09-26_15.png)) | Pengaturan → Toko Online, tombol chat di toko |
 | 10 | **"Ouh, jadi ga di show semua langsung bagian deskripsi"** → leader: **"Iya mas, trus nanti ada tombol lihat lebih banyak trus nanti baru menampilkan penuh"** | Halaman produk toko online, bagian Deskripsi |
@@ -43,6 +43,11 @@ WhatsApp.
 **Butir 10 itu dua hal sekaligus, dan keduanya wajib:**
 1. Deskripsi TIDAK boleh tampil penuh begitu halaman dibuka.
 2. Harus ada tombol "Lihat lebih banyak" yang membuka isinya sampai penuh.
+
+**Referensi yang client tunjuk sendiri: [halaman Lazada](docs/permintaan-client/2026-09-26_16.png)**,
+tombol "LIHAT LEBIH BANYAK" dilingkari biru. Bukti pernah salah dua kali:
+[tombol yang cuma menyembunyikan dua baris](docs/permintaan-client/2026-09-26_21.png)
+dan [deskripsi tampil penuh tanpa tombol](docs/permintaan-client/2026-09-27_24.png).
 
 Kalau deskripsi tampil penuh tanpa tombol, butir ini gagal — sekalipun
 alasannya "isinya sudah pendek". Klem sekarang lima baris, 96px.
@@ -52,7 +57,7 @@ Bukti kegagalannya pernah terjadi: [tangkapan layar produksi](docs/permintaan-cl
 
 | # | Permintaan (kutipan) | Letak di aplikasi |
 |---|---|---|
-| 11 | "Tampilan bagian bawah produk detail bagian bawah bisa klik muncul sesuai kebutuhan / Tp memanjang ke bawah full tampilan stak" · "Atas sdh sesuai. Tp di bagian bawah ada detail produk yg stak. Bisa ada klik muncul dan hide sesuaikan kebutuhan" | Halaman produk toko online, bagian Detail Produk |
+| 11 | "Tampilan bagian bawah produk detail bagian bawah bisa klik muncul sesuai kebutuhan / Tp memanjang ke bawah full tampilan stak" · "Atas sdh sesuai. Tp di bagian bawah ada detail produk yg stak. Bisa ada klik muncul dan hide sesuaikan kebutuhan" | Halaman produk toko online, bagian Detail Produk. Referensi: [Lazada HP terlipat](docs/permintaan-client/2026-09-26_17.png), [terbuka](docs/permintaan-client/2026-09-26_18.png); keluhan: [punya kita menumpuk](docs/permintaan-client/2026-09-26_20.png) |
 
 ## Gelombang 5 — Biaya PO masuk pengeluaran
 
