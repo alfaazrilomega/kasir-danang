@@ -20,6 +20,7 @@ const SUITES = [
   'verify_flash_sale',
   'verify_storefront_footer',
   'verify_mobile_tables',
+  'verify_dark_contrast',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

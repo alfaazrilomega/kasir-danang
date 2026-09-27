@@ -154,7 +154,7 @@ export function DialogMasuk({ onTutup, children }: { onTutup: () => void; childr
         role="dialog"
         aria-modal="true"
         aria-labelledby="judul-auth"
-        className="relative w-full max-w-[440px] rounded-lg bg-white px-10 pb-8 pt-9 shadow-[0_16px_48px_rgba(0,0,0,0.2)] [animation:dialog-muncul_180ms_ease-out]"
+        className="permukaan-terang relative w-full max-w-[440px] rounded-lg bg-white px-10 pb-8 pt-9 shadow-[0_16px_48px_rgba(0,0,0,0.2)] [animation:dialog-muncul_180ms_ease-out]"
       >
         <button
           type="button"
@@ -178,7 +178,7 @@ export function KerangkaAuth({ children, kembali = '/toko' }: { children: ReactN
   const toko = useTokoPublik();
   useKunciGulir();
   return (
-    <main className="fixed inset-0 overflow-hidden bg-white">
+    <main className="permukaan-terang fixed inset-0 overflow-hidden bg-white">
       <div className="tanpa-bilah h-full overflow-y-auto px-6 pb-6 pt-3">
         <div className="mx-auto w-full max-w-[400px]">
           <div className="relative flex h-12 items-center justify-center">
@@ -298,9 +298,11 @@ export function PesanGalat({ teks }: { teks?: string }) {
   );
 }
 
+// black/40 di atas putih cuma 2,85:1, di bawah ambang keterbacaan 3:1, dan itu
+// berlaku di mode terang maupun gelap. black/55 memberi 4,3:1.
 export function PemisahAtau() {
   return (
-    <div className="flex items-center gap-4 py-5 text-[11px] font-medium uppercase tracking-wider text-black/40">
+    <div className="flex items-center gap-4 py-5 text-[11px] font-medium uppercase tracking-wider text-black/55">
       <span className="h-px flex-1 bg-black/10" /> Atau <span className="h-px flex-1 bg-black/10" />
     </div>
   );

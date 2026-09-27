@@ -72,7 +72,12 @@
            placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20
            focus:outline-none transition;
   }
-  .dark .input { @apply border-ink-700 bg-ink-900 text-ink-100 placeholder:text-ink-500; }
+  /* Warna placeholder ditulis langsung (ink-500). Lewat
+     `@apply placeholder:text-ink-500` Tailwind menganggapnya bagian dari
+     definisi utility text-ink-500, dan aturan `.dark .text-ink-500` di bawah
+     jadi dependensi melingkar yang menggagalkan seluruh berkas. */
+  .dark .input { @apply border-ink-700 bg-ink-900 text-ink-100; }
+  .dark .input::placeholder { color: #5b6a82; }
 
   .pill {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
@@ -87,6 +92,35 @@
   /* Bisa digulir tanpa bilah gulir yang terlihat. */
   .tanpa-bilah { scrollbar-width: none; -ms-overflow-style: none; }
   .tanpa-bilah::-webkit-scrollbar { display: none; }
+
+  /* Warna teks redup dan aksen di mode gelap.
+     Diukur pada 17 layar admin: text-ink-500 jatuh ke 2,33:1 di latar gelap,
+     text-ink-600 ke 2,33:1, text-brand-600 ke 2,8:1, dan text-brand-700 ke
+     2,1:1 - semuanya di bawah ambang keterbacaan 3:1. Dipakai di ratusan
+     tempat, jadi diperbaiki di sini, bukan satu per satu.
+
+     Aturan ini ada di layer components dan bernilai spesifisitas sama dengan
+     varian `dark:text-*`, yang keluar belakangan di layer utilities. Jadi
+     komponen yang sudah memilih warna gelapnya sendiri tetap menang, dan
+     yang belum memilih ikut aturan ini.
+
+     Nilainya ditulis langsung, bukan lewat @apply: `.dark .input` sudah
+     memakai `placeholder:text-ink-500`, jadi `@apply text-ink-400` di dalam
+     `.dark .text-ink-500` membuat Tailwind melihat dependensi melingkar dan
+     seluruh berkas gagal dikompilasi. */
+  .dark .text-ink-500 { color: #7d8aa0; }
+  .dark .text-ink-600 { color: #b0b8c6; }
+  .dark .text-brand-600 { color: rgb(var(--brand-300)); }
+  .dark .text-brand-700 { color: rgb(var(--brand-200)); }
+
+  /* Sebagian permukaan tetap putih walau mode gelap menyala: kartu masuk dan
+     daftar di toko online. Di sana teks justru harus tetap gelap, jadi
+     penandanya mengembalikan warna aslinya. Spesifisitasnya 0,3,0 sehingga
+     menang atas empat aturan di atas. */
+  .dark .permukaan-terang .text-ink-500 { color: #5b6a82; }
+  .dark .permukaan-terang .text-ink-600 { color: #475569; }
+  .dark .permukaan-terang .text-brand-600 { color: rgb(var(--brand-600)); }
+  .dark .permukaan-terang .text-brand-700 { color: rgb(var(--brand-700)); }
 }
 
 /* Bar progres karosel beranda: terisi dari kiri selama satu slide. */

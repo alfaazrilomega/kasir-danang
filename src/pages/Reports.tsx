@@ -698,7 +698,13 @@ export function Reports() {
               className={cn(
                 'rounded-full px-3 py-1 text-xs font-semibold transition',
                 preset === p.id
-                  ? 'bg-white text-brand-700'
+                  // Latarnya putih di kedua mode karena cip ini duduk di
+                  // header berwarna, jadi warna teksnya tidak boleh ikut
+                  // diterangkan oleh aturan gelap di index.css. Ditulis
+                  // sebagai nilai langsung: kelas `dark:text-brand-700`
+                  // menghasilkan selektor yang sama persis dengan aturan itu
+                  // sehingga tidak bisa menimpanya.
+                  ? 'bg-white text-brand-700 dark:text-[rgb(var(--brand-700))]'
                   : 'bg-white/15 text-white hover:bg-white/25',
               )}
             >

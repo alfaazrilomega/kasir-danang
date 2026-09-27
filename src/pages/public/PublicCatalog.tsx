@@ -308,7 +308,7 @@ function Beranda({
           <Link
             to={token ? '/toko/akun' : '/toko/masuk'}
             onClick={token ? undefined : klikMasuk('masuk', '/toko/akun')}
-            className="mt-auto flex h-8 w-full items-center justify-center rounded-sm bg-white text-xs font-bold uppercase text-brand-700 transition-opacity duration-300 hover:opacity-90"
+            className="mt-auto flex h-8 w-full items-center justify-center rounded-sm bg-white text-xs font-bold uppercase text-brand-700 transition-opacity dark:text-[rgb(var(--brand-700))] duration-300 hover:opacity-90"
           >
             {token ? 'Pesanan Saya' : 'Masuk / Daftar'}
           </Link>
