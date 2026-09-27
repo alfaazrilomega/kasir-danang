@@ -11,9 +11,12 @@
 //    tombol mengambang "Pesan", dan DUA tombol Chat di halaman detail produk
 //    (kartu penjual + bilah bawah HP, yang terakhir cuma tampil di layar
 //    sempit karena kelasnya lg:hidden).
-// 4. Deskripsi produk: dipotong 6 baris dengan tombol "Lihat lebih banyak"/
-//    "Lihat lebih sedikit"; tombol hanya muncul kalau teksnya memang
-//    terpotong (dibuktikan lewat scrollHeight/Range, bukan isVisible()).
+// 4. Blok Detail Produk di layar lebar dipotong dengan tombol "Lihat lebih
+//    banyak"/"Lihat lebih sedikit". Yang dipotong seluruh blok, bukan
+//    paragraf deskripsinya: di layar lebar semua bagian di dalamnya selalu
+//    terbuka, jadi memotong paragrafnya saja tidak memperpendek jarak gulir.
+//    Tombolnya hanya muncul kalau isinya memang terpotong (dibuktikan lewat
+//    scrollHeight, bukan isVisible()).
 //
 // Baris `stores` yang dipakai (facebook/instagram/tiktok/youtube/footer_links/
 // chat_enabled) milik client -- nilai aslinya disimpan di awal dan
@@ -232,14 +235,21 @@ async function buka(browser, viewport, url) {
     // elemen induknya tetap dianggap "visible" walau isinya terpotong. Yang
     // membuktikan potongan adalah posisi baris terakhir jatuh di luar kotak
     // yang tampil (dibandingkan lewat Range, bukan hitungan karakter).
+    // Di layar lebar yang dipotong SELURUH blok Detail Produk, bukan paragraf
+    // deskripsinya saja: semua bagian di sana selalu terbuka, jadi memotong
+    // paragrafnya tidak memperpendek jarak gulir sama sekali.
     const ukur = await pDesk.evaluate(() => {
-      const h = Array.from(document.querySelectorAll('h3')).find((el) => el.textContent.trim() === 'Deskripsi');
-      const wadah = h?.parentElement?.querySelector('div.relative.overflow-hidden');
+      const blok = document.getElementById('detail-produk');
+      const wadah = blok?.querySelector('div.relative.space-y-5.overflow-hidden');
       if (!wadah) return null;
-      return { tampil: Math.round(wadah.clientHeight), isi: Math.round(wadah.scrollHeight) };
+      return {
+        tampil: Math.round(wadah.clientHeight),
+        isi: Math.round(wadah.scrollHeight),
+        halaman: document.documentElement.scrollHeight,
+      };
     });
     rec(
-      'Isi deskripsi melampaui kotak yang tampil (memang terpotong)',
+      'Isi Detail Produk melampaui kotak yang tampil (memang terpotong)',
       !!ukur && ukur.isi > ukur.tampil + 1,
       ukur ? `tampil ${ukur.tampil}px, isi ${ukur.isi}px` : 'tidak terukur',
     );

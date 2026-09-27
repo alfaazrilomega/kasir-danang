@@ -115,6 +115,41 @@ const cek = (butir, nama, ok, bukti) => {
   trackApi(page);
   await loginAdmin(page);
 
+  // Butir 10 di layar lebar: di sana semua bagian Detail Produk selalu
+  // terbuka, jadi yang dipotong SELURUH bloknya. Yang diukur jarak gulir
+  // yang hilang, bukan berapa baris yang disembunyikan.
+  await page.goto(BASE_URL + '/toko/produk?id=' + pid, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#detail-produk', { timeout: 45000 }).catch(() => {});
+  await page.waitForTimeout(3500);
+  const bacaDetail = () => {
+    const blok = document.getElementById('detail-produk');
+    if (!blok) return null;
+    const bungkus = blok.querySelector('div.relative.space-y-5.overflow-hidden');
+    const dt = Array.from(blok.querySelectorAll('dt')).find((x) => /^Motor$/i.test((x.innerText || '').trim()));
+    return {
+      tinggiBlok: Math.round(blok.getBoundingClientRect().height),
+      tampak: bungkus ? Math.round(bungkus.getBoundingClientRect().height) : null,
+      isi: bungkus ? bungkus.scrollHeight : null,
+      motorTerlihat: dt && bungkus ? dt.parentElement.getBoundingClientRect().bottom <= bungkus.getBoundingClientRect().bottom + 1 : null,
+      tinggiHalaman: document.documentElement.scrollHeight,
+    };
+  };
+  const tutup = await page.evaluate(bacaDetail);
+  const tombolDetail = page.locator('#detail-produk button').filter({ hasText: /Lihat lebih banyak/i });
+  const adaTombolDetail = (await tombolDetail.count()) > 0;
+  let buka = null;
+  if (adaTombolDetail) {
+    await tombolDetail.first().click();
+    await page.waitForTimeout(900);
+    buka = await page.evaluate(bacaDetail);
+  }
+  cek(10, 'Detail Produk di layar lebar dipotong, tidak dibiarkan penuh', adaTombolDetail && !!tutup && tutup.tampak < tutup.isi,
+    tutup ? ('tampak ' + tutup.tampak + 'px dari ' + tutup.isi + 'px, blok ' + tutup.tinggiBlok + 'px') : 'blok tidak ditemukan');
+  cek(10, 'Potongan itu memangkas jarak gulir dengan berarti', !!buka && buka.tinggiHalaman - tutup.tinggiHalaman > 500,
+    tutup && buka ? ('halaman ' + tutup.tinggiHalaman + 'px tertutup vs ' + buka.tinggiHalaman + 'px terbuka, hemat ' + (buka.tinggiHalaman - tutup.tinggiHalaman) + 'px') : 'tidak terukur');
+  cek(10, 'Yang terlihat sampai baris spesifikasi Motor', tutup ? tutup.motorTerlihat === true : false,
+    tutup ? ('motorTerlihat=' + tutup.motorTerlihat) : '-');
+
   await page.goto(BASE_URL + '/products', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('[class*="max-w-[1400px]"] table tbody tr', { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(2500);

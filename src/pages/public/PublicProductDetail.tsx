@@ -156,6 +156,13 @@ export function PublicProductDetail() {
   const [deskripsiTerpotong, setDeskripsiTerpotong] = useState(false);
   // Tinggi klem dalam piksel, dihitung dari line-height yang berlaku.
   const [batasKlem, setBatasKlem] = useState(0);
+  // Potongan seluruh blok Detail Produk. Hanya berlaku dari lg ke atas:
+  // di bawah itu tiap bagian sudah bisa dilipat sendiri (permintaan client
+  // butir 11), jadi bloknya memang sudah pendek.
+  const detailRef = useRef<HTMLDivElement>(null);
+  const [detailTerbentang, setDetailTerbentang] = useState(false);
+  const [detailTerpotong, setDetailTerpotong] = useState(false);
+  const [batasDetail, setBatasDetail] = useState(0);
 
   const add = usePublicCart((s) => s.add);
   const setBuyNow = usePublicCart((s) => s.setBuyNow);
@@ -256,6 +263,11 @@ export function PublicProductDetail() {
       // Tinggi satu baris dibaca dari gaya yang benar-benar berlaku, bukan
       // ditebak. Kalau line-height-nya "normal" (bukan angka), dipakai
       // perkiraan 1,5 kali ukuran huruf.
+      if (window.innerWidth >= 1024) {
+        setDeskripsiTerpotong(false);
+        setBatasKlem(0);
+        return;
+      }
       const teks = el.querySelector('p');
       const gaya = getComputedStyle(teks ?? el);
       const tinggiBaris =
@@ -280,6 +292,46 @@ export function PublicProductDetail() {
       pengamat.disconnect();
     };
   }, [data?.product.id, data?.product.description, deskripsiTerbentang]);
+
+  // Blok Detail Produk dipotong sampai enam entri spesifikasi pertama -
+  // itu yang diminta: terlihat sampai baris "Motor". Angkanya tidak ditulis
+  // dalam piksel karena grid spesifikasi dua kolom di layar lebar dan satu
+  // kolom di layar sempit, jadi tinggi yang sama berarti jumlah baris yang
+  // berbeda. Yang dihitung posisinya, bukan tingginya.
+  const ENTRI_SPEK_TAMPAK = 6;
+  useLayoutEffect(() => {
+    const el = detailRef.current;
+    if (!el) return;
+    if (detailTerbentang) return;
+    const ukur = () => {
+      // Di bawah lg tiap bagian sudah bisa dilipat sendiri, jadi blok ini
+      // tidak perlu dipotong lagi.
+      if (window.innerWidth < 1024) {
+        setDetailTerpotong(false);
+        setBatasDetail(0);
+        return;
+      }
+      const entri = Array.from(el.querySelectorAll("dl > div"));
+      const batas = entri[ENTRI_SPEK_TAMPAK - 1];
+      const atas = el.getBoundingClientRect().top;
+      // Titik potong pilihan pertama: bawah entri spesifikasi keenam.
+      // Produk yang spesifikasinya sedikit tidak punya titik itu, dan tanpa
+      // cadangan bloknya tidak akan pernah dipotong walau deskripsinya
+      // panjang - pembaca yang datang bukan untuk membaca tetap membayar
+      // jaraknya. Cadangannya 45% tinggi layar.
+      const tinggi = batas
+        ? Math.round(batas.getBoundingClientRect().bottom - atas)
+        : Math.round(window.innerHeight * 0.45);
+      setBatasDetail(tinggi);
+      // Dipotong hanya kalau yang disembunyikan memang mengurangi gulir
+      // dengan berarti: sisanya minimal setinggi setengah layar.
+      setDetailTerpotong(el.scrollHeight - tinggi > window.innerHeight * 0.5);
+    };
+    ukur();
+    const pengamat = new ResizeObserver(ukur);
+    pengamat.observe(el);
+    return () => pengamat.disconnect();
+  }, [data?.product.id, detailTerbentang]);
 
   const lainnya = useMemo(() => {
     if (!catalog || !data) return { sama: [], suka: [] };
@@ -1196,6 +1248,17 @@ export function PublicProductDetail() {
         {/* ---------- Detail produk ---------- */}
         <Blok id="detail-produk" className="scroll-mt-32 space-y-5 p-4 lg:p-5">
           <h2 className="text-lg font-semibold">Detail Produk</h2>
+          {/* Seluruh isi Detail Produk dipotong, bukan cuma paragraf
+              deskripsinya. Di layar lebar semua bagian selalu terbuka,
+              sehingga blok ini 1359px - pembeli yang tidak sedang mencari
+              spesifikasi harus menggulir sejauh itu dulu sebelum sampai ke
+              produk lain. Yang terlihat dipotong sampai enam entri
+              spesifikasi pertama, sisanya dibuka kalau memang dicari. */}
+          <div
+            ref={detailRef}
+            className="relative space-y-5 overflow-hidden"
+            style={!detailTerbentang && detailTerpotong && batasDetail ? { maxHeight: batasDetail } : undefined}
+          >
           <BagianLipat judul="Spesifikasi">{daftarSpesifikasi}</BagianLipat>
           {isiKotak && (
             <BagianLipat judul="Apa yang ada di dalam kotak">
@@ -1294,6 +1357,23 @@ export function PublicProductDetail() {
               </>
             )}
           </section>
+            {!detailTerbentang && detailTerpotong && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-white dark:to-ink-900" />
+            )}
+          </div>
+          {detailTerpotong && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setDetailTerbentang((v) => !v)}
+                aria-expanded={detailTerbentang}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-ink-200 px-5 text-sm font-semibold uppercase tracking-wide text-ink-700 transition-[transform,background-color] duration-150 ease-out hover:bg-ink-50 active:scale-[0.97] dark:border-ink-700 dark:text-ink-200 dark:hover:bg-ink-800"
+              >
+                {detailTerbentang ? 'Lihat lebih sedikit' : 'Lihat lebih banyak'}
+                <ChevronDown size={16} className={cn('transition-transform duration-200 ease-out', detailTerbentang && 'rotate-180')} />
+              </button>
+            </div>
+          )}
           {chatUrl && (
             <p className="text-xs text-ink-500">
               Jika ingin melaporkan masalah pada produk ini,{' '}
