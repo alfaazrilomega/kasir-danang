@@ -46,12 +46,12 @@ import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 const PER_HALAMAN = 5;
 const KUNCI_HELPFUL = 'tokoku.helpful.v1';
-// Deskripsi dipotong enam baris sebelum tombol "Lihat lebih banyak", sesuai
+// Deskripsi dipotong lima baris sebelum tombol "Lihat lebih banyak", sesuai
 // permintaan client di PERMINTAAN-CLIENT.md butir 10. Satu baris text-sm
-// leading-relaxed di huruf dasar 14px kira-kira 20px, jadi enam baris 120px.
+// leading-relaxed di huruf dasar 14px kira-kira 20px, jadi lima baris 96px.
 // Angka ini dipakai dua kali - di CSS klem dan saat mengukur - jadi ditulis
 // sekali di sini supaya tidak bisa berbeda.
-const BATAS_KLEM_PX = 120;
+const BATAS_KLEM_PX = 96;
 const TOMBOL_BELI =
   'rounded-[4px] border border-brand-600 bg-white text-brand-600 transition-colors duration-150 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-ink-900';
 const TOMBOL_TROLI =
@@ -238,7 +238,7 @@ export function PublicProductDetail() {
     if (deskripsiTerbentang) return;
     // Client: "ga di show semua langsung bagian deskripsi", leader: "nanti ada
     // tombol lihat lebih banyak trus nanti baru menampilkan penuh". Jadi
-    // deskripsi yang lebih panjang dari enam baris WAJIB terpotong dan punya
+    // deskripsi yang lebih panjang dari lima baris WAJIB terpotong dan punya
     // tombol. Sisa 40px kira-kira dua baris: di bawah itu tombolnya cuma
     // membuka satu baris dan tidak ada gunanya, jadi deskripsi pendek tampil
     // utuh tanpa tombol.
