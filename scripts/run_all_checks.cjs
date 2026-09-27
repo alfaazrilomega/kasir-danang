@@ -21,6 +21,7 @@ const SUITES = [
   'verify_storefront_footer',
   'verify_mobile_tables',
   'verify_dark_contrast',
+  'verify_permintaan_client',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

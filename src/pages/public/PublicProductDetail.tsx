@@ -46,6 +46,12 @@ import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 const PER_HALAMAN = 5;
 const KUNCI_HELPFUL = 'tokoku.helpful.v1';
+// Deskripsi dipotong enam baris sebelum tombol "Lihat lebih banyak", sesuai
+// permintaan client di PERMINTAAN-CLIENT.md butir 10. Satu baris text-sm
+// leading-relaxed di huruf dasar 14px kira-kira 20px, jadi enam baris 120px.
+// Angka ini dipakai dua kali - di CSS klem dan saat mengukur - jadi ditulis
+// sekali di sini supaya tidak bisa berbeda.
+const BATAS_KLEM_PX = 120;
 const TOMBOL_BELI =
   'rounded-[4px] border border-brand-600 bg-white text-brand-600 transition-colors duration-150 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-ink-900';
 const TOMBOL_TROLI =
@@ -230,15 +236,20 @@ export function PublicProductDetail() {
     // Mengukur dalam keadaan itu akan menyimpulkan "tidak terpotong" dan
     // menghilangkan tombol "Lihat lebih sedikit", jadi nilainya dipertahankan.
     if (deskripsiTerbentang) return;
-    const SISA_MINIMAL = 120;
+    // Client: "ga di show semua langsung bagian deskripsi", leader: "nanti ada
+    // tombol lihat lebih banyak trus nanti baru menampilkan penuh". Jadi
+    // deskripsi yang lebih panjang dari enam baris WAJIB terpotong dan punya
+    // tombol. Sisa 40px kira-kira dua baris: di bawah itu tombolnya cuma
+    // membuka satu baris dan tidak ada gunanya, jadi deskripsi pendek tampil
+    // utuh tanpa tombol.
+    const SISA_MINIMAL = 40;
     const ukur = () => {
       // scrollHeight selalu melaporkan tinggi isi SEBENARNYA, terklem maupun
       // tidak, jadi perbandingannya memakai batas klem yang kita pasang sendiri
-      // di CSS (240px, atau 360px mulai breakpoint sm = 640px). Memakai
-      // clientHeight tidak bisa: saat klem belum terpasang, nilainya sama
-      // dengan scrollHeight sehingga isi sepanjang apa pun dinilai pendek.
-      const batasKlem = window.innerWidth >= 640 ? 360 : 240;
-      setDeskripsiTerpotong(el.scrollHeight > batasKlem + SISA_MINIMAL);
+      // di CSS. Memakai clientHeight tidak bisa: saat klem belum terpasang,
+      // nilainya sama dengan scrollHeight sehingga isi sepanjang apa pun
+      // dinilai pendek.
+      setDeskripsiTerpotong(el.scrollHeight > BATAS_KLEM_PX + SISA_MINIMAL);
     };
     ukur();
     // Isinya sekarang teks saja, jadi tidak ada lagi gambar yang tingginya
@@ -1208,10 +1219,12 @@ export function PublicProductDetail() {
                     dan tombolnya cuma menyembunyikan satu dua baris. */}
                 <div
                   ref={deskripsiRef}
-                  className={cn(
-                    'relative space-y-3 overflow-hidden',
-                    !deskripsiTerbentang && deskripsiTerpotong && 'max-h-[240px] sm:max-h-[360px]',
-                  )}
+                  className={cn('relative space-y-3 overflow-hidden')}
+                  style={
+                    !deskripsiTerbentang && deskripsiTerpotong
+                      ? { maxHeight: BATAS_KLEM_PX }
+                      : undefined
+                  }
                 >
                   {/* Tanpa gambar di sini. Blok ini dulu me-render ulang
                       product.images, yaitu foto galeri yang sama persis dengan
