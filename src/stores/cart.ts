@@ -15,7 +15,11 @@ export interface ParkedOrder {
   manualDiscount: number;
   salesChannel?: string;
   paymentTerm?: PaymentTerm;
+  /** Tanggal jatuh tempo pesanan tempo; dulu tidak disimpan, jadi Resume mengosongkannya. */
+  dueDate?: string;
   externalOrderNo?: string;
+  /** Pilihan pajak transaksi ini; kosong = ikut bawaan toko. */
+  taxEnabled?: boolean | null;
 }
 
 interface CartState {
@@ -32,6 +36,10 @@ interface CartState {
   paymentTerm: PaymentTerm;   // cash = lunas saat itu, tempo = jadi piutang
   dueDate: string;            // ISO date, hanya dipakai saat paymentTerm = tempo
   externalOrderNo: string;    // No. Pesanan Shopee / Order Id TikTok
+  // Centang pajak per transaksi (butir 14a). Tarif dan cara hitungnya tetap
+  // dari pengaturan toko; centang ini hanya memilih dikenakan atau tidak.
+  // null = belum disentuh kasir, ikut "Pajak tercentang otomatis" di pengaturan.
+  taxEnabled: boolean | null;
   parked: ParkedOrder[];
   add: (line: CartLine) => void;
   updateQty: (idx: number, qty: number) => void;
@@ -50,6 +58,7 @@ interface CartState {
   setPaymentTerm: (term: PaymentTerm) => void;
   setDueDate: (date: string) => void;
   setExternalOrderNo: (value: string) => void;
+  setTaxEnabled: (value: boolean | null) => void;
   clear: () => void;
   park: (label?: string) => string | null;
   resume: (id: string) => boolean;
@@ -91,6 +100,7 @@ export const useCart = create<CartState>((set, get) => ({
   paymentTerm: 'cash',
   dueDate: '',
   externalOrderNo: '',
+  taxEnabled: null,
   parked: loadParked(),
   add: (line) =>
     set((s) => {
@@ -140,6 +150,7 @@ export const useCart = create<CartState>((set, get) => ({
   setPaymentTerm: (term) => set({ paymentTerm: term }),
   setDueDate: (date) => set({ dueDate: date }),
   setExternalOrderNo: (value) => set({ externalOrderNo: value }),
+  setTaxEnabled: (value) => set({ taxEnabled: value }),
   clear: () =>
     set({
       lines: [],
@@ -155,6 +166,7 @@ export const useCart = create<CartState>((set, get) => ({
       paymentTerm: 'cash',
       dueDate: '',
       externalOrderNo: '',
+      taxEnabled: null,
     }),
   park: (label) => {
     const s = get();
@@ -175,7 +187,9 @@ export const useCart = create<CartState>((set, get) => ({
       manualDiscount: s.manualDiscount,
       salesChannel: s.salesChannel,
       paymentTerm: s.paymentTerm,
+      dueDate: s.dueDate,
       externalOrderNo: s.externalOrderNo,
+      taxEnabled: s.taxEnabled,
     };
     const next = [order, ...s.parked].slice(0, 20);
     saveParked(next);
@@ -194,6 +208,7 @@ export const useCart = create<CartState>((set, get) => ({
       paymentTerm: 'cash',
       dueDate: '',
       externalOrderNo: '',
+      taxEnabled: null,
     });
     return id;
   },
@@ -216,8 +231,9 @@ export const useCart = create<CartState>((set, get) => ({
       notes: '',
       salesChannel: found.salesChannel ?? OFFLINE_CHANNEL,
       paymentTerm: found.paymentTerm ?? 'cash',
-      dueDate: '',
+      dueDate: found.dueDate ?? '',
       externalOrderNo: found.externalOrderNo ?? '',
+      taxEnabled: found.taxEnabled ?? null,
     });
     return true;
   },

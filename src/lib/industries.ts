@@ -24,6 +24,11 @@ export interface IndustryFeatures {
   defaultTrackStock: boolean;
   /** Harga jual sudah termasuk pajak: pajak diekstrak, bukan ditambahkan. */
   taxInclusive?: boolean;
+  /**
+   * Keadaan awal centang pajak di tiap transaksi kasir. Kosong = tercentang,
+   * perilaku sebelum centang per transaksi ada.
+   */
+  taxDefaultOn?: boolean;
 }
 
 export interface IndustryDef {

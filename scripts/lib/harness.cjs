@@ -25,7 +25,9 @@ function envValue(key) {
 
 const ADMIN_PASSWORD = envValue('BOOTSTRAP_ADMIN_PASSWORD');
 const DB_PASSWORD = /:\/\/[^:]+:([^@]*)@/.exec(envValue('DATABASE_URL'))[1];
-const BASE_URL = 'http://localhost:5173';
+// KASIR_BASE_URL mengalihkan suite ke server pengembangan lain (misalnya Vite
+// kedua di port lain) tanpa mengubah tiap berkas uji.
+const BASE_URL = process.env.KASIR_BASE_URL || 'http://localhost:5173';
 
 /**
  * Pasang pelacak aktivitas API. Harus dipanggil SEBELUM navigasi pertama,

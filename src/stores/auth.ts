@@ -6,6 +6,21 @@ import { setCapabilityOverrides } from '@/lib/roles';
 import { isUuid } from '@/lib/format';
 import { pullRolePermissions } from '@/lib/sync';
 
+/**
+ * Kolom toko yang diambil ulang tiap menit oleh refreshStore. Empat kolom
+ * gambar (logo, tanda tangan, QRIS, banner) sengaja tidak ikut: isinya base64,
+ * baris toko produksi 69 KB karenanya, dan gambar cukup dimuat saat login.
+ */
+const KOLOM_TOKO_RINGAN = [
+  'id', 'name', 'address', 'currency', 'tax_rate', 'receipt_header', 'receipt_footer',
+  'points_per_amount', 'low_stock_threshold', 'industry', 'features', 'created_at',
+  'invoice_signer_name', 'shop_phone', 'return_policy', 'warranty_info', 'shop_city',
+  'bank_name', 'bank_account_number', 'bank_account_name',
+  'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
+  'footer_links', 'chat_enabled',
+  'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+].join(',');
+
 interface AuthState {
   loading: boolean;
   ready: boolean;
@@ -18,6 +33,8 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Ambil ulang baris toko (pajak, struk, fitur) tanpa memuat ulang profil. */
+  refreshStore: () => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -152,6 +169,44 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
 
     set({ profile: resolvedProfile, store });
+  },
+
+  // Pengaturan toko dulu hanya dimuat saat aplikasi dibuka atau login. Jendela
+  // kasir yang terbuka seharian tetap menghitung pajak dengan cara lama setelah
+  // admin mengubah "Harga sudah termasuk pajak" di perangkat lain (video client
+  // 28 Sep: dua pesanan malam yang sama dihitung berbeda).
+  async refreshStore() {
+    const current = get().store;
+    // Toko belum termuat berarti login atau refreshProfile masih berjalan dan
+    // dialah yang memuat baris lengkapnya. Di sini hanya kolom ringan yang
+    // diambil, jadi tanpa baris awal hasilnya toko tanpa logo dan tanda tangan.
+    if (!current) return;
+    const storeId = get().sessionStoreId || current.id || null;
+    if (!get().userId || !storeId || !isUuid(storeId)) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    try {
+      const { data, error } = await getBackendClient()
+        .from('stores')
+        .select(KOLOM_TOKO_RINGAN)
+        .eq('id', storeId)
+        .maybeSingle();
+      if (error || !data) return;
+      const terbaru = data as Partial<Store>;
+      // Saat database tidak terjangkau, server menjawab kueri stores dengan
+      // toko contoh (id lain, pajak 10%) tanpa galat. Jawaban untuk toko lain
+      // tidak boleh menimpa pengaturan toko yang sedang berjualan.
+      if (terbaru.id !== storeId) return;
+      // Jawaban yang lambat tidak boleh menimpa toko yang sementara itu sudah
+      // berganti: disimpan dari Pengaturan, atau sesinya keluar.
+      if (get().store !== current || (get().sessionStoreId || current.id || null) !== storeId) return;
+      const fresh = { ...current, ...terbaru } as Store;
+      // Tanpa perubahan tidak perlu memicu render ulang seluruh aplikasi.
+      if (JSON.stringify(current) === JSON.stringify(fresh)) return;
+      await db.stores.put(fresh);
+      set({ store: fresh });
+    } catch {
+      // Offline atau server sibuk: pakai salinan yang ada.
+    }
   },
 
   async signIn(email, password) {

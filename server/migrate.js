@@ -27,6 +27,7 @@ const REQUIRED_COLUMNS = {
     'bank_name', 'bank_account_number', 'bank_account_name', 'qris_image_url',
     'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
     'footer_links', 'chat_enabled',
+    'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
   ],
   profiles: ['id', 'store_id', 'full_name', 'email', 'role', 'avatar_url', 'created_at'],
   categories: ['id', 'store_id', 'name', 'icon', 'sort_order', 'created_at'],

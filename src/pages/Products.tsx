@@ -33,7 +33,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
-import { pullInventoryReference, adjustStock, writeThrough } from '@/lib/sync';
+import { pullExpenses, pullInventoryReference, pullPurchases, adjustStock, writeThrough } from '@/lib/sync';
+import { hppPenuhProduk } from '@/lib/hppNota';
 import {
   ChannelSkuSection,
   validateChannelDrafts,
@@ -50,6 +51,7 @@ import { kunciKelompok } from '@/lib/publicCatalog';
 import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
+import { hasCapability } from '@/lib/roles';
 import { CATEGORY_ICONS, getCategoryIcon } from '@/lib/categoryIcons';
 import { formatBytes, resizeImageToDataUrl } from '@/lib/imageUpload';
 import { resolveFeatures } from '@/lib/industries';
@@ -200,12 +202,39 @@ export function Products() {
   // tidak ada di sini, keadaan bukanya ikut `bukaOtomatis` (lihat kelompokTampil).
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
+  // HPP penuh butuh nota pembelian dan pengeluaran sekaligus; yang boleh
+  // membaca keduanya hanya admin, jadi role lain tidak menarik datanya.
+  const lihatHppPenuh =
+    hasCapability(profile?.role, 'manageExpenses') && hasCapability(profile?.role, 'managePurchasing');
   useEffect(() => {
-    if (storeId) pullInventoryReference(storeId);
-  }, [storeId]);
+    if (!storeId) return;
+    pullInventoryReference(storeId);
+    if (lihatHppPenuh) {
+      pullPurchases(storeId);
+      pullExpenses(storeId);
+    }
+  }, [storeId, lihatHppPenuh]);
 
   const products =
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const notaPembelian =
+    useLiveQuery(
+      () => (lihatHppPenuh ? db.purchases.where('store_id').equals(storeId).toArray() : []),
+      [storeId, lihatHppPenuh],
+    ) ?? [];
+  const barisNota = useLiveQuery(() => (lihatHppPenuh ? db.purchase_items.toArray() : []), [lihatHppPenuh]) ?? [];
+  const biayaNota =
+    useLiveQuery(
+      () =>
+        lihatHppPenuh
+          ? db.expenses.where('store_id').equals(storeId).filter((e) => !!e.purchase_id).toArray()
+          : [],
+      [storeId, lihatHppPenuh],
+    ) ?? [];
+  const hppPenuh = useMemo(
+    () => hppPenuhProduk(notaPembelian, barisNota, biayaNota),
+    [notaPembelian, barisNota, biayaNota],
+  );
   const categories =
     useLiveQuery(() => db.categories.where('store_id').equals(storeId).sortBy('sort_order'), [storeId]) ?? [];
   const channelMappings =
@@ -737,6 +766,10 @@ export function Products() {
     const marginPct = price > 0 ? (marginAbs / price) * 100 : 0;
     const marginTone =
       cost === 0 ? 'text-ink-400' : marginAbs < 0 ? 'text-rose-600' : marginPct < 20 ? 'text-amber-600' : 'text-emerald-600';
+    // Modal tetap harga beli (itu yang dipakai laporan); HPP penuh dari nota
+    // terakhir ditampilkan di bawahnya sebagai acuan harga jual.
+    const hppNota = !produkSet.has(p.id) && cost > 0 ? hppPenuh.get(p.id) : undefined;
+    const hppPenuhProdukIni = hppNota ? cost * (1 + hppNota.faktor) : null;
     return (
       <tr
         key={p.id}
@@ -782,7 +815,21 @@ export function Products() {
         </td>
         <td className="hidden py-3 xl:table-cell">{categories.find((c) => c.id === p.category_id)?.name ?? '—'}</td>
         <td className="py-3">{formatMoney(price, store?.currency)}</td>
-        <td className="hidden py-3 text-ink-500 xl:table-cell">{formatMoney(cost, store?.currency)}</td>
+        <td className="hidden py-3 text-ink-500 xl:table-cell">
+          {formatMoney(cost, store?.currency)}
+          {hppNota && hppPenuhProdukIni !== null && Math.abs(hppPenuhProdukIni - cost) >= 1 && (
+            // Dua baris pendek, bukan satu baris panjang: satu baris melebarkan
+            // kolom Modal, dan lebarnya dipotong dari kolom nama produk.
+            <div
+              data-hpp-penuh
+              className="mt-0.5 whitespace-nowrap text-[10px] font-medium leading-tight text-brand-700 dark:text-brand-300"
+              title={`Harga beli ditambah bagian biaya nota ${hppNota.nota.invoice_number} (ongkir, kemasan, pengurusan), dikurangi diskon nota`}
+            >
+              <div>HPP penuh</div>
+              <div>{formatMoney(hppPenuhProdukIni, store?.currency)}</div>
+            </div>
+          )}
+        </td>
         <td className={cn('hidden py-3 font-semibold xl:table-cell', marginTone)}>
           {cost === 0 ? (
             '—'

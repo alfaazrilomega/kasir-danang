@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Banknote, Check, ChevronLeft, ChevronDown, Copy, Landmark, MapPin, QrCode, ShoppingBag, Truck, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
@@ -9,6 +9,7 @@ import { formatMoney, cn } from '@/lib/format';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { usePublicCart, type PublicCartLine } from '@/stores/publicCart';
 import { submitPublicOrder } from '@/lib/publicOrders';
+import { lacakPixel, pixelAktif } from '@/lib/pixelToko';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import {
   fetchPublicCatalog,
@@ -140,6 +141,18 @@ export function PublicCheckout() {
   );
   const totalQty = useMemo(() => lines.reduce((sum, l) => sum + l.qty, 0), [lines]);
 
+  // Pixel iklan: "mulai checkout" sekali per kunjungan, begitu pembeli sudah
+  // masuk dan formulirnya tampil. Sebelum masuk, halaman ini hanya ajakan login.
+  const barangPixel = () =>
+    lines.map((l) => ({ id: l.product_id, nama: l.name, qty: l.qty, harga: hargaKini(l) }));
+  const checkoutTerlacak = useRef(false);
+  useEffect(() => {
+    if (!token || lines.length === 0 || checkoutTerlacak.current) return;
+    checkoutTerlacak.current = true;
+    lacakPixel({ jenis: 'InitiateCheckout', barang: barangPixel(), nilai: subtotal });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, lines.length]);
+
   if (lines.length === 0) {
     return (
       <PublicShell>
@@ -230,6 +243,17 @@ export function PublicCheckout() {
       return;
     }
 
+    // Pixel iklan: pembelian dicatat di sini, sebelum keranjang dikosongkan,
+    // karena halaman "pesanan terkirim" hanya tahu nomor pesanannya. Nilainya
+    // subtotal barang; ongkir baru dihitung toko sesudahnya.
+    lacakPixel({
+      jenis: 'Purchase',
+      barang: barangPixel(),
+      nilai: subtotal,
+      idPesanan: data.order_id,
+      nomorPesanan: data.order_number,
+    });
+
     // Alamat pertama disimpan ke akun supaya checkout berikutnya terisi otomatis.
     if (me && !me.address) {
       void updateCustomerMe(token, {
@@ -245,6 +269,8 @@ export function PublicCheckout() {
     else clearCart();
     // Kanal otomatis: pembeli dibawa ke halaman bayar Tripay.
     if (data.payment?.checkout_url) {
+      // Beri waktu pixel mengirim pembelian sebelum browser pindah ke Tripay.
+      if (pixelAktif()) await new Promise((selesai) => setTimeout(selesai, 600));
       window.location.href = data.payment.checkout_url;
       return;
     }

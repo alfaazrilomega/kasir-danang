@@ -57,6 +57,28 @@ export default function App() {
     void flushPending();
   }, [init]);
 
+  // Pengaturan toko yang diubah dari perangkat lain (pajak, struk) terbaca
+  // saat jendela kembali dipakai, dan berkala selama jendela terlihat untuk
+  // tablet kasir yang tidak pernah berpindah jendela.
+  const refreshStore = useAuth((s) => s.refreshStore);
+  useEffect(() => {
+    let terakhir = 0;
+    const segarkan = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - terakhir < 10_000) return;
+      terakhir = Date.now();
+      void refreshStore();
+    };
+    window.addEventListener('focus', segarkan);
+    document.addEventListener('visibilitychange', segarkan);
+    const jeda = window.setInterval(segarkan, 60_000);
+    return () => {
+      window.removeEventListener('focus', segarkan);
+      document.removeEventListener('visibilitychange', segarkan);
+      window.clearInterval(jeda);
+    };
+  }, [refreshStore]);
+
   return (
     <BrowserRouter>
       <Toaster position="top-right" richColors closeButton />

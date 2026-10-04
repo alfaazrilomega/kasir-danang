@@ -53,6 +53,10 @@ export interface PublicCatalogStore {
   social_youtube?: string | null;
   footer_links?: { label: string; url: string }[] | null;
   chat_enabled?: boolean;
+  meta_pixel_id?: string | null;
+  tiktok_pixel_id?: string | null;
+  google_ads_id?: string | null;
+  google_ads_purchase_label?: string | null;
 }
 
 export interface PublicCatalogData {

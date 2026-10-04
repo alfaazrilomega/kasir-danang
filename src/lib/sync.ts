@@ -62,27 +62,36 @@ export async function pullReference(storeId: string) {
       api.from('sales_channels').select('*').eq('store_id', storeId).order('sort_order'),
     ]);
 
-  if (channelsRes.data?.length) {
-    await db.sales_channels.where('store_id').equals(storeId).delete();
-    await db.sales_channels.bulkPut(channelsRes.data as SalesChannel[]);
-  }
-  if (storesRes.data?.length) await db.stores.bulkPut(storesRes.data);
-  if (categoriesRes.data?.length) {
-    await db.categories.where('store_id').equals(storeId).delete();
-    await db.categories.bulkPut(categoriesRes.data);
-  }
-  if (productsRes.data?.length) {
-    await db.products.where('store_id').equals(storeId).delete();
-    await db.products.bulkPut(productsRes.data);
-  }
-  if (customersRes.data?.length) {
-    await db.customers.where('store_id').equals(storeId).delete();
-    await db.customers.bulkPut(customersRes.data);
-  }
-  if (promosRes.data?.length) {
-    await db.promos.where('store_id').equals(storeId).delete();
-    await db.promos.bulkPut(promosRes.data);
-  }
+  // Hapus dan isi ulang dalam satu transaksi: tanpa itu tabel sempat kosong di
+  // antara keduanya, dan layar yang membacanya (POS memanggil ini tiap dibuka)
+  // memperlihatkan pelanggan terpilih dan kartu produk hilang sesaat.
+  await db.transaction(
+    'rw',
+    [db.sales_channels, db.stores, db.categories, db.products, db.customers, db.promos],
+    async () => {
+      if (channelsRes.data?.length) {
+        await db.sales_channels.where('store_id').equals(storeId).delete();
+        await db.sales_channels.bulkPut(channelsRes.data as SalesChannel[]);
+      }
+      if (storesRes.data?.length) await db.stores.bulkPut(storesRes.data);
+      if (categoriesRes.data?.length) {
+        await db.categories.where('store_id').equals(storeId).delete();
+        await db.categories.bulkPut(categoriesRes.data);
+      }
+      if (productsRes.data?.length) {
+        await db.products.where('store_id').equals(storeId).delete();
+        await db.products.bulkPut(productsRes.data);
+      }
+      if (customersRes.data?.length) {
+        await db.customers.where('store_id').equals(storeId).delete();
+        await db.customers.bulkPut(customersRes.data);
+      }
+      if (promosRes.data?.length) {
+        await db.promos.where('store_id').equals(storeId).delete();
+        await db.promos.bulkPut(promosRes.data);
+      }
+    },
+  );
 
   // POS butuh indeks SKU platform supaya scan/ketik kode marketplace ketemu.
   await pullChannelMappings(storeId);
@@ -259,10 +268,29 @@ export async function pullExpenses(storeId: string, limit = 1000) {
   // {data: []} tanpa error saat Postgres mati, jadi respons kosong tidak
   // boleh dipakai untuk menghapus cache lokal.
   if (error || !data?.length) return;
+  // HPP per barang membaca biaya nota dari tabel ini. Begitu pengeluaran toko
+  // melebihi batas tarik, biaya nota lama jatuh di luar jendela dan HPP-nya
+  // berkurang tanpa pesan apa pun. Biaya yang menempel ke nota ditarik
+  // tersendiri; di bawah batas, jendela sudah memuat semuanya.
+  const milikNota: Expense[] = [];
+  if (data.length >= limit) {
+    // Daftar nota diambil dari server, bukan dari salinan lokal: tarikan nota
+    // berjalan bersamaan dan salinannya belum tentu sudah terisi.
+    const { data: nota } = await api.from('purchases').select('id').eq('store_id', storeId);
+    const idNota = ((nota as { id: string }[] | null) ?? []).map((n) => n.id);
+    for (let i = 0; i < idNota.length; i += 200) {
+      const { data: tambahan } = await api
+        .from('expenses')
+        .select('*')
+        .eq('store_id', storeId)
+        .in('purchase_id', idNota.slice(i, i + 200));
+      if (tambahan?.length) milikNota.push(...(tambahan as Expense[]));
+    }
+  }
   // Satu transaksi supaya tidak ada jeda tabel kosong yang terlihat di UI.
   await db.transaction('rw', db.expenses, async () => {
     await db.expenses.where('store_id').equals(storeId).delete();
-    await db.expenses.bulkPut(data as Expense[]);
+    await db.expenses.bulkPut([...(data as Expense[]), ...milikNota]);
   });
 }
 
@@ -436,14 +464,23 @@ export async function pullPurchases(storeId: string, limit = 200) {
   ]);
 
   if (purchasesRes.data?.length) {
-    await db.purchases.where('store_id').equals(storeId).delete();
-    if (previousIds.length) {
-      await db.purchase_items.where('purchase_id').anyOf(previousIds as string[]).delete();
-    }
-    await db.purchases.bulkPut(purchasesRes.data as Purchase[]);
-    const ids = (purchasesRes.data as Purchase[]).map((row) => row.id);
-    const { data: items } = await api.from('purchase_items').select('*').in('purchase_id', ids);
-    if (items?.length) await db.purchase_items.bulkPut(items as PurchaseItem[]);
+    const rows = purchasesRes.data as Purchase[];
+    const itemsRes = await api.from('purchase_items').select('*').in('purchase_id', rows.map((row) => row.id));
+    // Item diambil DULU, baru salinan lokal diganti dalam satu transaksi.
+    // Sebelumnya item lama dihapus sebelum yang baru datang, jadi selama
+    // permintaan berjalan detail nota (dan HPP per barangnya) tampil kosong.
+    // Kalau pengambilan item gagal, item lama dibiarkan apa adanya.
+    const items = itemsRes.error ? null : ((itemsRes.data as PurchaseItem[] | null) ?? []);
+    await db.transaction('rw', db.purchases, db.purchase_items, async () => {
+      await db.purchases.where('store_id').equals(storeId).delete();
+      await db.purchases.bulkPut(rows);
+      if (items) {
+        if (previousIds.length) {
+          await db.purchase_items.where('purchase_id').anyOf(previousIds as string[]).delete();
+        }
+        if (items.length) await db.purchase_items.bulkPut(items);
+      }
+    });
   }
   if (paymentsRes.data?.length) {
     await db.purchase_payments.where('store_id').equals(storeId).delete();

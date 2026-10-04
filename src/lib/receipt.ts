@@ -2,8 +2,8 @@
 // Physical print: render an 80mm-wide HTML to a hidden iframe and call print().
 // Digital: build text + WhatsApp (wa.me) or mailto: links.
 
-import type { Order, OrderItem, Store } from '@/types';
-import { formatDateTime, formatMoney } from '@/lib/format';
+import type { Customer, Order, OrderItem, Store } from '@/types';
+import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { resolveFeatures } from '@/lib/industries';
 
 interface ReceiptInput {
@@ -137,10 +137,17 @@ export function buildInvoiceHTML({
   printedBy,
 }: ReceiptInput): string {
   const money = (n: number) => formatMoney(n, store.currency);
-  const rows = items
+  // Nomor urut di kolom paling kiri: pesanan grosir bisa 20-30 baris SKU dan
+  // client mencocokkan barang yang dikemas baris demi baris (butir 14b).
+  // Baris pesanan tidak menyimpan urutan input (id-nya acak), jadi diurutkan
+  // menurut SKU lalu nama supaya nomornya mengikuti urutan yang bisa ditebak.
+  const kunciUrut = (it: OrderItem) => (it.product_id && skuByProductId?.[it.product_id]) || `~${it.name}`;
+  const rows = [...items]
+    .sort((a, b) => kunciUrut(a).localeCompare(kunciUrut(b), 'id', { numeric: true }))
     .map(
-      (it) => `
+      (it, i) => `
         <tr>
+          <td class="urut">${i + 1}</td>
           <td class="sku">${escapeHtml((it.product_id && skuByProductId?.[it.product_id]) || '-')}</td>
           <td>${escapeHtml(it.name)}${it.size ? ` <span class="muted">(${escapeHtml(it.size)})</span>` : ''}${it.note ? `<div class="note">Catatan: ${escapeHtml(it.note)}</div>` : ''}</td>
           <td class="c">${it.qty}</td>
@@ -175,6 +182,12 @@ export function buildInvoiceHTML({
   td { padding: 10px 4px; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
   .c { text-align: center; }
   .r { text-align: right; white-space: nowrap; }
+  .urut { width: 28px; text-align: right; padding-right: 10px; color: #555; font-variant-numeric: tabular-nums; }
+  /* Baris tidak terbelah di batas halaman, dan total + tanda tangan + kaki
+     pindah halaman bersama. Tanpa ini, faktur 18 baris mencetak Subtotal dan
+     Pajak di halaman 1 lalu TOTAL sendirian di halaman 2. */
+  tbody tr { break-inside: avoid; page-break-inside: avoid; }
+  .penutup { break-inside: avoid; page-break-inside: avoid; }
   .muted { color: #777; font-size: 12px; }
   .note { color: #777; font-size: 11px; margin-top: 2px; }
   .totals { width: 320px; margin-left: auto; margin-top: 14px; font-size: 13px; }
@@ -209,9 +222,10 @@ export function buildInvoiceHTML({
     <div style="text-align:right">${pakaiTipeOrder(store) ? `<div><strong>Tipe:</strong> ${order.order_type === 'dine_in' ? 'Dine In' : 'Take Away'}${order.table_number ? ` · Meja ${escapeHtml(order.table_number)}` : ''}</div>` : ''}${printedBy ? `<div><strong>Kasir:</strong> ${escapeHtml(printedBy)}</div>` : ''}</div>
   </div>
   <table>
-    <thead><tr><th>SKU</th><th>Barang</th><th class="c">Qty</th><th class="r">Harga Satuan</th><th class="r">Subtotal</th></tr></thead>
+    <thead><tr><th class="urut">No</th><th>SKU</th><th>Barang</th><th class="c">Qty</th><th class="r">Harga Satuan</th><th class="r">Subtotal</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
+  <div class="penutup">
   <div class="totals">
     <div class="line"><span>Subtotal</span><span>${money(order.subtotal)}</span></div>
     ${order.discount > 0 ? `<div class="line"><span>Diskon${order.promo_code ? ` (${escapeHtml(order.promo_code)})` : ''}</span><span>-${money(order.discount)}</span></div>` : ''}
@@ -230,6 +244,7 @@ export function buildInvoiceHTML({
     </div>
   </div>
   <div class="footer">${store.receipt_footer ? escapeHtml(store.receipt_footer) : 'Terima kasih atas kunjungan Anda!'}</div>
+  </div>
 <script>window.addEventListener('load', () => { setTimeout(() => window.print(), 100); });</script>
 </body></html>`;
 }
@@ -260,6 +275,180 @@ export function printInvoice(input: ReceiptInput) {
 
 export function printReceipt(input: ReceiptInput) {
   printHtml(buildReceiptHTML(input), input.order.order_number);
+}
+
+export interface ShippingTarget {
+  name: string;
+  phone: string | null;
+  address: string;
+  /** Kota dan provinsi, hanya yang belum tertulis di dalam teks alamatnya. */
+  region: string | null;
+}
+
+/**
+ * Tujuan kirim sebuah pesanan (butir 16 PERMINTAAN-CLIENT.md). Pesanan toko
+ * online membawa alamatnya sendiri; pesanan kasir (misalnya dari WhatsApp)
+ * memakai alamat utama pelanggannya. `null` berarti tidak ada alamat, jadi
+ * tidak ada label yang bisa dicetak.
+ */
+export function shippingTarget(order: Order, customer?: Customer | null): ShippingTarget | null {
+  const dariPesanan = order.delivery_address?.trim();
+  const address = dariPesanan || customer?.address?.trim() || '';
+  if (!address) return null;
+  const wilayah = (dariPesanan
+    ? [order.delivery_city, order.delivery_province]
+    : [customer?.address_city, customer?.address_province]
+  )
+    .map((w) => w?.trim())
+    .filter((w): w is string => !!w)
+    // Checkout toko online sudah menulis kota dan provinsi di ujung alamat.
+    .filter((w) => !address.toLowerCase().includes(w.toLowerCase()));
+  // Nama dan telepon mengikuti sumber alamatnya. Di checkout toko online
+  // pembeli mengetik "Nama Penerima" sendiri dan boleh mengirim ke orang lain,
+  // jadi untuk alamat dari pesanan yang didahulukan isian pesanan itu, bukan
+  // nama akunnya. Untuk alamat dari pelanggan, data pelanggannya.
+  const dariOrder = [order.customer_name?.trim(), order.customer_phone?.trim()];
+  const dariPelanggan = [customer?.name?.trim(), customer?.phone?.trim()];
+  const [utama, cadangan] = dariPesanan ? [dariOrder, dariPelanggan] : [dariPelanggan, dariOrder];
+  return {
+    name: utama[0] || cadangan[0] || 'Penerima',
+    phone: utama[1] || cadangan[1] || null,
+    address,
+    region: wilayah.join(', ') || null,
+  };
+}
+
+interface ShippingLabelInput {
+  store: Store;
+  order: Order;
+  items: OrderItem[];
+  target: ShippingTarget;
+  channelName?: string | null;
+  skuByProductId?: Record<string, string>;
+}
+
+/**
+ * Batas atas baris barang yang ditulis ke label. Berapa yang benar-benar muat
+ * bergantung pada panjang alamat, jadi skrip di dalam label membuang baris
+ * dari bawah sampai pas, dan jumlah yang dibuang disebut di bawah daftar.
+ */
+const MAKS_BARIS_LABEL = 20;
+
+/**
+ * Label kirim 100 x 150 mm, ukuran resi marketplace untuk printer label atau
+ * thermal. Isinya penerima, pengirim, catatan, dan isi paket tanpa harga,
+ * karena label ditempel di luar paket.
+ */
+export function buildShippingLabelHTML({ store, order, items, target, channelName, skuByProductId }: ShippingLabelInput): string {
+  const kunci = (it: OrderItem) => (it.product_id && skuByProductId?.[it.product_id]) || `~${it.name}`;
+  const urut = [...items].sort((a, b) => kunci(a).localeCompare(kunci(b), 'id', { numeric: true }));
+  const pcs = (list: OrderItem[]) => list.reduce((sum, it) => sum + Number(it.qty), 0);
+  const tampil = urut.slice(0, MAKS_BARIS_LABEL);
+  const sisa = urut.slice(MAKS_BARIS_LABEL);
+  const baris = tampil
+    .map((it) => {
+      const sku = it.product_id ? skuByProductId?.[it.product_id] : '';
+      return `<tr data-qty="${Number(it.qty)}"><td class="q">${Number(it.qty)}×</td><td><div class="n">${sku ? `<span class="sku">${escapeHtml(sku)}</span> ` : ''}${escapeHtml(it.name)}${it.size ? ` (${escapeHtml(it.size)})` : ''}</div></td></tr>`;
+    })
+    .join('');
+  const alamatToko = store.address?.trim() || store.shop_city?.trim() || '';
+
+  return `<!doctype html>
+<html lang="id"><head><meta charset="utf-8" />
+<title>Label ${escapeHtml(order.order_number)}</title>
+<style>
+  @page { size: 100mm 150mm; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { width: 100mm; font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 10pt; line-height: 1.3; }
+  .label { width: 100mm; height: 150mm; padding: 4mm; display: flex; flex-direction: column; overflow: hidden; }
+  .kepala { display: flex; justify-content: space-between; align-items: flex-start; gap: 3mm; border-bottom: 0.6mm solid #000; padding-bottom: 2mm; }
+  .toko { max-width: 55%; font-size: 13pt; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+  .nomor { flex: 1; min-width: 0; text-align: right; font-size: 8pt; }
+  .nomor b { display: block; font-size: 10pt; overflow-wrap: anywhere; }
+  .bagian { padding: 2.5mm 0; border-bottom: 0.3mm solid #000; }
+  .judul { font-size: 7pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .penerima .nama { font-size: 15pt; font-weight: 700; line-height: 1.15; overflow-wrap: anywhere; }
+  .penerima .telp { font-size: 12pt; font-weight: 700; }
+  .penerima .alamat { font-size: 12pt; margin-top: 1mm; overflow-wrap: anywhere; }
+  .penerima .wilayah { font-size: 11pt; font-weight: 700; text-transform: uppercase; margin-top: 1mm; }
+  .pengirim, .catatan { font-size: 9pt; overflow-wrap: anywhere; }
+  .pengirim b { font-size: 10pt; }
+  /* Catatan dibatasi tiga baris: alamat tidak pernah dipotong, jadi catatan
+     yang sangat panjang tidak boleh menggusur isi paket keluar dari label. */
+  .catatan .teks { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .isi { flex: 1; min-height: 0; overflow: hidden; border-bottom: 0; padding-bottom: 0; }
+  .isi table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 8.5pt; margin-top: 1mm; }
+  .isi td { padding: 0.4mm 0; vertical-align: top; }
+  .isi td.q { width: 10mm; font-weight: 700; white-space: nowrap; }
+  .isi .n { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .sku { font-family: 'Courier New', monospace; font-weight: 700; }
+  .lain { font-size: 8.5pt; font-style: italic; margin-top: 0.5mm; }
+</style>
+</head><body>
+  <div class="label">
+    <div class="kepala">
+      <div class="toko">${escapeHtml(store.name)}</div>
+      <div class="nomor"><b>${escapeHtml(order.order_number)}</b>${formatDate(order.created_at)}${channelName ? ` · ${escapeHtml(channelName)}` : ''}</div>
+    </div>
+    <div class="bagian penerima">
+      <div class="judul">Penerima</div>
+      <div class="nama">${escapeHtml(target.name)}</div>
+      ${target.phone ? `<div class="telp">${escapeHtml(target.phone)}</div>` : ''}
+      <div class="alamat">${escapeHtml(target.address)}</div>
+      ${target.region ? `<div class="wilayah">${escapeHtml(target.region)}</div>` : ''}
+    </div>
+    <div class="bagian pengirim">
+      <div class="judul">Pengirim</div>
+      <div><b>${escapeHtml(store.name)}</b>${store.shop_phone ? ` · ${escapeHtml(store.shop_phone)}` : ''}</div>
+      ${alamatToko ? `<div>${escapeHtml(alamatToko)}</div>` : ''}
+    </div>
+    ${order.notes?.trim() ? `<div class="bagian catatan"><div class="judul">Catatan</div><div class="teks">${escapeHtml(order.notes.trim())}</div></div>` : ''}
+    <div class="bagian isi">
+      <div class="judul">Isi paket · ${items.length} barang · ${pcs(items)} pcs</div>
+      <table><tbody>${baris}</tbody></table>
+      <div class="lain" data-barang="${sisa.length}" data-pcs="${pcs(sisa)}"${sisa.length ? '' : ' hidden'}>+ ${sisa.length} barang lain (${pcs(sisa)} pcs), rinciannya di faktur.</div>
+    </div>
+  </div>
+<script>
+  window.addEventListener('load', function () {
+    // Daftar barang dipangkas dari bawah sampai muat di sisa tinggi label.
+    var isi = document.querySelector('.isi');
+    var lain = isi.querySelector('.lain');
+    var baris = Array.prototype.slice.call(isi.querySelectorAll('tr'));
+    var barang = Number(lain.getAttribute('data-barang'));
+    var pcs = Number(lain.getAttribute('data-pcs'));
+    function meluap() { return isi.scrollHeight > isi.clientHeight + 1; }
+    function pangkas(minimal) {
+      while (meluap() && baris.length > minimal) {
+        var tr = baris.pop();
+        barang += 1;
+        pcs += Number(tr.getAttribute('data-qty'));
+        tr.parentNode.removeChild(tr);
+        lain.setAttribute('data-barang', String(barang));
+        lain.setAttribute('data-pcs', String(pcs));
+        lain.hidden = false;
+        lain.textContent = baris.length
+          ? '+ ' + barang + ' barang lain (' + pcs + ' pcs), rinciannya di faktur.'
+          : 'Rincian ' + barang + ' barang (' + pcs + ' pcs) ada di faktur.';
+      }
+    }
+    pangkas(1);
+    // Alamat sangat panjang: hurufnya dikecilkan bertahap, paling kecil 9pt,
+    // supaya minimal satu barang tetap terbaca. Alamatnya sendiri tidak dipotong.
+    var alamat = document.querySelector('.penerima .alamat');
+    for (var pt = 11.5; meluap() && pt >= 9; pt -= 0.5) alamat.style.fontSize = pt + 'pt';
+    // Masih tidak muat: semua barang diringkas, lebih baik tanpa rincian
+    // daripada baris yang terpotong setengah.
+    pangkas(0);
+    setTimeout(function () { window.print(); }, 100);
+  });
+</script>
+</body></html>`;
+}
+
+export function printShippingLabel(input: ShippingLabelInput) {
+  printHtml(buildShippingLabelHTML(input), `Label ${input.order.order_number}`);
 }
 
 export function buildReceiptText({ store, order, items, customerName }: ReceiptInput): string {

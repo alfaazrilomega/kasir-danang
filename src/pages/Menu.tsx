@@ -19,6 +19,7 @@ import {
 import { getCategoryIcon } from '@/lib/categoryIcons';
 import { toast } from 'sonner';
 import { db } from '@/lib/db';
+import { pullReference } from '@/lib/sync';
 import { hitungStokSet } from '@/components/products/ProductSetSection';
 import { kunciKelompok } from '@/lib/publicCatalog';
 import { useAuth } from '@/stores/auth';
@@ -44,6 +45,13 @@ export function MenuPage() {
   const storeId = profile?.store_id ?? '';
   const features = resolveFeatures(store?.industry, store?.features as never);
   const { add } = useCart();
+  // Katalog ditarik sendiri saat POS dibuka. Admin mendapatkannya dari
+  // Dashboard, tapi kasir mendarat langsung di sini: di perangkat baru POS-nya
+  // kosong, dan di perangkat lama harga serta stoknya basi sampai kasir
+  // kebetulan membuka Customers atau Retur.
+  useEffect(() => {
+    if (storeId) void pullReference(storeId);
+  }, [storeId]);
   const menuDensity = useUI((s) => s.menuDensity);
   const setMenuDensity = useUI((s) => s.setMenuDensity);
   const menuSort = useUI((s) => s.menuSort);

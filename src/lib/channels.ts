@@ -52,6 +52,20 @@ export function channelFeePercent(code: string | null | undefined, rows: SalesCh
   return DEFAULT_CHANNELS.find((row) => row.code === code)?.fee_percent ?? 0;
 }
 
+/**
+ * Warna penanda channel di daftar pesanan, menurut keluarga platformnya.
+ * Toko bisa membuat channel sendiri ("shopee-gnnk-1", "tiktok-gnnk-2"), jadi
+ * yang dicocokkan awal kodenya, bukan kode persisnya.
+ */
+export function channelTone(code: string | null | undefined): 'warning' | 'info' | 'success' | 'brand' | 'neutral' {
+  const c = (code || OFFLINE_CHANNEL).toLowerCase();
+  if (c.startsWith('shopee')) return 'warning';
+  if (c.startsWith('tiktok')) return 'info';
+  if (c.startsWith('tokopedia') || c.startsWith('whatsapp')) return 'success';
+  if (c.startsWith('website')) return 'brand';
+  return 'neutral';
+}
+
 /** Channel non-offline dianggap marketplace: default tempo & kena potongan. */
 export function isMarketplace(code: string | null | undefined): boolean {
   return Boolean(code) && code !== OFFLINE_CHANNEL;

@@ -29,11 +29,13 @@ import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
 import {
+  pullExpenses,
   pullInventoryReference,
   pullPurchases,
   pullSuppliers,
   receivePurchaseActual,
 } from '@/lib/sync';
+import { bulatkanRincian, hitungHppNota } from '@/lib/hppNota';
 import { ProductPicker } from '@/components/data/ProductPicker';
 import { downloadFile } from '@/lib/dataTransfer';
 import {
@@ -225,12 +227,16 @@ export function Purchases() {
     }
   }, [formOpen]);
 
+  // Biaya susulan nota dicatat di Pengeluaran; membacanya hanya boleh untuk
+  // role yang juga boleh membaca pengeluaran (admin), jadi gudang tidak menarik.
+  const bacaPengeluaran = hasCapability(profile?.role, 'manageExpenses');
   useEffect(() => {
     if (!storeId) return;
     pullSuppliers(storeId);
     pullPurchases(storeId);
     pullInventoryReference(storeId);
-  }, [storeId]);
+    if (bacaPengeluaran) pullExpenses(storeId);
+  }, [storeId, bacaPengeluaran]);
 
   const suppliers =
     useLiveQuery(() => db.suppliers.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
@@ -242,6 +248,11 @@ export function Purchases() {
     [];
   const products =
     useLiveQuery(() => db.products.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const biayaNota =
+    useLiveQuery(
+      () => db.expenses.where('store_id').equals(storeId).filter((e) => !!e.purchase_id).toArray(),
+      [storeId],
+    ) ?? [];
 
   const supplierById = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const itemsByPurchase = useMemo(() => {
@@ -953,7 +964,16 @@ export function Purchases() {
       toast.error('Nota sudah ada pembayaran. Batalkan statusnya saja agar riwayat kas tetap utuh.');
       return;
     }
-    if (!confirm(`Hapus nota ${purchase.invoice_number}?`)) return;
+    const susulan = biayaNota.filter((e) => e.purchase_id === purchase.id && !e.purchase_cost_slot).length;
+    if (
+      !confirm(
+        `Hapus nota ${purchase.invoice_number}?${
+          susulan ? ` ${susulan} biaya susulan yang menempel tetap tersimpan di Pengeluaran, hanya lepas dari nota ini.` : ''
+        }`,
+      )
+    ) {
+      return;
+    }
     const { error } = await getBackendClient().from('purchases').delete().eq('id', purchase.id);
     if (error) {
       toast.error(error.message);
@@ -1834,6 +1854,7 @@ export function Purchases() {
             }
             items={itemsByPurchase.get(detail.id) ?? []}
             payments={paymentsByPurchase.get(detail.id) ?? []}
+            biaya={bacaPengeluaran ? biayaNota.filter((e) => e.purchase_id === detail.id) : null}
             currency={currency}
             canPay={canPay}
             busy={busy}
@@ -1899,6 +1920,7 @@ function PurchaseDetail({
   supplierName,
   items,
   payments,
+  biaya,
   currency,
   canPay,
   busy,
@@ -1913,6 +1935,8 @@ function PurchaseDetail({
   supplierName: string | null;
   items: PurchaseItem[];
   payments: PurchasePayment[];
+  /** Pengeluaran yang menempel ke nota ini; null bila role tidak boleh membaca pengeluaran. */
+  biaya: Expense[] | null;
   currency?: string;
   canPay: boolean;
   busy: boolean;
@@ -2078,6 +2102,8 @@ function PurchaseDetail({
         </div>
       </div>
 
+      {biaya && <HppPerBarang purchase={purchase} items={items} biaya={biaya} currency={currency} />}
+
       <div>
         <div className="mb-2 text-sm font-semibold">
           Riwayat Pembayaran ({formatNumber(payments.length)})
@@ -2146,6 +2172,138 @@ function PurchaseDetail({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * HPP per barang (butir 13 PERMINTAAN-CLIENT.md): biaya yang menempel ke nota
+ * — dari form nota maupun biaya susulan yang dicatat di Pengeluaran — dibagi
+ * ke tiap barang sesuai nilai barangnya. Tagihan supplier tidak disentuh:
+ * total, DP, dan sisa pelunasan nota tetap seperti di atas.
+ */
+function HppPerBarang({
+  purchase,
+  items,
+  biaya,
+  currency,
+}: {
+  purchase: Purchase;
+  items: PurchaseItem[];
+  biaya: Expense[];
+  currency?: string;
+}) {
+  const hpp = useMemo(() => hitungHppNota(purchase, items, biaya), [purchase, items, biaya]);
+  const adaPenyesuaian = hpp.biaya.length > 0 || hpp.diskon > 0 || hpp.pajak > 0;
+  const tanda = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`;
+  // Persen memakai koma desimal, dan disebut "setelah diskon" bila diskon nota
+  // ikut mengurangi: tanpa itu angkanya tampak tidak cocok dengan total biaya.
+  const persen = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 }).format(Math.abs(hpp.faktor * 100));
+  const keteranganPersen =
+    hpp.diskon > 0 && hpp.pajak > 0
+      ? ' setelah diskon dan pajak nota'
+      : hpp.diskon > 0
+        ? ' setelah diskon nota'
+        : hpp.pajak > 0
+          ? ' termasuk pajak nota'
+          : '';
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-ink-100 p-4 dark:border-ink-800">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="text-sm font-semibold">HPP per barang</h3>
+        {hpp.biaya.length > 0 && (
+          <span className="text-xs text-ink-500">
+            {formatNumber(hpp.biaya.length)} biaya · {formatMoney(hpp.totalBiaya, currency)}
+            {hpp.nilaiBarang > 0 &&
+              ` · HPP ${hpp.faktor >= 0 ? '+' : '−'}${persen}% dari harga beli${keteranganPersen}`}
+          </span>
+        )}
+      </div>
+
+      {hpp.biaya.length === 0 ? (
+        <p className="text-xs text-ink-500">
+          Belum ada biaya yang menempel. Ongkir kontainer, kirim gudang ke toko, kemasan, atau
+          pengurusan dicatat lewat Pengeluaran → Catat Pengeluaran, lalu pilih nota{' '}
+          {purchase.invoice_number} di "Untuk nota PO".
+        </p>
+      ) : (
+        <ul className="divide-y divide-ink-100 text-sm dark:divide-ink-800">
+          {hpp.biaya.map((b) => (
+            // HP: nama dan nominal sebaris, tanggal di bawahnya — kalau tiga-tiganya
+            // sebaris, nama biaya terjepit jadi satu kata per baris.
+            <li
+              key={b.id}
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 py-1.5 sm:flex sm:items-center"
+            >
+              {/* anywhere, bukan break-words: keterangan panjang tanpa spasi
+                  (nomor resi, nama gabung) tetap harus bisa dipatahkan. */}
+              <span className="min-w-0 [overflow-wrap:anywhere] sm:flex-1">{b.nama}</span>
+              <span className="font-semibold tabular-nums sm:order-last">{formatMoney(b.jumlah, currency)}</span>
+              <span className="col-span-2 text-xs text-ink-500">
+                {formatDate(b.tanggal)} · {b.sumber === 'form' ? 'form nota' : 'Pengeluaran'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {adaPenyesuaian && (
+        <>
+          <p className="text-xs text-ink-500">
+            Dibagi ke tiap barang sesuai nilai barangnya
+            {hpp.diskon > 0 && ', diskon nota ikut mengurangi'}. Sisa pelunasan ke supplier tidak berubah.
+          </p>
+          {/* table-fixed: tabel otomatis melebar mengikuti kata terpanjang di
+              rincian, dan nama biaya tanpa spasi mendorongnya keluar layar HP. */}
+          <table className="w-full table-fixed text-sm">
+            <colgroup>
+              <col />
+              <col className="hidden w-28 sm:table-column" />
+              <col className="w-28" />
+            </colgroup>
+            <thead className="text-left text-xs text-ink-500">
+              <tr>
+                <th className="py-2">Barang</th>
+                {/* Di HP harga beli pindah ke awal rincian supaya rinciannya
+                    mendapat lebar penuh, bukan dijepit dua kolom angka. */}
+                <th className="hidden py-2 text-right sm:table-cell">Harga beli</th>
+                <th className="py-2 text-right">HPP penuh</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hpp.barang.map((b) => (
+                <tr key={b.item.id} className="border-t border-ink-100 align-top dark:border-ink-800">
+                  <td className="py-2 pr-2">
+                    <div className="font-medium [overflow-wrap:anywhere]">{b.item.name}</div>
+                    <div className="mt-0.5 text-[11px] leading-snug text-ink-500 [overflow-wrap:anywhere]">
+                      {b.tidakDiterima ? (
+                        'Tidak diterima, tidak ada stok yang menanggung biaya.'
+                      ) : b.hargaBeli <= 0 ? (
+                        'Tanpa harga beli, tidak menanggung biaya nota.'
+                      ) : (
+                        <>
+                          <span className="sm:hidden">Harga beli {formatNumber(Math.round(b.hargaBeli))} · </span>
+                          {(() => {
+                            const bulat = bulatkanRincian(b.rincian, Math.round(b.hppPenuh) - Math.round(b.hargaBeli));
+                            return b.rincian.map((r, i) => `${r.nama} ${tanda(bulat[i])}`).join(' · ');
+                          })()}
+                        </>
+                      )}
+                    </div>
+                  </td>
+                  <td className="hidden py-2 text-right tabular-nums text-ink-500 sm:table-cell">
+                    {formatMoney(b.hargaBeli, currency)}
+                  </td>
+                  <td className="py-2 pl-2 text-right font-semibold tabular-nums">
+                    {b.tidakDiterima ? <span className="text-xs font-normal text-ink-500">—</span> : formatMoney(b.hppPenuh, currency)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </section>
   );
 }
 

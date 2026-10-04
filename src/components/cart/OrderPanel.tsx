@@ -40,16 +40,20 @@ import { ReceiptModal } from '@/components/cart/ReceiptModal';
 export function OrderPanel() {
   const {
     lines, orderType, tableNumber, payment, customerId, promo, manualDiscount, receivedAmount,
-    parked, salesChannel, paymentTerm, dueDate, externalOrderNo,
+    parked, salesChannel, paymentTerm, dueDate, externalOrderNo, taxEnabled,
     setOrderType, setTable, setPayment, updateQty, remove, setNote, setPrice, clear, setPromo,
     setManualDiscount, setReceivedAmount, setCustomer, park, resume, dropParked,
-    setSalesChannel, setPaymentTerm, setDueDate, setExternalOrderNo,
+    setSalesChannel, setPaymentTerm, setDueDate, setExternalOrderNo, setTaxEnabled,
   } = useCart();
   const { profile, store } = useAuth();
   const collapsed = useUI((s) => s.cartCollapsed);
   const toggleCart = useUI((s) => s.toggleCart);
   const features = resolveFeatures(store?.industry, store?.features as never);
-  const taxRate = Number(store?.tax_rate ?? 0);
+  // Tarif dan cara hitung (termasuk harga atau ditambahkan) dari pengaturan
+  // toko; centang pajak memilih dikenakan atau tidak untuk transaksi ini saja.
+  const tarifPajakToko = Number(store?.tax_rate ?? 0);
+  const pakaiPajak = tarifPajakToko > 0 && (taxEnabled ?? features.taxDefaultOn !== false);
+  const taxRate = pakaiPajak ? tarifPajakToko : 0;
   const pointsPerAmount = Number(store?.points_per_amount ?? 0);
   const totals = useMemo(
     () => cartTotals(lines, taxRate, promo, manualDiscount, pointsPerAmount, !!features.taxInclusive),
@@ -195,7 +199,7 @@ Lanjutkan simpan?`,
       order_number: finalOrderNumber,
       subtotal: totals.subtotal,
       tax: totals.tax,
-      tax_inclusive: !!features.taxInclusive,
+      tax_inclusive: pakaiPajak && !!features.taxInclusive,
       discount: totals.discount,
       total: totalAkhir,
       payment_method: payment,
@@ -677,7 +681,35 @@ Lanjutkan simpan?`,
             {totals.discount > 0 && (
               <Row label="Diskon" value={`-${formatMoney(totals.discount, store?.currency)}`} red />
             )}
-            <Row label={features.taxInclusive ? `Termasuk pajak ${taxRate}%` : `Pajak (${taxRate}%)`} value={formatMoney(totals.tax, store?.currency)} />
+            {tarifPajakToko > 0 && (
+              // Dipakai di tiap transaksi, jadi tanpa animasi. Tinggi 44px
+              // karena di tablet kasir ini diketuk jari, bukan diklik.
+              <label
+                htmlFor="cek-pajak"
+                className="flex min-h-[44px] cursor-pointer select-none items-center justify-between gap-3"
+              >
+                <span className="flex items-center gap-2">
+                  <input
+                    id="cek-pajak"
+                    type="checkbox"
+                    className="h-4 w-4 accent-brand-600"
+                    checked={pakaiPajak}
+                    onChange={(e) => setTaxEnabled(e.target.checked)}
+                  />
+                  <span>
+                    Pajak {tarifPajakToko}%
+                    {pakaiPajak && (
+                      <span className="text-xs text-ink-500">
+                        {' '}· {features.taxInclusive ? 'termasuk harga' : 'ditambahkan ke total'}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span className={cn('tabular-nums', !pakaiPajak && 'text-xs text-ink-500')}>
+                  {pakaiPajak ? formatMoney(totals.tax, store?.currency) : 'tidak dikenakan'}
+                </span>
+              </label>
+            )}
             <div className="border-t border-dashed border-ink-200 dark:border-ink-700 my-1" />
             <Row label="Total" value={formatMoney(totals.total, store?.currency)} bold />
             {payment === 'cash' && receivedAmount > 0 && (

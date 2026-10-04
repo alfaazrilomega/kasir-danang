@@ -31,8 +31,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
-import { pullExpenses, pullShifts, writeThrough } from '@/lib/sync';
-import { cn, formatMoney, isUuid, uuid, errorMessage } from '@/lib/format';
+import { pullExpenses, pullPurchases, pullShifts, pullSuppliers, writeThrough } from '@/lib/sync';
+import { cn, formatDate, formatMoney, isUuid, uuid, errorMessage } from '@/lib/format';
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_METHODS,
@@ -50,18 +50,28 @@ interface FormState {
   amount: number;
   expense_date: string;
   payment_method: ExpensePaymentMethod;
-  // Dipakai untuk menandai form edit yang sumbernya nota pembelian, supaya
-  // modal bisa menampilkan peringatan "akan tertimpa" tanpa mengunci field.
+  // Nota pembelian tempat biaya ini menempel. Biaya susulan (ongkir kontainer,
+  // gudang ke toko, kemasan) dipilih di sini supaya masuk HPP barang nota itu.
   purchaseId?: string | null;
+  // 'other'/'extra' = baris otomatis dari form nota. Dibawa apa adanya saat
+  // disimpan; kalau hilang, simpan ulang nota membuat baris kembar.
+  purchaseSlot?: string | null;
+}
+
+// Tanggal lokal, bukan UTC: toISOString() di WIB mundur tujuh jam, sehingga
+// tengah malam tanggal 1 terbaca sebagai hari terakhir bulan sebelumnya dan
+// rentang "bulan ini" dimulai sehari terlalu awal.
+function isoLokal(d: Date) {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return isoLokal(new Date());
 }
 
 function monthStartIso() {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return isoLokal(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 const emptyForm: FormState = {
@@ -71,6 +81,7 @@ const emptyForm: FormState = {
   expense_date: todayIso(),
   payment_method: 'cash',
   purchaseId: null,
+  purchaseSlot: null,
 };
 
 export function Expenses() {
@@ -92,12 +103,40 @@ export function Expenses() {
     if (!storeId) return;
     pullExpenses(storeId);
     pullShifts(storeId);
-  }, [storeId]);
+    // Daftar nota untuk pilihan "Untuk nota PO". Hanya admin yang boleh
+    // membaca nota pembelian sekaligus mencatat pengeluaran.
+    if (canManage) {
+      pullPurchases(storeId);
+      pullSuppliers(storeId);
+    }
+  }, [storeId, canManage]);
 
   const expenses =
     useLiveQuery(() => db.expenses.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
   const shifts =
     useLiveQuery(() => db.shifts.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const purchases =
+    useLiveQuery(() => db.purchases.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+  const suppliers =
+    useLiveQuery(() => db.suppliers.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
+
+  const notaById = useMemo(() => new Map(purchases.map((p) => [p.id, p])), [purchases]);
+  // Nota terbaru di atas; nota batal tidak ditawarkan kecuali sedang dipakai baris ini.
+  const pilihanNota = useMemo(() => {
+    const namaSupplier = new Map(suppliers.map((s) => [s.id, s.name]));
+    return purchases
+      .filter((p) => p.status !== 'canceled' || p.id === form.purchaseId)
+      .sort((a, b) => b.order_date.localeCompare(a.order_date))
+      .map((p) => ({
+        id: p.id,
+        // Nomor dan tanggal dulu: di HP label tertutup terpotong sekitar 280px,
+        // dan nama pemasok yang paling aman untuk hilang.
+        label: [p.invoice_number, formatDate(p.order_date), p.supplier_id ? namaSupplier.get(p.supplier_id) : null]
+          .filter(Boolean)
+          .join(' · '),
+      }));
+  }, [purchases, suppliers, form.purchaseId]);
+  const notaTerpilih = form.purchaseId ? notaById.get(form.purchaseId) ?? null : null;
 
   const activeShift = useMemo(() => shifts.find((s) => !s.closed_at) ?? null, [shifts]);
 
@@ -142,6 +181,7 @@ export function Expenses() {
       expense_date: e.expense_date,
       payment_method: e.payment_method,
       purchaseId: e.purchase_id ?? null,
+      purchaseSlot: e.purchase_cost_slot ?? null,
     });
     setOpen(true);
   }
@@ -185,6 +225,10 @@ export function Expenses() {
         shift_id: linkedShiftId,
         created_by: isUuid(profile?.id) ? profile!.id : null,
         created_at: existing?.created_at ?? new Date().toISOString(),
+        // Selalu dikirim, termasuk null: baris tanpa kolom ini tersimpan di
+        // perangkat tanpa tautan nota, dan lencananya hilang sampai ditarik ulang.
+        purchase_id: form.purchaseId || null,
+        purchase_cost_slot: form.purchaseId ? form.purchaseSlot ?? null : null,
       };
 
       const { queued } = await writeThrough('expenses', 'upsert', row);
@@ -232,11 +276,14 @@ export function Expenses() {
   }
 
   async function remove(e: Expense) {
-    // Baris dari nota PO dibuat ulang tiap nota disimpan, jadi hapus di sini
-    // bersifat sementara — perlu diberitahukan supaya tidak dikira permanen.
-    const confirmMessage = e.purchase_id
+    // Baris otomatis dari form nota dibuat ulang tiap nota disimpan, jadi hapus
+    // di sini bersifat sementara — perlu diberitahukan supaya tidak dikira
+    // permanen. Biaya susulan yang ditempel manual terhapus permanen.
+    const confirmMessage = e.purchase_cost_slot
       ? `Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}? Angka ini berasal dari nota pembelian dan akan muncul lagi kalau notanya disimpan ulang.`
-      : `Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}?`;
+      : e.purchase_id
+        ? `Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}? Biaya ini juga keluar dari HPP barang di nota ${notaById.get(e.purchase_id)?.invoice_number ?? 'pembelian'}.`
+        : `Hapus pengeluaran ${formatMoney(Number(e.amount), currency)}?`;
     if (!confirm(confirmMessage)) return;
     try {
       const api = getBackendClient();
@@ -397,11 +444,21 @@ export function Expenses() {
                     </td>
                     <td className="py-3 text-ink-600 dark:text-ink-300">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span>{e.description || <span className="text-ink-400">—</span>}</span>
-                        {e.purchase_id && (
+                        {/* anywhere: keterangan tanpa spasi (nomor resi, nama gabung)
+                            dulu melebarkan tabel 777px di wadah 335px. */}
+                        <span className="min-w-0 [overflow-wrap:anywhere]">
+                          {e.description || <span className="text-ink-400">—</span>}
+                        </span>
+                        {e.purchase_id && e.purchase_cost_slot && (
                           // Penanda supaya biaya dari nota tidak dicatat manual lagi.
                           <Badge tone="info" className="shrink-0">
                             dari nota PO
+                          </Badge>
+                        )}
+                        {e.purchase_id && !e.purchase_cost_slot && (
+                          // Biaya susulan: masuk HPP barang di nota ini.
+                          <Badge tone="brand" className="min-w-0 [overflow-wrap:anywhere]">
+                            nota {notaById.get(e.purchase_id)?.invoice_number ?? 'PO'}
                           </Badge>
                         )}
                       </div>
@@ -525,7 +582,41 @@ export function Expenses() {
             placeholder="cth. Sewa ruko bulan Agustus"
           />
 
-          {form.id && form.purchaseId && (
+          {canManage && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium" htmlFor="pengeluaran-nota">
+                Untuk nota PO
+              </label>
+              {/* Baris otomatis dari form nota dikunci ke notanya: memindahkannya
+                  ke nota lain membuat simpan ulang nota asal mencatat biaya kembar. */}
+              <select
+                id="pengeluaran-nota"
+                className="input disabled:cursor-not-allowed disabled:opacity-60"
+                value={form.purchaseId ?? ''}
+                disabled={!!form.purchaseSlot}
+                onChange={(e) => setForm({ ...form, purchaseId: e.target.value || null })}
+              >
+                <option value="">Bukan biaya nota PO</option>
+                {pilihanNota.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.label}
+                  </option>
+                ))}
+              </select>
+              {form.purchaseSlot && (
+                <p className="mt-1 text-xs text-ink-500">Terkunci ke nota asalnya karena dibuat dari form nota.</p>
+              )}
+            </div>
+          )}
+
+          {form.purchaseId && !form.purchaseSlot && (
+            <p className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-900 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-100">
+              Biaya ini ditempel ke nota {notaTerpilih?.invoice_number ?? 'pembelian'} dan masuk HPP
+              barangnya, dibagi sesuai nilai tiap barang. Sisa pelunasan ke supplier tidak berubah.
+            </p>
+          )}
+
+          {form.id && form.purchaseSlot && (
             // Baris ini akan ditulis ulang oleh nota pembelian, jadi edit di sini
             // hanya sementara sampai notanya disimpan lagi. Field tetap bisa diubah.
             <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">

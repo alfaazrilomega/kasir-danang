@@ -72,6 +72,7 @@ const TABLES = {
       'bank_name', 'bank_account_number', 'bank_account_name', 'qris_image_url',
       'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
       'footer_links', 'chat_enabled',
+      'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
     ],
     kind: 'store',
   },
@@ -2276,7 +2277,8 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
     `select id, name, currency, logo_url, shop_phone, pdp_banner_url, shop_city,
             bank_name, bank_account_number, bank_account_name, qris_image_url,
             social_facebook, social_instagram, social_tiktok, social_youtube,
-            footer_links, chat_enabled
+            footer_links, chat_enabled,
+            meta_pixel_id, tiktok_pixel_id, google_ads_id, google_ads_purchase_label
        from public.stores where id = $1`,
     [storeId],
   );
@@ -2962,7 +2964,10 @@ async function validateRowsForWrite(table, meta, rows, user) {
     return;
   }
 
-  if (meta.kind === 'store') return;
+  if (meta.kind === 'store') {
+    for (const row of rows) periksaIdPixel(row);
+    return;
+  }
 
   if (meta.kind === 'order_items') {
     if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
@@ -3024,8 +3029,30 @@ async function validateRowsForWrite(table, meta, rows, user) {
   }
 }
 
+// ID pixel tampil di halaman publik dan ikut menyusun URL skrip pihak ketiga,
+// jadi formatnya dipaksa di server, bukan hanya di form pengaturan.
+const POLA_ID_PIXEL = {
+  meta_pixel_id: [/^\d{10,20}$/, 'Meta Pixel ID berisi 10 sampai 20 angka.'],
+  tiktok_pixel_id: [/^[A-Z0-9]{10,40}$/, 'TikTok Pixel ID berisi huruf besar dan angka saja.'],
+  google_ads_id: [/^AW-\d{6,15}$/, 'Google Ads ID berbentuk AW- diikuti angka, contoh AW-123456789.'],
+  google_ads_purchase_label: [
+    /^[A-Za-z0-9_-]{4,60}$/,
+    'Label konversi Google Ads hanya berisi huruf, angka, garis bawah, dan tanda hubung.',
+  ],
+};
+
+function periksaIdPixel(row) {
+  for (const [kolom, [pola, pesan]] of Object.entries(POLA_ID_PIXEL)) {
+    if (!(kolom in row)) continue;
+    const nilai = row[kolom];
+    if (nilai === null || nilai === undefined || nilai === '') continue;
+    if (typeof nilai !== 'string' || !pola.test(nilai)) throw new HttpError(400, pesan);
+  }
+}
+
 async function validatePatchForUpdate(table, patch, user) {
   const role = effectiveRole(user.role);
+  if (table === 'stores') periksaIdPixel(patch);
   if (table === 'profiles' && ('role' in patch || 'store_id' in patch)) {
     throw new HttpError(403, 'Role dan toko user hanya bisa diubah dari menu Users oleh admin.');
   }

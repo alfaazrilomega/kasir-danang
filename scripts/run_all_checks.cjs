@@ -21,6 +21,12 @@ const SUITES = [
   'verify_storefront_footer',
   'verify_mobile_tables',
   'verify_dark_contrast',
+  'verify_biaya_susulan_po',
+  'verify_pajak_per_transaksi',
+  'verify_duplikat_transaksi',
+  'verify_pixel_toko',
+  'verify_label_kirim',
+  'verify_kanal_riwayat',
   'verify_permintaan_client',
 ];
 let pass = 0, total = 0, failed = [];

@@ -202,6 +202,59 @@ const cek = (butir, nama, ok, bukti) => {
     // itu dan akan mengira angka suite lain adalah angka suite ini.
     'verify_purchase_cost_expense ' + (m ? m[1] + ' dari ' + m[2] + ' asersi' : 'tidak selesai'));
 
+  // Butir 13, 14, 15: di sini hanya dijaga keberadaannya di layar. Perilaku
+  // lengkapnya diuji suite masing-masing (verify_biaya_susulan_po,
+  // verify_pajak_per_transaksi, verify_duplikat_transaksi, verify_pixel_toko)
+  // dan uji unit faktur (src/lib/__tests__/receipt.test.ts).
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.goto(BASE_URL + '/expenses', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3000);
+  await page.getByRole('button', { name: /Catat Pengeluaran/i }).first().click().catch(() => {});
+  await page.waitForTimeout(800);
+  const pilihNota = page.locator('#pengeluaran-nota');
+  const jumlahOpsiNota = (await pilihNota.count()) ? await pilihNota.locator('option').count() : 0;
+  cek(13, 'Form pengeluaran punya pilihan "Untuk nota PO"', jumlahOpsiNota >= 1, jumlahOpsiNota + ' opsi nota');
+  await page.keyboard.press('Escape').catch(() => {});
+
+  await page.goto(BASE_URL + '/purchases', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3500);
+  const tombolDetailNota = page.getByRole('button', { name: /Detail/i }).first();
+  let adaHpp = false;
+  if (await tombolDetailNota.count()) {
+    await tombolDetailNota.click();
+    await page.waitForTimeout(1500);
+    adaHpp = (await page.locator('section').filter({ hasText: 'HPP per barang' }).count()) > 0;
+    await page.keyboard.press('Escape').catch(() => {});
+  }
+  cek(13, 'Detail nota punya bagian "HPP per barang"', adaHpp, 'ada=' + adaHpp);
+
+  await page.goto(BASE_URL + '/menu', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3500);
+  await page.locator('.card').filter({ hasText: /Add to Cart/i }).first()
+    .getByRole('button', { name: /Add to Cart/i }).click().catch(() => {});
+  await page.waitForTimeout(1200);
+  const tarif = Number(sql('select tax_rate from public.stores order by created_at limit 1;'));
+  const adaCentang = (await page.locator('#cek-pajak').count()) === 1;
+  // Tarif 0 berarti toko memang tidak memakai pajak, jadi centangnya tidak tampil.
+  cek('14a', 'Panel kasir punya centang pajak per transaksi', tarif > 0 ? adaCentang : !adaCentang,
+    'tarif toko ' + tarif + '%, centang ada=' + adaCentang);
+  await page.locator('#btn-cancel-order').click().catch(() => {});
+
+  await page.goto(BASE_URL + '/orders', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('tbody tr', { timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  const ikonDuplikat = await page.getByTitle(/Duplikat penjualan/i).count();
+  cek('14d', 'Baris Riwayat Transaksi punya ikon duplikat', ikonDuplikat > 0, ikonDuplikat + ' ikon');
+
+  await page.goto(BASE_URL + '/settings', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(3500);
+  const teksSetelan = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  cek('14c', 'Pengaturan menyebut ukuran logo dan tanda tangan',
+    /600×600 px/.test(teksSetelan) && /600×200 px/.test(teksSetelan),
+    'logo=' + /600×600 px/.test(teksSetelan) + ' tanda tangan=' + /600×200 px/.test(teksSetelan));
+  const kolomPixel = await page.locator('#pixel-meta, #pixel-tiktok, #pixel-google, #pixel-google-label').count();
+  cek(15, 'Pengaturan Toko Online punya kolom pixel Meta, TikTok, Google Ads', kolomPixel === 4, kolomPixel + ' kolom');
+
   await browser.close();
   console.log('');
   console.log('--- RINGKASAN ---');

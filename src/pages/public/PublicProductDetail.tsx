@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { lacakPixel } from '@/lib/pixelToko';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { PublicShell } from '@/components/layout/PublicShell';
@@ -345,6 +346,22 @@ export function PublicProductDetail() {
   }, [catalog, data]);
 
   const petaFlash = useMemo(() => petaFlashAktif(flash.items), [flash.items]);
+
+  // Pixel iklan: satu "lihat produk" per produk yang dibuka. Ref-nya menahan
+  // kiriman kedua saat efek dijalankan ulang (StrictMode, harga flash menyusul).
+  const produkTerlacak = useRef<string | null>(null);
+  useEffect(() => {
+    const p = data?.product;
+    if (!p || produkTerlacak.current === p.id) return;
+    produkTerlacak.current = p.id;
+    const flashItem = petaFlash.get(p.id);
+    const hargaLihat = flashItem ? Number(flashItem.flash_price) : Number(p.base_price);
+    lacakPixel({
+      jenis: 'ViewContent',
+      barang: [{ id: p.id, nama: p.name, qty: 1, harga: hargaLihat }],
+      nilai: hargaLihat,
+    });
+  }, [data, petaFlash]);
 
   if (loading) {
     return (

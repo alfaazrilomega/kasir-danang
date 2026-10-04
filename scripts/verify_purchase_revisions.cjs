@@ -175,6 +175,11 @@ const record = (nama, ok, ket) => {
     await page.goto(BASE + '/purchases', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3000, minWaitMs: 2500 });
 
+    // Spanduk draft baru muncul setelah sesi dan profil termuat. Di mesin yang
+    // sedang sibuk itu bisa lebih lama dari jeda sepi API, dan membaca layar
+    // seketika menghasilkan merah palsu (cek sesudahnya tetap lolos karena
+    // tombol Lanjutkan ditunggu). Tunggu spanduknya, baru baca.
+    await page.getByText(/belum sempat disimpan/i).first().waitFor({ timeout: 20000 }).catch(() => {});
     const teks = await page.locator('body').innerText();
     record('Draft yang belum disimpan ditawarkan lagi',
       /belum sempat disimpan/i.test(teks) && teks.includes(DRAFT), DRAFT);

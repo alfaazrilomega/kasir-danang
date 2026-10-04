@@ -8,6 +8,7 @@ import { usePublicCart } from '@/stores/publicCart';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { ModalMasuk } from '@/components/public/ModalMasuk';
+import { idPixelDariToko, lacakHalaman, pasangPixel } from '@/lib/pixelToko';
 
 /** Nomor toko menjadi tautan WhatsApp (0812… → 62812…). */
 export function tautanWhatsApp(nomor: string | null | undefined, pesan?: string): string | null {
@@ -84,6 +85,9 @@ export function PublicShell({
     let alive = true;
     fetchPublicCatalog(PUBLIC_STORE_ID)
       .then((data) => {
+        // Pixel iklan dipasang dari sini karena semua halaman /toko memakai
+        // kerangka ini, sementara halaman admin tidak.
+        pasangPixel(idPixelDariToko(data.store));
         if (!alive) return;
         setStore(data.store);
         setCategories(data.categories);
@@ -93,6 +97,16 @@ export function PublicShell({
       alive = false;
     };
   }, []);
+
+  // Lihat halaman untuk pixel iklan, sekali per alamat. Ref-nya menahan
+  // kiriman kedua saat efek dijalankan ulang oleh StrictMode.
+  const alamatTerlacak = useRef('');
+  useEffect(() => {
+    const alamat = pathname + search;
+    if (alamatTerlacak.current === alamat) return;
+    alamatTerlacak.current = alamat;
+    lacakHalaman();
+  }, [pathname, search]);
 
   // Ambang berbeda untuk menyusut dan membuka kembali: saat baris atas
   // menyusut, browser menggeser posisi gulir ±25px; dengan satu ambang saja

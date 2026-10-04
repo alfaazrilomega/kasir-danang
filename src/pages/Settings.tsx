@@ -53,6 +53,7 @@ import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
 import { Globe } from 'lucide-react';
 import { ACCENTS } from '@/lib/accents';
 import { hasCapability } from '@/lib/roles';
+import { POLA_ID_PIXEL } from '@/lib/pixelToko';
 import {
   DEFAULT_INDUSTRY,
   SELECTABLE_INDUSTRIES,
@@ -94,6 +95,10 @@ interface FormState {
   socialYoutube: string;
   footerLinks: { label: string; url: string }[];
   chatEnabled: boolean;
+  metaPixelId: string;
+  tiktokPixelId: string;
+  googleAdsId: string;
+  googleAdsLabel: string;
 }
 
 /** Batas baris tautan artikel di footer toko online, biar daftarnya tidak kepanjangan. */
@@ -134,6 +139,10 @@ function snapshot(store: Store | null): FormState {
     socialYoutube: store?.social_youtube ?? '',
     footerLinks: store?.footer_links ?? [],
     chatEnabled: store?.chat_enabled ?? true,
+    metaPixelId: store?.meta_pixel_id ?? '',
+    tiktokPixelId: store?.tiktok_pixel_id ?? '',
+    googleAdsId: store?.google_ads_id ?? '',
+    googleAdsLabel: store?.google_ads_purchase_label ?? '',
   };
 }
 
@@ -187,10 +196,24 @@ export function Settings() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const signatureInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Pengaturan toko dimuat ulang saat jendela kembali dipakai dan berkala
+  // (useAuth.refreshStore). Perubahan dari perangkat lain tidak boleh menghapus
+  // isian yang sedang diketik: form hanya disamakan ulang kalau belum ada
+  // perubahan lokal, atau kalau pergantian ini hasil simpanan sendiri.
+  const adaKetikanRef = useRef(false);
+  const baruMenyimpanRef = useRef(false);
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
   useEffect(() => {
     const snap = snapshot(store);
-    setForm(snap);
+    // Nilai awal lama ditangkap sekarang, bukan dibaca dari ref di dalam
+    // pembaru: React bisa menjalankan pembaru lebih dari sekali, dan saat itu
+    // ref sudah berisi nilai awal yang baru.
+    const awalLama = initialRef.current;
+    if (!adaKetikanRef.current || baruMenyimpanRef.current) setForm(snap);
+    else setForm((f) => gabungPerubahanLuar(f, awalLama, snap));
     setInitial(snap);
+    baruMenyimpanRef.current = false;
   }, [store]);
 
   useEffect(() => {
@@ -217,6 +240,7 @@ export function Settings() {
   );
   const profileDirty = profileName.trim() !== initialProfileName.trim();
   const dirty = storeDirty || profileDirty;
+  adaKetikanRef.current = storeDirty;
 
   const patch = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((s) => ({ ...s, [key]: value }));
@@ -264,6 +288,32 @@ export function Settings() {
         toast.error(`URL ${nama} harus diawali http:// atau https://.`);
         return;
       }
+    }
+
+    // ID pixel dirapikan dulu (spasi dibuang, TikTok dan Google ke huruf besar)
+    // lalu dicocokkan formatnya. ID yang salah ketik tidak melacak apa pun dan
+    // tidak memberi tanda, jadi ditolak di sini dengan contoh yang benar.
+    const pixel = {
+      meta: form.metaPixelId.replace(/\s+/g, ''),
+      tiktok: form.tiktokPixelId.replace(/\s+/g, '').toUpperCase(),
+      googleAds: form.googleAdsId.replace(/\s+/g, '').toUpperCase(),
+      googleAdsLabel: form.googleAdsLabel.trim(),
+    };
+    const aturanPixel: [string, RegExp, string][] = [
+      [pixel.meta, POLA_ID_PIXEL.meta, 'Meta Pixel ID berisi angka saja, contoh 1234567890123456.'],
+      [pixel.tiktok, POLA_ID_PIXEL.tiktok, 'TikTok Pixel ID berisi huruf dan angka saja, contoh C4A1B2C3D4E5F6G7H8I9.'],
+      [pixel.googleAds, POLA_ID_PIXEL.googleAds, 'Google Ads ID berbentuk AW- diikuti angka, contoh AW-123456789.'],
+      [pixel.googleAdsLabel, POLA_ID_PIXEL.googleAdsLabel, 'Label konversi Google Ads hanya huruf, angka, garis bawah, dan tanda hubung.'],
+    ];
+    for (const [nilai, pola, pesan] of aturanPixel) {
+      if (nilai && !pola.test(nilai)) {
+        toast.error(pesan);
+        return;
+      }
+    }
+    if (pixel.googleAdsLabel && !pixel.googleAds) {
+      toast.error('Label konversi Google Ads butuh Google Ads ID. Isi ID-nya atau kosongkan labelnya.');
+      return;
     }
 
     const footerLinks: { label: string; url: string }[] = [];
@@ -314,6 +364,10 @@ export function Settings() {
       social_youtube: form.socialYoutube.trim() || null,
       footer_links: footerLinks,
       chat_enabled: form.chatEnabled,
+      meta_pixel_id: pixel.meta || null,
+      tiktok_pixel_id: pixel.tiktok || null,
+      google_ads_id: pixel.googleAds || null,
+      google_ads_purchase_label: pixel.googleAdsLabel || null,
     };
     setBusy(true);
     const api = getBackendClient();
@@ -326,6 +380,7 @@ export function Settings() {
       }
     }
     await db.stores.put({ ...store, ...payload });
+    baruMenyimpanRef.current = true;
     await refreshProfile();
     setBusy(false);
     toast.success('Pengaturan toko disimpan.');
@@ -489,6 +544,12 @@ export function Settings() {
                   </button>
                 )}
               </div>
+              {/* Client bertanya ukuran logo (video 28 Sep). Struk dan faktur
+                  menampilkannya persegi dengan object-fit cover, dan unggahan
+                  diperkecil sampai sisi terpanjang 600px. */}
+              <p className="w-32 text-center text-[11px] leading-snug text-ink-500">
+                Persegi 1:1, ideal 600×600 px. Logo melebar terpotong di struk dan faktur.
+              </p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -538,10 +599,12 @@ export function Settings() {
                   onChange={(e) => patch('taxRate', parseFloat(e.target.value) || 0)}
                   hint={
                     form.taxRate > 0
-                      ? form.features.taxInclusive
-                        ? `Harga jual dianggap sudah termasuk pajak ${form.taxRate}%. Isi 0 untuk mematikan pajak.`
-                        : `Pajak ${form.taxRate}% ditambahkan di atas harga jual. Isi 0 untuk mematikan pajak.`
-                      : 'Pajak mati. Isi angka persen untuk menyalakan.'
+                      ? `${
+                          form.features.taxInclusive
+                            ? `Harga jual dianggap sudah termasuk pajak ${form.taxRate}%.`
+                            : `Pajak ${form.taxRate}% ditambahkan di atas harga jual.`
+                        } Kasir bisa mencentang atau melepas pajak per transaksi. Isi 0 untuk mematikan pajak sama sekali.`
+                      : 'Pajak mati, centang pajak tidak muncul di kasir. Isi angka persen untuk menyalakan.'
                   }
                 />
               </>
@@ -632,6 +695,12 @@ export function Settings() {
                   checked={!!form.features.taxInclusive}
                   onChange={(v) => setFeature('taxInclusive', v)}
                 />
+                <FeatureToggle
+                  label="Pajak tercentang otomatis tiap penjualan"
+                  hint="Matikan kalau kebanyakan penjualan tanpa pajak: kasir tinggal mencentang saat transaksi memang berpajak."
+                  checked={form.features.taxDefaultOn !== false}
+                  onChange={(v) => setFeature('taxDefaultOn', v)}
+                />
               </div>
               <button
                 onClick={() =>
@@ -678,7 +747,9 @@ export function Settings() {
               <div className="mt-4 border-t border-ink-100 pt-4 dark:border-ink-800">
                 <div className="text-sm font-semibold">Tanda tangan faktur A4</div>
                 <p className="mt-0.5 text-xs text-ink-500">
-                  Tercetak di bagian bawah faktur A4. Pakai file PNG berlatar transparan agar rapi.
+                  Tercetak di bagian bawah faktur A4 dalam kotak setinggi 70px. Ideal PNG berlatar
+                  transparan sekitar 600×200 px (3:1), dipotong rapat di sekitar coretan. Sistem
+                  menyesuaikan ukurannya tanpa memotong tanda tangan.
                 </p>
                 <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-start">
                   <div className="flex flex-col items-start gap-2">
@@ -986,6 +1057,50 @@ export function Settings() {
                   onChange={(v) => patch('chatEnabled', v)}
                 />
               </div>
+
+              {/* Pelacakan iklan (butir 15 PERMINTAAN-CLIENT.md). */}
+              <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 dark:border-ink-800">
+                <div className="text-sm font-semibold">Pelacakan iklan (pixel)</div>
+                <p className="mt-0.5 text-xs text-ink-500">
+                  Isi ID dari Meta Events Manager, TikTok Ads Manager, dan Google Ads. Toko online
+                  lalu mengirim lihat halaman, lihat produk, tambah ke keranjang, mulai checkout, dan
+                  pembelian beserta nilai rupiahnya. Kolom kosong berarti platform itu tidak dipasang.
+                  Halaman admin dan kasir tidak ikut dilacak.
+                </p>
+              </div>
+              <Input
+                id="pixel-meta"
+                label="Meta Pixel ID"
+                inputMode="numeric"
+                value={form.metaPixelId}
+                onChange={(e) => patch('metaPixelId', e.target.value)}
+                placeholder="cth. 1234567890123456"
+                hint="Facebook dan Instagram Ads. Angka saja."
+              />
+              <Input
+                id="pixel-tiktok"
+                label="TikTok Pixel ID"
+                value={form.tiktokPixelId}
+                onChange={(e) => patch('tiktokPixelId', e.target.value)}
+                placeholder="cth. C4A1B2C3D4E5F6G7H8I9"
+                hint="TikTok Ads Manager → Events → Web Events."
+              />
+              <Input
+                id="pixel-google"
+                label="Google Ads ID"
+                value={form.googleAdsId}
+                onChange={(e) => patch('googleAdsId', e.target.value)}
+                placeholder="cth. AW-123456789"
+                hint="Diawali AW-, dari Google tag di Google Ads."
+              />
+              <Input
+                id="pixel-google-label"
+                label="Label konversi pembelian Google Ads"
+                value={form.googleAdsLabel}
+                onChange={(e) => patch('googleAdsLabel', e.target.value)}
+                placeholder="cth. AbC-D_efG-h12_34-567"
+                hint="Bagian setelah garis miring pada send_to konversi Pembelian. Tanpa label, pembelian tidak tercatat sebagai konversi."
+              />
             </div>
           </Section>
 
@@ -1324,6 +1439,34 @@ function Section({
   );
 }
 
+/**
+ * Form yang sedang diketik bertemu data toko baru dari perangkat lain. Kolom
+ * yang berbeda dari nilai awal adalah ketikan admin dan dipertahankan; kolom
+ * lain ikut nilai terbaru. Fitur POS digabung per saklar, karena satu saklar
+ * yang diubah di sini tidak boleh membatalkan saklar lain yang diubah di sana.
+ */
+function gabungPerubahanLuar(form: FormState, awal: FormState, terbaru: FormState): FormState {
+  const sama = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const hasil = { ...terbaru } as Record<string, unknown>;
+  for (const kunci of Object.keys(form) as (keyof FormState)[]) {
+    if (kunci === 'features') continue;
+    if (!sama(form[kunci], awal[kunci])) hasil[kunci] = form[kunci];
+  }
+  const fiturForm = (form.features ?? {}) as unknown as Record<string, unknown>;
+  const fiturAwal = (awal.features ?? {}) as unknown as Record<string, unknown>;
+  const fitur = { ...((terbaru.features ?? {}) as unknown as Record<string, unknown>) };
+  // Saklar yang belum pernah diisi dibaca menurut bawaannya: hampir semua
+  // berarti mati, kecuali "Pajak tercentang otomatis" yang bawaannya nyala.
+  // Tanpa ini, admin yang mematikan saklar itu untuk pertama kali tidak
+  // terbaca sebagai perubahan dan saklarnya kembali nyala.
+  const arti = (f: Record<string, unknown>, k: string) => (k === 'taxDefaultOn' ? f[k] !== false : f[k] ?? false);
+  for (const k of new Set([...Object.keys(fiturForm), ...Object.keys(fiturAwal)])) {
+    if (!sama(arti(fiturForm, k), arti(fiturAwal, k))) fitur[k] = fiturForm[k];
+  }
+  hasil.features = fitur;
+  return hasil as unknown as FormState;
+}
+
 function FeatureToggle({
   label,
   hint,
@@ -1466,6 +1609,7 @@ function shallowEqualForm(a: FormState, b: FormState): boolean {
     a.features.useSizes === b.features.useSizes &&
     a.features.defaultTrackStock === b.features.defaultTrackStock &&
     !!a.features.taxInclusive === !!b.features.taxInclusive &&
+    (a.features.taxDefaultOn !== false) === (b.features.taxDefaultOn !== false) &&
     a.signatureUrl === b.signatureUrl &&
     a.signerName === b.signerName &&
     a.shopPhone === b.shopPhone &&
@@ -1481,6 +1625,10 @@ function shallowEqualForm(a: FormState, b: FormState): boolean {
     a.socialTiktok === b.socialTiktok &&
     a.socialYoutube === b.socialYoutube &&
     a.chatEnabled === b.chatEnabled &&
+    a.metaPixelId === b.metaPixelId &&
+    a.tiktokPixelId === b.tiktokPixelId &&
+    a.googleAdsId === b.googleAdsId &&
+    a.googleAdsLabel === b.googleAdsLabel &&
     sameFooterLinks(a.footerLinks, b.footerLinks)
   );
 }

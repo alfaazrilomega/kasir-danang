@@ -1,0 +1,6 @@
+[    0.0-   11.0] Oke, mas, terkait di bagian riwayat transaksi. Tadi kan saya coba upload di tanggal 1 dan 2 Oktober di Shopee dan TikTok.
+[   11.0-   22.0] Nah, adapun di sini kan di bagian channel atau TikToknya tidak terlihat ya. Terlihat ini itu ketika dibuka di bagian detail. Nah, di sini baru terlihat.
+[   23.0-   32.0] Ini dari Shopee juga. Nah, mungkin adap ini dari TikTok. Nah, maksud saya, di bagian sini dimunculkan di saluran tersebut.
+[   32.0-   42.0] Adanya pun muncul orderan dari Shopee, TikTok, WhatsApp, ataupun dari website. Seperti itu, mas.
+[   42.0-   47.0] Biar nantinya ada pemisahan sendiri terlihat di sini.
+[   48.0-   50.0] Terima kasih.

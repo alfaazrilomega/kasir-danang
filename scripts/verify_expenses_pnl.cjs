@@ -89,6 +89,21 @@ function sql(q) {
     await waitForApiIdle(page, { idleMs: 2000, minWaitMs: 800 });
     const heading = await page.getByText('Pengeluaran', { exact: false }).first().isVisible().catch(() => false);
     record('Halaman /expenses render', heading);
+    // Rentang bawaan harus mulai tanggal 1 bulan berjalan menurut jam lokal.
+    // Dulu dihitung dari UTC, sehingga di WIB jatuh ke hari terakhir bulan
+    // sebelumnya (terlihat di video client 28 Sep: rentang September mulai 31/08).
+    const kini = new Date();
+    const awalBulan = `${kini.getFullYear()}-${String(kini.getMonth() + 1).padStart(2, '0')}-01`;
+    const dariBawaan = await page.locator('input[type="date"]').first().inputValue();
+    record('Rentang bawaan mulai tanggal 1 bulan berjalan', dariBawaan === awalBulan, `${dariBawaan} (harap ${awalBulan})`);
+
+    // Layar ini bawaan menampilkan bulan berjalan. Di awal bulan belum ada
+    // pengeluaran, jadi rentangnya dimundurkan dulu supaya asersi ini tidak
+    // lolos atau gagal tergantung tanggal suite dijalankan.
+    const mundur = new Date(Date.now() - 120 * 86400000);
+    const dariTanggal = new Date(mundur.getTime() - mundur.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    await page.locator('input[type="date"]').first().fill(dariTanggal);
+    await page.waitForTimeout(800);
     const rowsBefore = await page.locator('tbody tr').count();
     record('Tabel pengeluaran ada isinya', rowsBefore > 0, rowsBefore + ' baris');
     await page.screenshot({ path: path.join(SHOTS, '24_expenses_page.png') });

@@ -204,12 +204,12 @@ export function buildProductTemplate(): string {
       'Gear depan racing 13 mata', 'https://contoh.com/foto/gd-wr155.jpg',
       '175000', '120000', '25', '5', 'ya', 'ya',
       'SHP-GD-WR155-13T', 'TT-GD-WR155-13T', 'TKPD-GD-WR155-13T', 'WEB-GD-WR155-13T',
-      '100', '', '', '', '', 'GNNK Racing', '13T', ''],
+      '100', '', '', '', '', 'GNNK Racing', '13T', 'GD-WR155', ''],
     ['SET-CRF-RED', '8991234567891', 'Gear Set Honda CRF150 520 Red', 'Gear & Rantai',
       '', 'https://contoh.com/foto/set-crf.jpg', '450000', '320000', '10', '2',
-      'ya', 'ya', 'SET-CRF-RED', '', '', '', '', '', '', '', 'GD-WR155-13T', 'GNNK Racing', 'Red', '480000'],
+      'ya', 'ya', 'SET-CRF-RED', '', '', '', '', '', '', '', 'GD-WR155-13T', 'GNNK Racing', 'Red', 'SET-CRF', '480000'],
     ['OLI-MPX-1L', '', 'Oli Mesin MPX 1 Liter', 'Pelumas', '', '', '55000', '42000',
-      '100', '20', 'ya', 'ya', '', '', '', '', '', '', '', '', '', 'MPX', '', ''],
+      '100', '20', 'ya', 'ya', '', '', '', '', '', '', '', '', '', 'MPX', '', '', ''],
   ];
   return toCsv([...PRODUCT_COLUMNS], examples);
 }

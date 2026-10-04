@@ -12,7 +12,16 @@
 // muncul sementara wadahnya belum cukup lebar, dan di sana cacat terakhir
 // ditemukan setelah 393 sendiri sudah bersih.
 const { chromium } = require('playwright');
-const { BASE_URL, trackApi, loginAdmin } = require('./lib/harness.cjs');
+const { execFileSync } = require('child_process');
+const { BASE_URL, DB_PASSWORD, trackApi, loginAdmin } = require('./lib/harness.cjs');
+
+const psql = (q) => execFileSync('C:/Program Files/PostgreSQL/16/bin/psql.exe',
+  ['-U', 'kasir_user', '-h', '127.0.0.1', '-d', 'kasir', '-tAq', '-c', q],
+  { env: { ...process.env, PGPASSWORD: DB_PASSWORD }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+// Layar Pengeluaran bawaan menampilkan bulan berjalan. Di awal bulan belum ada
+// pengeluaran, tabelnya tidak dirender, dan empat lebar gagal tanpa ada cacat
+// tata letak. Suite menyiapkan tiga baris bertanggal hari ini lalu membuangnya.
+const TANDA_UJI = 'UJITABELHP' + Date.now().toString().slice(-6);
 
 const SELEKTOR_BARIS = '[class*="max-w-[1400px]"] table tbody tr';
 
@@ -87,6 +96,12 @@ const UKUR = () => {
   };
 
   try {
+    psql(`insert into public.expenses (id, store_id, category, description, amount, expense_date, payment_method, created_at)
+          select gen_random_uuid(), s.id, k.kategori, k.ket || ' ${TANDA_UJI}', k.jumlah, current_date, 'transfer', now()
+            from (select id from public.stores order by created_at limit 1) s,
+                 (values ('transport', 'Ongkir kontainer China ke Jakarta', 3000000),
+                         ('perlengkapan', 'Peti kayu dan packing ulang', 400000),
+                         ('lainnya', 'Biaya pengurusan dokumen', 250000)) as k(kategori, ket, jumlah);`);
     await loginAdmin(page);
 
     // Tiap rute dibuka SEKALI lalu lebarnya diubah di tempat. Membuka ulang
@@ -150,6 +165,11 @@ const UKUR = () => {
     record('Suite selesai tanpa galat', false, e.message.slice(0, 120));
   } finally {
     await browser.close();
+    try {
+      psql(`delete from public.expenses where description like '%${TANDA_UJI}';`);
+    } catch (e) {
+      console.log('Pembersihan gagal: ' + String(e.message || e).slice(0, 160));
+    }
   }
 
   console.log('');

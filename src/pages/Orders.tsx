@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowDownUp,
   Ban,
   Calendar,
+  Copy,
   Download,
   Eye,
   FileText,
@@ -17,6 +18,7 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  Truck,
   Upload,
   Users,
   X,
@@ -31,13 +33,15 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { db } from '@/lib/db';
 import { useAuth } from '@/stores/auth';
 import { getBackendClient } from '@/lib/api';
-import { pullInventoryReference, pullRecentOrders } from '@/lib/sync';
+import { pullInventoryReference, pullRecentOrders, pullReference } from '@/lib/sync';
 import { resolveFeatures } from '@/lib/industries';
 import { SalesImportModal } from '@/components/data/SalesImportModal';
-import { channelFeePercent, channelLabel, resolveChannels } from '@/lib/channels';
+import { OFFLINE_CHANNEL, channelFeePercent, channelLabel, channelTone, resolveChannels } from '@/lib/channels';
+import { useCart } from '@/stores/cart';
 import { hasCapability } from '@/lib/roles';
 import { formatDate, formatDateTime, formatMoney, cn, uuid, isUuid } from '@/lib/format';
 import type {
+  CartLine,
   Customer,
   Order,
   OrderItem,
@@ -48,8 +52,17 @@ import type {
 } from '@/types';
 import { useNavigate } from '@/lib/router';
 import { countsAsSale, isAwaitingConfirmation } from '@/lib/orderStatus';
-import { buildReceiptText, printInvoice, printReceipt, whatsappLink } from '@/lib/receipt';
+import {
+  buildReceiptText,
+  printInvoice,
+  printReceipt,
+  printShippingLabel,
+  shippingTarget,
+  whatsappLink,
+  type ShippingTarget,
+} from '@/lib/receipt';
 import { skuMapFor } from '@/lib/printSupport';
+import { hitungStokSet } from '@/components/products/ProductSetSection';
 
 type StatusFilter = 'all' | 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
 type PaymentFilter = 'all' | PaymentMethod;
@@ -270,6 +283,33 @@ export function Orders() {
       () => (selected?.customer_id ? db.customers.get(selected.customer_id) : Promise.resolve<Customer | undefined>(undefined)),
       [selected?.customer_id],
     );
+  // Riwayat menarik pesanan tiap 20 detik tetapi tidak menarik pelanggan.
+  // Pesanan dari pelanggan yang baru dibuat di perangkat lain akan tampil tanpa
+  // nama dan tanpa label kirim, jadi pelanggannya diambil saat detail dibuka.
+  useEffect(() => {
+    const id = selected?.customer_id;
+    if (!id || !isUuid(id) || !navigator.onLine) return;
+    let batal = false;
+    void (async () => {
+      if (await db.customers.get(id)) return;
+      const { data } = await getBackendClient().from('customers').select('*').eq('id', id).maybeSingle();
+      if (!batal && data) await db.customers.put(data as Customer);
+    })();
+    return () => {
+      batal = true;
+    };
+  }, [selected?.customer_id]);
+
+  // Label kirim hanya untuk pesanan yang memang akan dikirim: bukan yang batal,
+  // dan bukan pesanan web yang belum dikonfirmasi (pembayarannya belum dicek).
+  // Pelanggan dicocokkan lagi dengan pesanan yang terbuka: saat pindah pesanan,
+  // hasil kueri sebelumnya bisa masih tertahan satu render dan alamat
+  // pelanggan lain tidak boleh ikut tercetak.
+  const pelangganDetail = selected && customer && customer.id === selected.customer_id ? customer : null;
+  const tujuanKirim =
+    selected && selected.order_status !== 'canceled' && !isAwaitingConfirmation(selected)
+      ? shippingTarget(selected, pelangganDetail)
+      : null;
 
   const channelRows =
     useLiveQuery(() => db.sales_channels.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
@@ -395,6 +435,180 @@ export function Orders() {
           });
         } else printReceipt({ store, order: o, items: its, customerName: nama });
       });
+  }
+
+  /** Label alamat pengiriman (butir 16 PERMINTAAN-CLIENT.md). */
+  async function cetakLabel(o: Order, target: ShippingTarget) {
+    if (!store) return;
+    const its = await db.order_items.where('order_id').equals(o.id).toArray();
+    if (!its.length) {
+      toast.error(`Barang pesanan ${o.order_number} tidak ditemukan.`);
+      return;
+    }
+    printShippingLabel({
+      store,
+      order: o,
+      items: its,
+      target,
+      channelName: channelLabel(o.sales_channel, channelRows),
+      skuByProductId: await skuMapFor(its),
+    });
+  }
+
+  /**
+   * Duplikat penjualan (butir 14d PERMINTAAN-CLIENT.md): isi pesanan dibawa ke
+   * kasir — barang, jumlah, harga per baris, pelanggan, channel, tempo, dan
+   * pilihan pajak — lalu kasir memeriksa dan menyimpannya sebagai pesanan baru.
+   * Sama seperti "Salin" di Produk, tidak ada yang tersimpan sebelum disimpan.
+   */
+  // Duplikat bisa menunggu salinan lokal selesai ditulis ulang (Riwayat menarik
+  // 500 pesanan tiap 20 detik). Penjaga ini menolak klik kedua selama yang
+  // pertama masih berjalan, supaya tidak muncul dua konfirmasi bertumpuk.
+  const duplikatBerjalan = useRef(false);
+
+  async function duplikatPesanan(o: Order) {
+    if (duplikatBerjalan.current) return;
+    duplikatBerjalan.current = true;
+    const idToast = toast.loading(`Menyalin isi ${o.order_number}…`);
+    try {
+      let its = await db.order_items.where('order_id').equals(o.id).toArray();
+      if (!its.length && navigator.onLine) {
+        const { data } = await getBackendClient().from('order_items').select('*').eq('order_id', o.id);
+        its = (data as OrderItem[] | null) ?? [];
+      }
+      if (!its.length) {
+        toast.error(`Barang pesanan ${o.order_number} tidak ditemukan.`, { id: idToast });
+        return;
+      }
+      const muatProduk = async () =>
+        new Map((await db.products.where('store_id').equals(storeId).toArray()).map((p) => [p.id, p]));
+      let produk = await muatProduk();
+      // Halaman Riwayat tidak memuat katalog. Barang yang tidak ada di salinan
+      // lokal belum tentu sudah tidak dijual: tarik katalog dulu, baru putuskan.
+      if (navigator.onLine && its.some((it) => it.product_id && !produk.has(it.product_id))) {
+        await pullReference(storeId);
+        produk = await muatProduk();
+      }
+      // Produk set tidak punya stok dan modal sendiri: keduanya dihitung dari
+      // isinya, sama seperti di kasir (Menu.tsx). Tanpa ini set yang isinya
+      // cukup diperingatkan "stok 0" dan salinannya tersimpan bermodal nol.
+      const isiSet = new Map<string, { component_product_id: string; qty: number }[]>();
+      for (const c of await db.product_components.where('store_id').equals(storeId).toArray()) {
+        const daftar = isiSet.get(c.parent_product_id) ?? [];
+        daftar.push({ component_product_id: c.component_product_id, qty: Number(c.qty ?? 1) });
+        isiSet.set(c.parent_product_id, daftar);
+      }
+      const lines: CartLine[] = [];
+      const terlewat: string[] = [];
+      const kurangStok: string[] = [];
+      for (const it of its) {
+        const p = it.product_id ? produk.get(it.product_id) : undefined;
+        if (!p || p.is_active === false) {
+          terlewat.push(it.name);
+          continue;
+        }
+        const isi = isiSet.get(p.id);
+        const stok = isi?.length ? hitungStokSet(isi, produk) : Number(p.stock_qty ?? 0);
+        // Barangnya tetap dibawa supaya kasir yang memutuskan; kasir memang
+        // boleh menjual melebihi stok, tapi tidak boleh tanpa diberi tahu.
+        if ((isi?.length || p.track_stock) && stok < Number(it.qty)) {
+          kurangStok.push(`${p.sku || it.name} (stok ${stok}, pesanan ${Number(it.qty)})`);
+        }
+        lines.push({
+          product_id: p.id,
+          name: it.name || p.name,
+          size: it.size ?? null,
+          qty: Number(it.qty),
+          price: Number(it.price),
+          base_price: Number(p.base_price),
+          cost_price: isi?.length
+            ? isi.reduce((sum, c) => sum + Number(produk.get(c.component_product_id)?.cost_price ?? 0) * c.qty, 0)
+            : Number(p.cost_price ?? 0),
+          note: it.note ?? '',
+          image_url: p.image_url ?? null,
+          sku: p.sku ?? null,
+          track_stock: !!p.track_stock,
+        });
+      }
+      if (!lines.length) {
+        toast.error(`Semua barang di pesanan ${o.order_number} sudah tidak dijual.`, { id: idToast });
+        return;
+      }
+      // Baris pesanan tidak menyimpan urutan input, jadi diurutkan menurut SKU
+      // (lalu nama) supaya pesanan grosir 20-30 baris mudah dicocokkan.
+      const kunciUrut = (l: CartLine) => l.sku || `~${l.name}`;
+      lines.sort((a, b) => kunciUrut(a).localeCompare(kunciUrut(b), 'id', { numeric: true }));
+
+      const cart = useCart.getState();
+      if (
+        cart.lines.length &&
+        !confirm(`Keranjang kasir masih berisi ${cart.lines.length} barang. Ganti dengan isi pesanan ${o.order_number}?`)
+      ) {
+        toast.dismiss(idToast);
+        return;
+      }
+      // Tempo disalin dengan lama tempo yang sama, dihitung dari hari ini.
+      // Kedua tanggal memakai kalender lokal: tanggal UTC mundur sehari sampai
+      // pukul 07.00 WIB, dan jatuh tempo salinan ikut meleset sehari.
+      const tempo = o.payment_term === 'tempo';
+      const hariTempo =
+        tempo && o.due_date
+          ? Math.max(0, Math.round((Date.parse(o.due_date) - Date.parse(isoDate(new Date(o.created_at)))) / 86400000))
+          : 14;
+      cart.clear();
+      useCart.setState({
+        lines,
+        customerId: o.customer_id ?? null,
+        salesChannel: o.sales_channel || OFFLINE_CHANNEL,
+        paymentTerm: tempo ? 'tempo' : 'cash',
+        dueDate: tempo ? isoDate(new Date(Date.now() + hariTempo * 86400000)) : '',
+        taxEnabled: Number(o.tax ?? 0) > 0,
+      });
+
+      const daftar = (nama: string[]) =>
+        nama.slice(0, 3).join(', ') + (nama.length > 3 ? `, dan ${nama.length - 3} lainnya` : '');
+      // Semua catatan masuk SATU pemberitahuan. Sebagai pemberitahuan terpisah
+      // mereka bertumpuk dan yang di belakang tertutup sebelum sempat terbaca.
+      const catatan: string[] = [];
+      if (terlewat.length) {
+        catatan.push(`${terlewat.length} barang dilewati karena sudah tidak dijual: ${daftar(terlewat)}.`);
+      }
+      if (kurangStok.length) {
+        catatan.push(
+          `${kurangStok.length} barang stoknya kurang dari jumlah pesanan asal: ${daftar(kurangStok)}. Periksa jumlahnya sebelum menyimpan.`,
+        );
+      }
+      // Promo dan diskon tidak disalin: promo bisa sudah berakhir, dan diskon
+      // pesanan lama belum tentu berlaku lagi. Yang penting kasir tahu,
+      // karena total pesanan baru jadi lebih tinggi.
+      const diskonAsal = Number(o.discount ?? 0);
+      if (o.promo_code || diskonAsal > 0) {
+        catatan.push(
+          `Pesanan asal memakai ${o.promo_code ? `promo ${o.promo_code}` : 'diskon'}${
+            diskonAsal > 0 ? ` sebesar ${formatMoney(diskonAsal, store?.currency)}` : ''
+          }. Tidak ikut disalin, terapkan lagi kalau masih berlaku.`,
+        );
+      }
+      const judul = `Isi ${o.order_number} disalin ke kasir. Periksa lalu simpan sebagai pesanan baru.`;
+      if (catatan.length) {
+        toast.warning(judul, {
+          id: idToast,
+          duration: 15000,
+          description: (
+            <ul className="mt-1 list-disc space-y-1 pl-4">
+              {catatan.map((c) => (
+                <li key={c}>{c}</li>
+              ))}
+            </ul>
+          ),
+        });
+      } else {
+        toast.success(judul, { id: idToast, duration: 4000 });
+      }
+      navigate('/menu');
+    } finally {
+      duplikatBerjalan.current = false;
+    }
   }
 
   function shareWA(o: Order) {
@@ -839,7 +1053,13 @@ export function Orders() {
             >
               Batal pilih
             </button>
-            <div className="ml-auto flex gap-2">
+            {/* flex-wrap: di layar 320px tiga tombol tidak muat satu baris. */}
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
+              {dipilih.length === 1 && (
+                <Button size="sm" variant="secondary" onClick={() => void duplikatPesanan(dipilih[0])}>
+                  <Copy size={14} /> Duplikat
+                </Button>
+              )}
               <Button size="sm" variant="secondary" onClick={() => voidPicked(false)} disabled={voidBusy}>
                 <Ban size={14} /> Batalkan
               </Button>
@@ -874,6 +1094,10 @@ export function Orders() {
                       kolom Status maupun tombol aksinya jatuh di luar layar.
                       Nama pelanggan ikut tampil di bawah nomor pesanan. */}
                   <th className="py-2">No. Pesanan</th>
+                  {/* Mulai 1440px. Di 1024px kolom ini melebarkan tabel 71px, dan di
+                      1280-1366px menjepit Tanggal jadi tiga baris begitu ada pesanan
+                      menunggu konfirmasi (kolom Aksi melebar oleh dua tombolnya). */}
+                  <th className="hidden px-3 py-2 min-[1440px]:table-cell">Channel</th>
                   <th className="hidden py-2 sm:table-cell">Tanggal</th>
                   {features.useOrderType && <th className="hidden py-2 lg:table-cell">Jenis</th>}
                   <th className="hidden py-2 lg:table-cell">Pelanggan</th>
@@ -905,8 +1129,16 @@ export function Orders() {
                           {o.external_order_no}
                         </div>
                       )}
-                      {/* Kolom Pelanggan dan Tanggal disembunyikan di HP supaya
-                          tabelnya muat tanpa digeser; keduanya ikut di sini. */}
+                      {/* Kolom Channel, Pelanggan, dan Tanggal disembunyikan di HP
+                          supaya tabelnya muat tanpa digeser; ketiganya ikut di sini. */}
+                      <div className="mt-0.5 min-[1440px]:hidden" data-kanal>
+                        <Badge
+                          tone={channelTone(o.sales_channel)}
+                          className="max-w-full whitespace-normal rounded-md px-1.5 text-left text-[10px] leading-tight"
+                        >
+                          {channelLabel(o.sales_channel, channelRows)}
+                        </Badge>
+                      </div>
                       <div className="text-[11px] font-normal text-ink-500 lg:hidden">
                         {o.customer_id
                           ? customerName.get(o.customer_id) ?? '—'
@@ -915,6 +1147,11 @@ export function Orders() {
                       <div className="text-[11px] font-normal text-ink-500 sm:hidden">
                         {formatDateTime(o.created_at)}
                       </div>
+                    </td>
+                    <td className="hidden px-3 py-3 min-[1440px]:table-cell" data-kanal>
+                      <Badge tone={channelTone(o.sales_channel)} className="whitespace-nowrap">
+                        {channelLabel(o.sales_channel, channelRows)}
+                      </Badge>
                     </td>
                     <td className="hidden py-3 sm:table-cell">{formatDateTime(o.created_at)}</td>
                     {features.useOrderType && (
@@ -990,6 +1227,13 @@ export function Orders() {
                           <MessageCircle size={14} />
                         </button>
                         <button
+                          onClick={() => void duplikatPesanan(o)}
+                          className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800"
+                          title="Duplikat penjualan"
+                        >
+                          <Copy size={14} />
+                        </button>
+                        <button
                           onClick={() => setSelected(o)}
                           className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
                           title="Detail"
@@ -1030,11 +1274,11 @@ export function Orders() {
               <Field label="Pembayaran" value={selected.payment_method} />
               <Field label="Status" value={LABEL_STATUS_BAYAR[selected.payment_status] ?? selected.payment_status} />
               {selected.table_number && <Field label="Meja" value={selected.table_number} />}
-              {customer && <Field label="Pelanggan" value={`${customer.name}${customer.phone ? ` · ${customer.phone}` : ''}`} />}
+              {pelangganDetail && <Field label="Pelanggan" value={`${pelangganDetail.name}${pelangganDetail.phone ? ` · ${pelangganDetail.phone}` : ''}`} />}
               {/* Pesanan hasil impor marketplace tidak punya baris pelanggan,
                   hanya nama penerima. Tanpa baris ini nama itu tersimpan tapi
                   tidak pernah terlihat. */}
-              {!customer && selected.customer_name && (
+              {!pelangganDetail && selected.customer_name && (
                 <Field label="Pelanggan" value={selected.customer_name} />
               )}
               {selected.customer_phone && <Field label="No. HP" value={selected.customer_phone} />}
@@ -1207,9 +1451,28 @@ export function Orders() {
                   <Landmark size={14} /> Catat pencairan
                 </Button>
               )}
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const target = selected;
+                  setSelected(null);
+                  void duplikatPesanan(target);
+                }}
+              >
+                <Copy size={14} /> Duplikat
+              </Button>
               <Button variant="secondary" onClick={() => shareWA(selected)}>
                 <MessageCircle size={14} /> WhatsApp
               </Button>
+              {tujuanKirim && (
+                <Button
+                  variant="secondary"
+                  onClick={() => void cetakLabel(selected, tujuanKirim)}
+                  title="Label 100 × 150 mm untuk printer label atau thermal resi"
+                >
+                  <Truck size={14} /> Cetak Label Kirim
+                </Button>
+              )}
               <Button variant="secondary" onClick={() => reprint(selected)}>
                 <Printer size={14} /> Cetak Thermal / PDF
               </Button>
@@ -1761,15 +2024,18 @@ function FilterChips<T extends string>({
   label, options, value, onChange,
 }: { label: string; options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-ink-500">{label}:</span>
-      <div className="flex gap-1 rounded-full bg-ink-100 dark:bg-ink-800 p-1 text-xs font-semibold">
+    <div className="flex min-w-0 max-w-full items-center gap-1.5">
+      <span className="shrink-0 text-xs text-ink-500">{label}:</span>
+      {/* Pilihan yang tidak muat digeser di dalam barisnya. Tanpa ini baris
+          "Bayar" (7 pilihan) melebarkan seluruh halaman di HP dan modal detail
+          pesanan ikut melewati tepi layar. */}
+      <div className="tanpa-bilah flex min-w-0 gap-1 overflow-x-auto rounded-full bg-ink-100 dark:bg-ink-800 p-1 text-xs font-semibold">
         {options.map((o) => (
           <button
             key={o.value}
             onClick={() => onChange(o.value)}
             className={cn(
-              'rounded-full px-2.5 py-1',
+              'shrink-0 whitespace-nowrap rounded-full px-2.5 py-1',
               value === o.value ? 'bg-white shadow-card dark:bg-ink-700' : 'text-ink-600 dark:text-ink-300',
             )}
           >

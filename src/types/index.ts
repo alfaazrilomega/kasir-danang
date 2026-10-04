@@ -52,6 +52,12 @@ export interface Store {
   footer_links?: { label: string; url: string }[] | null;
   /** Tombol chat penjual di toko online bisa dimatikan tanpa menghapus nomor WhatsApp-nya. */
   chat_enabled?: boolean;
+  /** ID pelacakan iklan toko online; kosong berarti platform itu tidak dipakai. */
+  meta_pixel_id?: string | null;
+  tiktok_pixel_id?: string | null;
+  google_ads_id?: string | null;
+  /** Label konversi pembelian Google Ads (bagian setelah garis miring di send_to). */
+  google_ads_purchase_label?: string | null;
 }
 
 export interface Profile {

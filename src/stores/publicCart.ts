@@ -5,6 +5,7 @@
 // tidak ada bahaya kalau nilainya sempat basi di localStorage pengunjung.
 
 import { create } from 'zustand';
+import { lacakPixel } from '@/lib/pixelToko';
 import { persist } from 'zustand/middleware';
 
 export interface PublicCartLine {
@@ -37,6 +38,13 @@ export const usePublicCart = create<PublicCartState>()(
       lines: [],
       buyNow: null,
       add: (line, qty = 1) => {
+        // Pixel iklan: semua jalur "tambah ke keranjang" (halaman produk,
+        // tawaran di keranjang) lewat sini, jadi dicatat di satu tempat.
+        lacakPixel({
+          jenis: 'AddToCart',
+          barang: [{ id: line.product_id, nama: line.name, qty, harga: Number(line.price) }],
+          nilai: Number(line.price) * qty,
+        });
         const existing = get().lines.find((l) => l.product_id === line.product_id);
         if (existing) {
           set({
