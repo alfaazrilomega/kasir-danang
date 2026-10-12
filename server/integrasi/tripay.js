@@ -15,7 +15,8 @@ const BASE = {
   production: 'https://tripay.co.id/api',
 };
 
-function konfigurasi() {
+function konfigurasi(override) {
+  if (override) return { ...override, base: BASE[override.mode] };
   const mode = (process.env.TRIPAY_MODE || 'sandbox').toLowerCase() === 'production' ? 'production' : 'sandbox';
   return {
     mode,
@@ -26,20 +27,20 @@ function konfigurasi() {
   };
 }
 
-function tripayAktif() {
-  const c = konfigurasi();
-  return !!(c.merchantCode && c.apiKey && c.privateKey);
+function tripayAktif(config) {
+  const c = konfigurasi(config);
+  return c.enabled !== false && !!(c.merchantCode && c.apiKey && c.privateKey);
 }
 
 /** Tanda tangan transaksi: HMAC-SHA256(kodeMerchant + refMerchant + jumlah). */
-function tandaTangan(merchantRef, amount) {
-  const c = konfigurasi();
+function tandaTangan(merchantRef, amount, config) {
+  const c = konfigurasi(config);
   return crypto.createHmac('sha256', c.privateKey).update(`${c.merchantCode}${merchantRef}${amount}`).digest('hex');
 }
 
 /** Tanda tangan callback dihitung dari body mentah, bukan dari objek hasil parse. */
-function callbackSah(rawBody, signature) {
-  const c = konfigurasi();
+function callbackSah(rawBody, signature, config) {
+  const c = konfigurasi(config);
   if (!c.privateKey || !signature) return false;
   const hitung = crypto.createHmac('sha256', c.privateKey).update(rawBody).digest('hex');
   try {
@@ -49,10 +50,11 @@ function callbackSah(rawBody, signature) {
   }
 }
 
-async function panggil(path, { method = 'GET', body } = {}) {
-  const c = konfigurasi();
+async function panggil(path, { method = 'GET', body } = {}, config) {
+  const c = konfigurasi(config);
   const res = await fetch(`${c.base}${path}`, {
     method,
+    signal: AbortSignal.timeout(15000),
     headers: {
       Authorization: `Bearer ${c.apiKey}`,
       Accept: 'application/json',
@@ -74,27 +76,32 @@ async function panggil(path, { method = 'GET', body } = {}) {
   return json?.data ?? json;
 }
 
-let cacheKanal = { waktu: 0, data: [] };
+const cacheKanal = new Map();
 
 /**
  * Daftar kanal pembayaran aktif di akun merchant. Di-cache 5 menit supaya
  * halaman checkout tidak memanggil Tripay tiap kali dibuka.
  */
-async function daftarKanal() {
-  if (!tripayAktif()) return [];
+async function daftarKanal(config, refresh = false) {
+  const c = konfigurasi(config);
+  if (!c.apiKey || (!refresh && !tripayAktif(c))) return [];
+  const key = crypto.createHash('sha256').update(`${c.mode}:${c.apiKey}`).digest('hex');
   const sekarang = Date.now();
-  if (sekarang - cacheKanal.waktu < 5 * 60 * 1000) return cacheKanal.data;
-  const data = await panggil('/merchant/payment-channel');
-  cacheKanal = { waktu: sekarang, data: Array.isArray(data) ? data : [] };
-  return cacheKanal.data;
+  const cached = cacheKanal.get(key);
+  if (!refresh && cached && sekarang - cached.waktu < 5 * 60 * 1000) return cached.data;
+  const data = await panggil('/merchant/payment-channel', {}, c);
+  if (!Array.isArray(data)) throw new Error('Respons kanal Tripay tidak valid.');
+  if (cacheKanal.size >= 100) cacheKanal.clear();
+  cacheKanal.set(key, { waktu: sekarang, data });
+  return data;
 }
 
 /**
  * Buat transaksi closed payment. `amount` wajib sama persis dengan tagihan;
  * Tripay menghitung tanda tangannya dari angka itu.
  */
-async function buatTransaksi({ method, merchantRef, amount, customerName, customerEmail, customerPhone, items, callbackUrl, returnUrl, expiredHours = 24 }) {
-  if (!tripayAktif()) throw new Error('Tripay belum dikonfigurasi.');
+async function buatTransaksi({ method, merchantRef, amount, customerName, customerEmail, customerPhone, items, callbackUrl, returnUrl, expiredHours = 24 }, config) {
+  if (!tripayAktif(config)) throw new Error('Tripay belum dikonfigurasi.');
   const data = await panggil('/transaction/create', {
     method: 'POST',
     body: {
@@ -108,15 +115,15 @@ async function buatTransaksi({ method, merchantRef, amount, customerName, custom
       callback_url: callbackUrl || undefined,
       return_url: returnUrl || undefined,
       expired_time: Math.floor(Date.now() / 1000) + expiredHours * 3600,
-      signature: tandaTangan(merchantRef, amount),
+      signature: tandaTangan(merchantRef, amount, config),
     },
-  });
+  }, config);
   return data;
 }
 
 /** Status transaksi menurut Tripay (dipakai saat callback meragukan). */
-async function detailTransaksi(reference) {
-  return panggil(`/transaction/detail?reference=${encodeURIComponent(reference)}`);
+async function detailTransaksi(reference, config) {
+  return panggil(`/transaction/detail?reference=${encodeURIComponent(reference)}`, {}, config);
 }
 
 export { konfigurasi, tripayAktif, daftarKanal, buatTransaksi, detailTransaksi, callbackSah, tandaTangan };

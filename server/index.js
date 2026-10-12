@@ -60,7 +60,10 @@ pool.on('error', (err) => {
 });
 
 import * as tripay from './integrasi/tripay.js';
+import { IntegrationError, loadIntegration, saveIntegration, publicConfig, assertProvider } from './integrasi/settings.js';
 import * as kiriminaja from './integrasi/kiriminaja.js';
+import * as onesender from './integrasi/onesender.js';
+import * as metaWhatsapp from './integrasi/metaWhatsapp.js';
 import { mailketingAktif, kirimEmailMailketing } from './integrasi/mailketing.js';
 
 const authSecret = AUTH_SECRET || 'dev-only-change-me';
@@ -730,6 +733,53 @@ app.get('/api/auth/session', requireUser, asyncHandler(async (req, res) => {
 
 app.get('/api/auth/user', requireUser, asyncHandler(async (req, res) => {
   res.json({ user: publicUser(req.user) });
+}));
+
+function requireIntegrationAdmin(req, _res, next) {
+  try {
+    assertTableAccess(req.user, 'stores', 'update');
+    if (!isUuidLike(req.user.store_id)) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+    next();
+  } catch (error) { next(error); }
+}
+
+app.get('/api/admin/integrations', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const data = {};
+  for (const provider of ['tripay', 'kiriminaja', 'onesender', 'meta_whatsapp']) {
+    data[provider] = publicConfig(provider, await loadIntegration(pool, req.user.store_id, provider));
+  }
+  res.json({ data });
+}));
+
+app.patch('/api/admin/integrations/:provider', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await saveIntegration(pool, req.user.store_id, req.params.provider, req.body) });
+}));
+
+app.post('/api/admin/integrations/:provider/test', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const provider = req.params.provider;
+  assertProvider(provider);
+  const config = await loadIntegration(pool, req.user.store_id, provider);
+  const credential = provider === 'meta_whatsapp' ? config.accessToken : provider === 'kiriminaja' ? config.token : config.apiKey;
+  if (!credential) throw new HttpError(400, 'Simpan kunci API terlebih dahulu.');
+  let metaResult;
+  try {
+    if (provider === 'tripay') await tripay.daftarKanal(config, true);
+    else if (provider === 'kiriminaja') await kiriminaja.tesKoneksi(config);
+    else if (provider === 'onesender') await onesender.tesKoneksi(config);
+    else metaResult = await metaWhatsapp.tesKoneksi(config);
+  } catch (error) {
+    if (error instanceof metaWhatsapp.MetaWhatsAppError) throw new HttpError(502, error.message);
+    // Respons penyedia tidak diteruskan karena dapat memuat kredensial.
+    throw new HttpError(502, 'Koneksi gagal. Periksa kunci API, mode, dan ketersediaan layanan.');
+  }
+  res.json({ data: { message: provider === 'meta_whatsapp'
+    ? `Koneksi Meta berhasil. Nomor ${metaResult.phoneNumber} terdaftar pada WABA ini. Tes tidak mengirim pesan.`
+    : provider === 'onesender'
+    ? 'API OneSender dapat diakses. Status perangkat WhatsApp perlu diperiksa di dashboard OneSender.'
+    : 'Kunci API diterima. Koneksi berhasil.' } });
 }));
 
 app.get('/api/admin/users', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
@@ -1960,7 +2010,8 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   // Kanal Tripay (mis. BRIVA, QRIS, SHOPEEPAY) dikirim terpisah dari metode
   // manual; metode bayar yang dicatat menyesuaikan grup kanalnya.
   const paymentChannel = String(body.payment_channel ?? '').trim().toUpperCase();
-  if (paymentChannel && !tripay.tripayAktif()) {
+  const tripayConfig = paymentChannel ? await loadIntegration(pool, storeId, 'tripay') : null;
+  if (paymentChannel && !tripay.tripayAktif(tripayConfig)) {
     throw new HttpError(400, 'Pembayaran otomatis belum aktif di toko ini.');
   }
   if (!paymentChannel && !['cash', 'qris', 'transfer'].includes(paymentMethod)) {
@@ -2016,7 +2067,7 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   let metodeTercatat = paymentMethod;
   let kanalTripay = null;
   if (paymentChannel) {
-    const kanal = (await tripay.daftarKanal().catch(() => [])).find((k) => String(k.code).toUpperCase() === paymentChannel);
+    const kanal = (await tripay.daftarKanal(tripayConfig).catch(() => [])).find((k) => String(k.code).toUpperCase() === paymentChannel);
     if (!kanal || kanal.active === false) throw new HttpError(400, 'Kanal pembayaran tidak tersedia.');
     kanalTripay = kanal;
     metodeTercatat = PETA_GRUP[kanal.group] || 'other';
@@ -2136,9 +2187,9 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         customerEmail: pembeli.email || `${customerPhone.replace(/\D/g, '') || 'pembeli'}@pesanan.web`,
         customerPhone,
         items: orderItems.map((it) => ({ name: it.name, price: it.price, quantity: it.qty })),
-        callbackUrl: process.env.TRIPAY_CALLBACK_URL || undefined,
-        returnUrl: process.env.TRIPAY_RETURN_URL || undefined,
-      });
+        callbackUrl: tripayConfig.callbackUrl || undefined,
+        returnUrl: tripayConfig.returnUrl || undefined,
+      }, tripayConfig);
       await pool.query(
         'update public.orders set payment_channel = $2, payment_reference = $3, payment_url = $4 where id = $1',
         [orderId, kanalTripay.code, trx.reference ?? null, trx.checkout_url ?? null],
@@ -2184,25 +2235,29 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
 
 // Kanal pembayaran otomatis yang aktif di akun Tripay toko. Selama Tripay
 // belum dikonfigurasi, daftarnya kosong dan checkout memakai metode manual.
-app.get('/api/public/payment-channels', asyncHandler(async (_req, res) => {
-  if (!tripay.tripayAktif()) {
+app.get('/api/public/payment-channels', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  await assertStoreExists(storeId);
+  const config = await loadIntegration(pool, storeId, 'tripay');
+  if (!tripay.tripayAktif(config)) {
     res.json({ data: { active: false, mode: null, channels: [] } });
     return;
   }
   let kanal;
   try {
-    kanal = await tripay.daftarKanal();
+    kanal = await tripay.daftarKanal(config);
   } catch (err) {
     // Gangguan atau kunci ditolak di sisi Tripay tidak boleh membuat halaman
     // checkout gagal dimuat: pembeli tetap bisa memakai metode bayar manual.
     console.error('[tripay] daftar kanal gagal:', err?.message || err);
-    res.json({ data: { active: false, mode: tripay.konfigurasi().mode, channels: [] } });
+    res.json({ data: { active: false, mode: config.mode, channels: [] } });
     return;
   }
   res.json({
     data: {
       active: true,
-      mode: tripay.konfigurasi().mode,
+      mode: config.mode,
       channels: kanal
         .filter((k) => k.active !== false)
         .map((k) => ({
@@ -2224,31 +2279,39 @@ app.get('/api/public/payment-channels', asyncHandler(async (_req, res) => {
 app.post('/api/tripay/callback', asyncHandler(async (req, res) => {
   const signature = req.get('X-Callback-Signature');
   const raw = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
-  if (!tripay.callbackSah(raw, signature)) {
-    throw new HttpError(403, 'Tanda tangan callback tidak sah.');
-  }
   const body = req.body ?? {};
   const reference = String(body.reference ?? '');
   const merchantRef = String(body.merchant_ref ?? '');
   const status = String(body.status ?? '').toUpperCase();
-  if (!reference && !merchantRef) throw new HttpError(400, 'Referensi transaksi kosong.');
+  if (!reference || !merchantRef) throw new HttpError(400, 'Referensi transaksi kosong.');
+  const found = await pool.query(
+    'select id, store_id, payment_reference from public.orders where order_number = $1', [merchantRef],
+  );
+  const order = found.rows[0];
+  if (found.rowCount !== 1 || (order.payment_reference && order.payment_reference !== reference)) {
+    throw new HttpError(403, 'Referensi callback tidak sah.');
+  }
+  const config = await loadIntegration(pool, order.store_id, 'tripay');
+  if (!tripay.callbackSah(raw, signature, config) || req.get('X-Callback-Event') !== 'payment_status') {
+    throw new HttpError(403, 'Tanda tangan atau event callback tidak sah.');
+  }
 
   if (status === 'PAID') {
     await pool.query(
       `update public.orders
           set payment_status = 'paid', paid_amount = total, settled_at = now()
-        where (payment_reference = $1 or order_number = $2)
+        where id = $1 and store_id = $2
           and payment_status <> 'paid'`,
-      [reference || null, merchantRef || null],
+      [order.id, order.store_id],
     );
   } else if (['EXPIRED', 'FAILED', 'REFUND'].includes(status)) {
     await pool.query(
       `update public.orders
           set order_status = 'canceled'
-        where (payment_reference = $1 or order_number = $2)
+        where id = $1 and store_id = $2
           and order_status = 'awaiting_confirmation'
           and payment_status <> 'paid'`,
-      [reference || null, merchantRef || null],
+      [order.id, order.store_id],
     );
   }
   res.json({ success: true });
@@ -2257,14 +2320,18 @@ app.post('/api/tripay/callback', asyncHandler(async (req, res) => {
 // Tarif ongkir KiriminAja. Selama tokennya kosong, jawabannya active:false dan
 // checkout tetap memakai keterangan "ongkir dihitung toko".
 app.post('/api/public/shipping-rates', asyncHandler(async (req, res) => {
-  if (!kiriminaja.kiriminAjaAktif()) {
+  const body = req.body ?? {};
+  const storeId = String(body.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  await assertStoreExists(storeId);
+  const config = await loadIntegration(pool, storeId, 'kiriminaja');
+  if (!kiriminaja.kiriminAjaAktif(config)) {
     res.json({ data: { active: false, results: [] } });
     return;
   }
-  const body = req.body ?? {};
   const angka = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const origin = angka(body.origin ?? process.env.KIRIMINAJA_ORIGIN_DISTRICT);
-  const subOrigin = angka(body.subdistrict_origin ?? process.env.KIRIMINAJA_ORIGIN_SUBDISTRICT);
+  const origin = angka(config.originDistrict);
+  const subOrigin = angka(config.originSubdistrict);
   const destination = angka(body.destination);
   const subDestination = angka(body.subdistrict_destination);
   const weight = Math.max(1, angka(body.weight));
@@ -2280,8 +2347,8 @@ app.post('/api/public/shipping-rates', asyncHandler(async (req, res) => {
     itemValue: angka(body.item_value),
     insurance: !!body.insurance,
     courier: Array.isArray(body.courier) ? body.courier : undefined,
-  });
-  res.json({ data: { active: true, mode: kiriminaja.konfigurasi().mode, results } });
+  }, config);
+  res.json({ data: { active: true, mode: config.mode, results } });
 }));
 
 // Katalog untuk storefront publik. Sama-sama tanpa requireUser: /api/query
@@ -3672,7 +3739,7 @@ function asyncHandler(fn) {
 function errorMiddleware(error, _req, res, _next) {
   if (error?.code === '22P02') {
   }
-  if (error instanceof HttpError) {
+  if (error instanceof HttpError || error instanceof IntegrationError) {
     return res.status(error.status).json({ error: error.message, code: error.code });
   }
   if (

@@ -75,6 +75,49 @@ export interface AdminSystemStats {
   };
 }
 
+export interface TripaySettings {
+  enabled: boolean;
+  mode: 'sandbox' | 'production';
+  merchantCode: string;
+  callbackUrl: string;
+  returnUrl: string;
+  hasApiKey: boolean;
+  hasPrivateKey: boolean;
+  apiKey?: string;
+  privateKey?: string;
+}
+
+export interface KiriminAjaSettings {
+  enabled: boolean;
+  mode: 'sandbox' | 'production';
+  originDistrict: string;
+  originSubdistrict: string;
+  hasToken: boolean;
+  token?: string;
+}
+
+export interface OneSenderSettings {
+  phoneNumber: string;
+  apiUrl: string;
+  hasApiKey: boolean;
+  apiKey?: string;
+}
+
+export interface MetaWhatsAppSettings {
+  wabaId: string;
+  phoneNumberId: string;
+  apiVersion: string;
+  hasAccessToken: boolean;
+  accessToken?: string;
+}
+
+export interface IntegrationSettings {
+  meta_whatsapp: MetaWhatsAppSettings;
+  onesender: OneSenderSettings;
+  tripay: TripaySettings;
+  kiriminaja: KiriminAjaSettings;
+}
+
 type AuthEvent = 'SIGNED_IN' | 'SIGNED_OUT' | 'TOKEN_REFRESHED' | 'INITIAL_SESSION';
 type AuthListener = (event: AuthEvent, session: AuthSession | null) => void | Promise<void>;
 
@@ -199,6 +242,27 @@ export class KasirApiClient {
   };
 
   admin = {
+    getIntegrations: async (): Promise<QueryResult<IntegrationSettings>> => {
+      const { data, error } = await requestJson<{ data: IntegrationSettings }>(
+        this.apiBaseUrl, '/api/admin/integrations', { method: 'GET' },
+      );
+      return { data: data?.data ?? null, error };
+    },
+
+    saveIntegration: async <P extends keyof IntegrationSettings>(provider: P, config: IntegrationSettings[P]): Promise<QueryResult<IntegrationSettings[P]>> => {
+      const { data, error } = await requestJson<{ data: IntegrationSettings[P] }>(
+        this.apiBaseUrl, `/api/admin/integrations/${provider}`, { method: 'PATCH', body: config },
+      );
+      return { data: data?.data ?? null, error };
+    },
+
+    testIntegration: async (provider: keyof IntegrationSettings): Promise<QueryResult<{ message: string }>> => {
+      const { data, error } = await requestJson<{ data: { message: string } }>(
+        this.apiBaseUrl, `/api/admin/integrations/${provider}/test`, { method: 'POST' },
+      );
+      return { data: data?.data ?? null, error };
+    },
+
     listUsers: async (): Promise<QueryResult<AdminUser[]>> => {
       const { data, error } = await requestJson<{ data: AdminUser[] }>(
         this.apiBaseUrl,

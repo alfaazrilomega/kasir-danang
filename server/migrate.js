@@ -15,6 +15,7 @@ const LOCK_KEY = 202605;
 const checkOnly = process.argv.includes('--check');
 
 const REQUIRED_COLUMNS = {
+  store_integrations: ['store_id', 'provider', 'config_encrypted', 'updated_at'],
   app_users: ['id', 'email', 'password_hash', 'created_at'],
   admin_audit_logs: [
     'id', 'store_id', 'actor_id', 'action', 'target_type',

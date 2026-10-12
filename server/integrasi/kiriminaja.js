@@ -21,19 +21,22 @@ const JALUR = {
   order: process.env.KIRIMINAJA_PATH_ORDER || '/api/mitra/v6/request_pickup',
 };
 
-function konfigurasi() {
+function konfigurasi(override) {
+  if (override) return { ...override, base: BASE[override.mode] };
   const mode = (process.env.KIRIMINAJA_MODE || 'sandbox').toLowerCase() === 'production' ? 'production' : 'sandbox';
   return { mode, base: BASE[mode], token: process.env.KIRIMINAJA_TOKEN || '' };
 }
 
-function kiriminAjaAktif() {
-  return !!konfigurasi().token;
+function kiriminAjaAktif(config) {
+  const c = konfigurasi(config);
+  return c.enabled !== false && !!c.token;
 }
 
-async function panggil(path, body) {
-  const c = konfigurasi();
+async function panggil(path, body, config) {
+  const c = konfigurasi(config);
   const res = await fetch(`${c.base}${path}`, {
     method: 'POST',
+    signal: AbortSignal.timeout(15000),
     headers: {
       Authorization: `Bearer ${c.token}`,
       Accept: 'application/json',
@@ -58,8 +61,8 @@ async function panggil(path, body) {
  * Tarif ongkir reguler/express. `origin`/`destination` = id kecamatan,
  * `subdistrict_*` = id kelurahan, berat dalam gram.
  */
-async function tarifOngkir({ origin, subdistrictOrigin, destination, subdistrictDestination, weight, itemValue, insurance = 0, courier }) {
-  if (!kiriminAjaAktif()) throw new Error('KiriminAja belum dikonfigurasi.');
+async function tarifOngkir({ origin, subdistrictOrigin, destination, subdistrictDestination, weight, itemValue, insurance = 0, courier }, config) {
+  if (!kiriminAjaAktif(config)) throw new Error('KiriminAja belum dikonfigurasi.');
   const json = await panggil(JALUR.ongkir, {
     origin,
     subdistrict_origin: subdistrictOrigin,
@@ -69,19 +72,24 @@ async function tarifOngkir({ origin, subdistrictOrigin, destination, subdistrict
     item_value: String(itemValue ?? 0),
     insurance: insurance ? 1 : 0,
     ...(courier?.length ? { courier } : {}),
-  });
+  }, config);
   return Array.isArray(json?.results) ? json.results : [];
 }
 
 /** Pencarian wilayah untuk mengubah alamat teks menjadi id kecamatan/kelurahan. */
-async function daftarKecamatan(kabupatenId) {
-  const json = await panggil(JALUR.kecamatan, { kabupaten_id: kabupatenId });
+async function daftarKecamatan(kabupatenId, config) {
+  const json = await panggil(JALUR.kecamatan, { kabupaten_id: kabupatenId }, config);
   return json?.data ?? [];
 }
 
-async function daftarKelurahan(kecamatanId) {
-  const json = await panggil(JALUR.kelurahan, { kecamatan_id: kecamatanId });
+async function daftarKelurahan(kecamatanId, config) {
+  const json = await panggil(JALUR.kelurahan, { kecamatan_id: kecamatanId }, config);
   return json?.data ?? [];
 }
 
 export { konfigurasi, kiriminAjaAktif, tarifOngkir, daftarKecamatan, daftarKelurahan, JALUR };
+
+export async function tesKoneksi(config) {
+  const result = await panggil('/api/mitra/province', {}, config);
+  if (result?.status !== true) throw new Error('Respons KiriminAja tidak valid.');
+}

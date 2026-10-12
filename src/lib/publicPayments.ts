@@ -3,7 +3,7 @@
 // Selama kunci Tripay belum dipasang, endpoint menjawab active:false dan
 // checkout hanya menampilkan metode manual (COD, transfer, QRIS statis).
 
-import { loadConfig } from '@/lib/config';
+import { loadConfig, PUBLIC_STORE_ID } from '@/lib/config';
 
 export interface KanalBayar {
   code: string;
@@ -27,7 +27,7 @@ const KOSONG: KanalBayarResponse = { active: false, mode: null, channels: [] };
 export async function fetchKanalBayar(): Promise<KanalBayarResponse> {
   try {
     const { apiBaseUrl } = loadConfig();
-    const res = await fetch(`${apiBaseUrl}/api/public/payment-channels`);
+    const res = await fetch(`${apiBaseUrl}/api/public/payment-channels?store_id=${encodeURIComponent(PUBLIC_STORE_ID)}`);
     if (!res.ok) return KOSONG;
     const json = (await res.json()) as { data?: KanalBayarResponse };
     return json.data ?? KOSONG;

@@ -33,6 +33,7 @@ import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { usePinLock } from '@/stores/pinLock';
 import { useUI } from '@/stores/ui';
 import { PinSetupModal } from '@/components/pin/PinSetupModal';
+import { IntegrationsPanel } from '@/components/settings/IntegrationsPanel';
 import { SalesChannelsPanel } from '@/components/settings/SalesChannelsPanel';
 import { loadConfig, resetConfig } from '@/lib/config';
 import { resetBackendClient, getBackendClient } from '@/lib/api';
@@ -153,6 +154,7 @@ const SECTIONS: { id: string; label: string; icon: typeof SettingsIcon }[] = [
   { id: 'online', label: 'Toko Online', icon: Globe },
   { id: 'loyalty', label: 'Loyalitas', icon: Coins },
   { id: 'channels', label: 'Channel', icon: StoreIcon },
+  { id: 'integrations', label: 'Integrasi API', icon: Link2 },
   { id: 'security', label: 'Keamanan', icon: ShieldCheck },
   { id: 'display', label: 'Tampilan', icon: Monitor },
   { id: 'connection', label: 'Koneksi', icon: Link2 },
@@ -171,7 +173,7 @@ export function Settings() {
     () =>
       SECTIONS.filter(
         (section) =>
-          canManageStore || !['business', 'receipt', 'loyalty'].includes(section.id),
+          canManageStore || !['business', 'receipt', 'loyalty', 'integrations'].includes(section.id),
       ),
     [canManageStore],
   );
@@ -1138,6 +1140,12 @@ export function Settings() {
             <SalesChannelsPanel storeId={profile?.store_id ?? ''} />
           </Section>
         </>
+      )}
+
+      {canManageStore && (
+        <Section id="integrations" icon={Link2} title="Integrasi API" description="Atur koneksi Tripay, KiriminAja, OneSender, dan WhatsApp resmi Meta untuk toko ini.">
+          <IntegrationsPanel key={profile?.store_id} />
+        </Section>
       )}
 
       <Section
