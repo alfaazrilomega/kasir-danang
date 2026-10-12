@@ -192,7 +192,7 @@ berikut indeksnya.
 - Satu hal yang berbeda dari Sejoli karena susunan data toko ini: di Sejoli satu produk mencakup semua variannya, di sini tiap varian adalah baris produk sendiri. Jadi link untuk satu varian diberlakukan untuk semua varian produk itu (SKU Induk yang sama).
 - Email affiliate (order baru, komisi masuk, komisi dibayar) memakai judul Sejoli dan dikirim lewat antrean di server VPS. Di Vercel antrean tidak berjalan.
 - Di luar cakupan butir ini karena tidak diminta: kupon affiliate, marketing kit, bonus editor, pixel per affiliate, papan peringkat, notifikasi WhatsApp/SMS, dan user group.
-- **Status per 11 Okt 2026: dibangun dan lolos uji di lokal, BELUM tayang.** Butir ini baru selesai setelah migrasi 047 diterapkan dan fiturnya terlihat bekerja di store.gnnkracing.id.
+- **Status per 13 Okt 2026: tayang di VPS (store.gnnkracing.id, rilis `2dfb451`). Program masih mati sampai admin menyalakannya di menu Affiliate > Pengaturan. Pertanyaan Q-1 sampai Q-9 sudah dikirim ke klien.** Riwayat: 11 Okt dibangun dan lolos uji di lokal. Butir ini baru selesai setelah migrasi 047 diterapkan dan fiturnya terlihat bekerja di store.gnnkracing.id.
 
 ---
 
