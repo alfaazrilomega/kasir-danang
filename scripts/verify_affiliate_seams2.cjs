@@ -175,23 +175,31 @@ const komisi = (orderId) => psql(`select coalesce(string_agg(trunc(base_amount) 
     if (!kunciTripay) {
       record('Callback Tripay: kunci lokal tersedia untuk menandatangani permintaan uji', false, 'TRIPAY_PRIVATE_KEY kosong di .env');
     } else {
-      const callback = (isi, tanda) =>
+      // Aturan callback sejak integrasi per toko (commit e3e9999): reference dan
+      // merchant_ref wajib, tanda tangan dari kunci toko pemilik pesanan, dan
+      // header X-Callback-Event payment_status.
+      const callback = (isi, tanda, peristiwa = 'payment_status') =>
         panggil('POST', '/api/tripay/callback', {
           body: isi,
-          headers: { 'X-Callback-Signature': tanda ?? crypto.createHmac('sha256', kunciTripay).update(JSON.stringify(isi)).digest('hex') },
+          headers: {
+            'X-Callback-Signature': tanda ?? crypto.createHmac('sha256', kunciTripay).update(JSON.stringify(isi)).digest('hex'),
+            ...(peristiwa ? { 'X-Callback-Event': peristiwa } : {}),
+          },
         });
+      const ref = (n) => `T-UJI-${CAP}-${n}`;
       const status = (id) => psql(`select order_status || '|' || payment_status from public.orders where id = '${id}'`);
       const oLunas = await A.pesan(toko, C, [{ product_id: P1.id, qty: 1 }], { cookie: kUmum.cookie });
-      const palsu = await callback({ reference: '', merchant_ref: oLunas.number, status: 'EXPIRED' }, 'f'.repeat(64));
-      record('Callback bertanda tangan salah ditolak 403 dan tidak mengubah pesanan atau komisi',
-        palsu.status === 403 && status(oLunas.id) === 'awaiting_confirmation|unpaid' && /:pending$/.test(komisi(oLunas.id)), `${palsu.status} ${status(oLunas.id)} ${komisi(oLunas.id)}`);
-      const lunas = await callback({ reference: '', merchant_ref: oLunas.number, status: 'PAID' });
+      const palsu = await callback({ reference: ref(1), merchant_ref: oLunas.number, status: 'EXPIRED' }, 'f'.repeat(64));
+      const tanpaPeristiwa = await callback({ reference: ref(1), merchant_ref: oLunas.number, status: 'EXPIRED' }, undefined, null);
+      record('Callback bertanda tangan salah, atau tanpa X-Callback-Event, ditolak 403 dan tidak mengubah pesanan atau komisi',
+        palsu.status === 403 && tanpaPeristiwa.status === 403 && status(oLunas.id) === 'awaiting_confirmation|unpaid' && /:pending$/.test(komisi(oLunas.id)), `${palsu.status} ${status(oLunas.id)} ${komisi(oLunas.id)}`);
+      const lunas = await callback({ reference: ref(1), merchant_ref: oLunas.number, status: 'PAID' });
       const setelahLunas = `${status(oLunas.id)} ${komisi(oLunas.id).split(':').pop()}`;
       await A.konfirmasi(admin, oLunas.id);
       record('Callback PAID: pesanan lunas, komisi tetap Order belum selesai sampai admin mengonfirmasi, lalu Belum dibayar (D-7)',
         lunas.status === 200 && setelahLunas === 'awaiting_confirmation|paid pending' && /:added$/.test(komisi(oLunas.id)), `${lunas.status}; ${setelahLunas} -> ${status(oLunas.id)} ${komisi(oLunas.id).split(':').pop()}`);
       const oLewat = await A.pesan(toko, C, [{ product_id: P1.id, qty: 1 }], { cookie: kUmum.cookie });
-      const lewat = await callback({ reference: '', merchant_ref: oLewat.number, status: 'EXPIRED' });
+      const lewat = await callback({ reference: ref(2), merchant_ref: oLewat.number, status: 'EXPIRED' });
       record('Callback EXPIRED: pesanan dibatalkan dan komisinya ikut Dibatalkan (AC-33)',
         lewat.status === 200 && status(oLewat.id) === 'canceled|unpaid' && /:cancelled$/.test(komisi(oLewat.id)), `${lewat.status}; ${status(oLewat.id)} ${komisi(oLewat.id)}`);
     }

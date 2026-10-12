@@ -38,7 +38,7 @@ Atribusi disimpan di cookie `gnnk_aff` yang ditandatangani HMAC dan hanya bisa d
 
 ## Feature design
 
-**Data model sketch** (migrasi `server/migrations/044_affiliate.sql`, aman diulang dengan `if not exists`):
+**Data model sketch** (migrasi `server/migrations/047_affiliate.sql`, aman diulang dengan `if not exists`):
 
 Kolom baru di tabel yang ada:
 
@@ -193,7 +193,7 @@ Halaman `/aff/*` adalah rute aplikasi yang memanggil dua endpoint publik lalu be
 
 Pendekatan: Tracer Bullet (tidak ada catatan pendekatan di repo, jadi dipakai irisan ujung ke ujung untuk pekerjaan produksi).
 
-1. Migrasi `044_affiliate.sql` lengkap (kolom, tabel, indeks, pemicu), daftar di `migrate.js`, kolom produk di `TABLES.products` dan tipe. Satisfies **AC-23**, **AC-32**, **AC-33** (dasar semua AC).
+1. Migrasi `047_affiliate.sql` lengkap (kolom, tabel, indeks, pemicu), daftar di `migrate.js`, kolom produk di `TABLES.products` dan tipe. Satisfies **AC-23**, **AC-32**, **AC-33** (dasar semua AC).
 2. Modul murni `server/affiliate/inti.js`: normalisasi pengaturan, cek berhak, tanda tangan dan baca cookie, hitung komisi per barang dan tier, pilih calon atribusi, buat kode. Diuji vitest lebih dulu. Satisfies **AC-6**, **AC-7**, **AC-8**, **AC-9**, **AC-16**, **AC-21**, **AC-22**, **AC-24**, **AC-26** sampai **AC-31**.
 3. Irisan tipis ujung ke ujung: pengaturan admin (GET, PUT), `GET /api/customer/affiliate` (kode otomatis), endpoint klik dengan cookie, atribusi dan komisi tier 1 di `POST /api/public/orders` di dalam savepoint, dashboard affiliate memakai data asli (ringkasan, order, komisi). Satisfies **AC-1**, **AC-3**, **AC-4**, **AC-5**, **AC-10**, **AC-13** sampai **AC-15**, **AC-17**, **AC-20**, **AC-25**, **AC-34**, **AC-47**, **AC-49**.
 4. Pembayaran: ringkasan per affiliate, `POST` bayar dengan kunci baris, pengeluaran, riwayat, bukti, aksi massal dua arah, daftar komisi admin dengan filter dan CSV, info affiliate di detail pesanan. Satisfies **AC-2**, **AC-35** sampai **AC-38**.
@@ -218,8 +218,9 @@ Pendekatan: Tracer Bullet (tidak ada catatan pendekatan di repo, jadi dipakai ir
 - Retur sebagian tidak mengurangi komisi (sama dengan Sejoli, Q-7).
 
 **Neutral**:
-- Migrasi 044 harus diterapkan di VPS, dan di Supabase bila toko Vercel tetap hidup (Q-8). Tanpa migrasi itu, membaca dan menyimpan produk gagal, karena kolom affiliasi produk sudah masuk daftar kolom yang dibaca server.
+- Migrasi 047 harus diterapkan di VPS, dan di Supabase bila toko Vercel tetap hidup (Q-8). Tanpa migrasi itu, membaca dan menyimpan produk gagal, karena kolom affiliasi produk sudah masuk daftar kolom yang dibaca server.
 - Router aplikasi mendapat dukungan rute awalan `/aff/*`.
+- Migrasi affiliate bernomor 047, bukan 044: nomor 044 sampai 046 sudah dipakai integrasi API per toko yang lebih dulu berjalan di VPS (commit `e3e9999`).
 - `public/kasir-config.js` kini memuat penyelamat cangkang lama, dan `index.html` membawa `data-cangkang="2"` (D-28). Berkas konfigurasi itu satu-satunya yang selalu diambil dari jaringan oleh aplikasi versi lama, jadi rilis berikutnya yang menambah alamat baru harus menaikkan angka penanda dan mendaftarkan alamatnya di sana. Tanpa itu pengunjung lama dilempar ke `/toko` pada kunjungan pertama setelah deploy.
 - Halaman pembuka link membedakan link yang salah (pesan Sejoli) dari gangguan sementara (pengunjung tetap diantar, D-29). Kode status baru dari endpoint klik atau undangan harus masuk salah satu dari dua kelompok itu.
 - Kirim undangan dan kirim ulang memegang kunci per affiliate di basis data (`pg_advisory_xact_lock`), email dikirim setelah transaksi selesai (D-30).
@@ -229,7 +230,7 @@ Pendekatan: Tracer Bullet (tidak ada catatan pendekatan di repo, jadi dipakai ir
 - [ ] Jawaban klien untuk Q-1 sampai Q-11 (besaran komisi, akses, cookie, kontak, pembayaran, undangan, retur, Vercel).
 - [ ] Kebijakan privasi toko menyebut affiliate sebagai penerima data bila kontak pembeli dinyalakan.
 - [ ] `/sync` menambahkan pola pemicu dan antrean affiliate ke `AGENTS.md` setelah fitur selesai.
-- [ ] Sebelum `git push`: terapkan migrasi 044 di Supabase atau matikan toko Vercel (Q-8). Push memicu deploy Vercel, dan tanpa 044 semua pembacaan produk lewat `/api/query` gagal karena kolom affiliasi sudah ada di daftar kolom produk.
+- [ ] Sebelum `git push`: terapkan migrasi 047 di Supabase atau matikan toko Vercel (Q-8). Push memicu deploy Vercel, dan tanpa 047 semua pembacaan produk lewat `/api/query` gagal karena kolom affiliasi sudah ada di daftar kolom produk.
 - [ ] LCP halaman produk 2,8 detik, di atas NFR-1, sama di versi yang tayang dan versi baru (DF-28). Calon tuas yang belum diuji: pemecahan berkas JS toko dan admin, dan meminta gambar utama begitu data produk tiba. Di luar butir 18, perlu dihargai terpisah.
 - [ ] Sebelum deploy yang menambah alamat baru: jalankan `scripts/verify_affiliate_stale_shell.cjs` dengan build commit yang sedang tayang sebagai build lama (TC-84).
 

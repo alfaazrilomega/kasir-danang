@@ -8,7 +8,7 @@ Membuktikan setiap kriteria penerimaan AC-1 sampai AC-69 dan NFR-1 sampai NFR-11
 
 ## 2. Cakupan
 
-**Masuk:** semua layar affiliate dan admin, endpoint affiliate, pemicu status, antrean email, migrasi 044.
+**Masuk:** semua layar affiliate dan admin, endpoint affiliate, pemicu status, antrean email, migrasi 047.
 
 **Keluar:** pengiriman email sungguhan ke kotak masuk (diuji sampai batas Mailketing dengan alamat uji yang dilewati, dan satu uji manual ke alamat milik tim), HP fisik.
 
@@ -33,7 +33,7 @@ Membuktikan setiap kriteria penerimaan AC-1 sampai AC-69 dan NFR-1 sampai NFR-11
 
 ## 5. Kriteria masuk dan keluar
 
-**Masuk:** migrasi 044 lolos di basis data lokal, `npm run typecheck` bersih.
+**Masuk:** migrasi 047 lolos di basis data lokal, `npm run typecheck` bersih.
 
 **Keluar:** setiap AC punya minimal satu TC lolos, regresi penuh `run_all_checks.cjs` hijau, tidak ada DF terbuka yang mematahkan AC, QC sub agen tanpa temuan berat, audit sambungan dua putaran berturut-turut bersih.
 
@@ -130,7 +130,7 @@ Membuktikan setiap kriteria penerimaan AC-1 sampai AC-69 dan NFR-1 sampai NFR-11
 | TC-92 | Callback Tripay | Permintaan bertanda tangan kunci lokal: tanda tangan salah 403. PAID: lunas, komisi tetap Order belum selesai sampai dikonfirmasi. EXPIRED: pesanan batal, komisi Dibatalkan | D-7, AC-33 | ya |
 | TC-93 | Data gagal dimuat | Satu permintaan diputus: tab dashboard affiliate dan tiap tab admin menampilkan "Data affiliate gagal dimuat. Coba lagi." dengan tombol 44 px, bukan kerangka tanpa akhir atau daftar kosong. Coba lagi memuat datanya. Rentang tanggal yang gagal tidak tampil sebagai "tidak ada data" | AL-1 | ya |
 | TC-89 | Server berzona UTC | Semua suite affiliate dijalankan terhadap API lokal dengan proses dan sesi basis data UTC: hasil sama dengan zona WIB | D-10, TC-78 | manual |
-| TC-90 | Migrasi dijalankan dua kali | `044_affiliate.sql` dijalankan dua kali berturut-turut di dalam satu transaksi yang dibatalkan: tanpa galat, jumlah objek tidak berubah | Spesifikasi 0001, langkah migrasi | manual |
+| TC-90 | Migrasi dijalankan dua kali | `047_affiliate.sql` dijalankan dua kali berturut-turut di dalam satu transaksi yang dibatalkan: tanpa galat, jumlah objek tidak berubah | Spesifikasi 0001, langkah migrasi | manual |
 
 ### Kualitas
 
@@ -266,6 +266,7 @@ Semua ditemukan dan diperbaiki di lokal pada 11 Okt 2026, sebelum tayang. "Audit
 | DF-50 | QC sub-agent C10 | Komponen dialog bersama tidak punya `role="dialog"`, dan tombol tutupnya 29 px tanpa nama untuk pembaca layar. Dipakai 25 layar admin, di luar fitur affiliate | `role="dialog"`, `aria-modal`, judul sebagai label, tombol Tutup 44 px | `verify_affiliate_seams2` | Selesai, perbaikan kecil di luar butir 18 |
 | DF-51 | QC sub-agent C11 | Admin tab Affiliate di HP menampilkan 96 member sekaligus, halaman setinggi 13.111 px | Daftar dibuka 30 per tahap dengan tombol Tampilkan lagi | `verify_affiliate_seams2` | Selesai |
 | DF-52 | QC sub-agent | Dashboard affiliate: galat server pada data induk menampilkan pesan mentah dari server | Jaringan putus dan galat 5xx memakai pesan AL-1, penolakan yang disengaja tetap memakai pesan server | `verify_affiliate_seams2` | Selesai |
+| DF-53 | Pemeriksaan sebelum deploy VPS | VPS menjalankan rilis `20261008-integrations` yang tidak ada di git (integrasi API per toko, OneSender, Meta WhatsApp, migrasi 044 sampai 046). Deploy commit affiliate apa adanya akan menghapus fitur itu dari produksi, dan nomor migrasi affiliate 044 bertabrakan | Kode rilis VPS disalin (18 berkas, MD5 cocok), digabung tiga arah sebagai commit `e3e9999`, migrasi affiliate dinomori ulang 047. Uji callback Tripay disesuaikan dengan aturan baru (reference wajib, header X-Callback-Event) | Regresi penuh, `verify_affiliate_seams2` | Selesai |
 | DF-28 | TC-61 | LCP halaman produk toko 2.764 sampai 2.840 ms (median 7 putaran, build produksi, gzip setingkat nginx VPS) di profil HP menengah, di atas NFR-1 2.500 ms. Build commit yang sedang tayang mengukur 2.796 ms pada kondisi yang sama, jadi sudah begitu sebelum fitur affiliate. Lewat link affiliate 2.764 ms, langsung 2.840 ms: lompatan `/aff` tidak menambah waktu. Fitur affiliate menambah berkas JS dari 1.788.005 menjadi 1.890.036 byte (+5,7%). Urutan yang memakan waktu: unduh JS selesai di 985 ms, JS selesai dijalankan di 1.880 ms, data produk tiba di 2.030 ms, gambar produk baru diminta di 2.380 ms (sekitar 330 ms merender halaman pada CPU yang diperlambat 4 kali), gambar selesai di 2.640 ms | Belum, dan belum ada tuas yang diuji. Calon tuas: pemecahan berkas JS toko dan admin supaya JS lebih cepat dijalankan, dan meminta gambar utama begitu data produk tiba. Di luar cakupan butir 18 | TC-61 | Terbuka, sudah ada sebelum fitur affiliate |
 
 ### Temuan di luar fitur affiliate (tidak diperbaiki di butir 18)

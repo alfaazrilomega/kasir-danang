@@ -4,7 +4,7 @@ Spesifikasi: `docs/specs/0001-program-affiliate/index.md`. PRD: `docs/02-prd.md`
 
 ## Aturan yang mudah rusak
 
-- Status komisi mengikuti `orders.order_status` lewat pemicu basis data `affiliate_sinkron_status()` (migrasi 044). Jalur baru yang mengubah status pesanan tidak perlu kode affiliate, tetapi arti status pesanan yang berubah harus ikut diubah di pemicu itu.
+- Status komisi mengikuti `orders.order_status` lewat pemicu basis data `affiliate_sinkron_status()` (migrasi 047). Jalur baru yang mengubah status pesanan tidak perlu kode affiliate, tetapi arti status pesanan yang berubah harus ikut diubah di pemicu itu.
 - Email affiliate lewat antrean `affiliate_outbox`, dikirim pekerja di `server/index.js` (`prosesOutbox`). Di Vercel pekerja tidak berjalan.
 - Atribusi dan komisi dibuat di dalam transaksi checkout, di dalam `savepoint affiliate`. Kegagalannya tidak boleh membatalkan pesanan.
 - Aturan per produk (link produk, syarat sudah membeli) berlaku per kelompok varian: `sqlKunciKelompok` di `layanan.js`, sama dengan `kunciKelompok` di `src/lib/publicCatalog.ts`.
