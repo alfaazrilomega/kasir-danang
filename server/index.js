@@ -8,6 +8,9 @@ import nodemailer from 'nodemailer';
 import pg from 'pg';
 import notificationsHandler from '../api/notifications.js';
 import { describePgError, isConnectionError } from './pgErrors.js';
+import { pasangRuteAffiliate } from './affiliate/rute.js';
+import { catatAtribusiPesanan, catatReferralDaftar } from './affiliate/layanan.js';
+import { prosesOutbox } from './affiliate/pekerja.js';
 
 loadEnvFile('.env');
 loadEnvFile('.env.local');
@@ -92,6 +95,7 @@ const TABLES = {
       'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
       'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
       'highlights', 'license_type', 'license_code', 'video_url',
+      'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission',
     ],
     tenantColumn: 'store_id',
   },
@@ -1212,6 +1216,7 @@ app.post('/api/customer/signup', asyncHandler(async (req, res) => {
   try {
     await client.query('begin');
     user = await createCustomerAccount(client, { storeId, email, passwordHash, name, phone });
+    await catatReferralAman(client, req, storeId, user.id, user.email);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback');
@@ -1293,6 +1298,7 @@ app.post('/api/customer/google', asyncHandler(async (req, res) => {
     try {
       await client.query('begin');
       user = await createCustomerAccount(client, { storeId, email, passwordHash, name, phone: '' });
+      await catatReferralAman(client, req, storeId, user.id, user.email);
       await client.query('commit');
     } catch (error) {
       await client.query('rollback');
@@ -2097,6 +2103,19 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         [item.id, orderId, item.product_id, item.name, item.size, item.qty, item.price, item.cost_price, item.note],
       );
     }
+    // Atribusi affiliate dan komisinya. Savepoint: kegagalan di sini tidak
+    // boleh membatalkan pesanan pembeli (NFR spesifikasi 0001).
+    await client.query('savepoint affiliate');
+    try {
+      await catatAtribusiPesanan(client, {
+        storeId, orderId, pembeliId: pembeli.id, items: orderItems, discount: 0,
+        cookieHeader: req.headers.cookie, rahasia: authSecret,
+      });
+      await client.query('release savepoint affiliate');
+    } catch (error) {
+      await client.query('rollback to savepoint affiliate');
+      console.error('[affiliate] atribusi pesanan gagal:', error.message);
+    }
     await client.query('commit');
   } catch (error) {
     await client.query('rollback');
@@ -2477,6 +2496,24 @@ app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
     if (ids.length > 500) throw new HttpError(400, 'Maksimal 500 pesanan sekali proses.');
     if (!ids.every(isUuidLike)) throw new HttpError(400, 'id pesanan tidak valid.');
     const hapus = req.body?.p_delete === true;
+    // Komisi affiliate ikut terhapus bersama pesanannya. Yang sudah dibayar
+    // adalah catatan uang keluar, jadi pesanannya hanya boleh dibatalkan.
+    if (hapus) {
+      const dibayar = await pool.query(
+        `select distinct o.order_number
+           from public.affiliate_commissions k join public.orders o on o.id = k.order_id
+          where k.store_id = $1 and k.order_id = any($2::uuid[]) and k.paid
+          order by 1 limit 5`,
+        [req.user.store_id, ids],
+      );
+      if (dibayar.rowCount) {
+        throw new HttpError(
+          409,
+          `Pesanan ${dibayar.rows.map((x) => x.order_number).join(', ')} punya komisi affiliate yang sudah dibayar, jadi tidak bisa dihapus. ` +
+            'Batalkan pesanannya, atau batalkan dulu pembayaran komisinya di menu Affiliate.',
+        );
+      }
+    }
     // Satu pemanggilan fungsi = satu transaksi: semua pesanan diproses atau
     // tidak sama sekali. Pesanan toko lain diabaikan lewat filter store_id.
     const result = await pool.query(
@@ -2567,6 +2604,27 @@ app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
   throw new HttpError(404, `RPC ${req.params.name} tidak tersedia.`);
 }));
 
+// Alamat toko untuk tautan di email affiliate. Sengaja dari konfigurasi, bukan
+// dari header permintaan: header bisa diisi pengirim dengan domain lain.
+const ASAL_TOKO = (process.env.PUBLIC_STORE_URL || 'https://store.gnnkracing.id').replace(/\/+$/, '');
+
+pasangRuteAffiliate(app, {
+  pool,
+  asyncHandler,
+  galat: buatHttpError,
+  requireUser,
+  requireRoles,
+  requireCustomer,
+  writeAdminAudit,
+  kirimEmail,
+  alamatUji,
+  verifyToken,
+  rahasia: authSecret,
+  clientIp: publicOrderClientIp,
+  idAktor: (user) => (isStorableActorId(user?.id) ? user.id : null),
+  asalToko: ASAL_TOKO,
+});
+
 app.all('/api/notifications', (req, res) => {
   void notificationsHandler(req, res);
 });
@@ -2596,6 +2654,19 @@ if (!DI_VERCEL) {
   app.listen(PORT, () => {
     console.log(`Kasir API listening on :${PORT}`);
   });
+  const jedaAntrean = Number(process.env.AFFILIATE_OUTBOX_INTERVAL_MS || 15000);
+  let antreanJalan = false;
+  setInterval(async () => {
+    if (antreanJalan) return;
+    antreanJalan = true;
+    try {
+      await prosesOutbox({ pool, kirimEmail, alamatUji, asalToko: ASAL_TOKO });
+    } catch (error) {
+      if (!isConnectionError(error)) console.error('[affiliate] antrean email gagal:', error.message);
+    } finally {
+      antreanJalan = false;
+    }
+  }, jedaAntrean).unref();
 }
 
 // Dipakai oleh api/[...path].js sebagai handler serverless.
@@ -3622,6 +3693,26 @@ function errorMiddleware(error, _req, res, _next) {
       ? 'Internal server error.'
       : error?.message ?? 'Internal server error.',
   });
+}
+
+/** Dipakai modul di luar berkas ini; deklarasi fungsi ter-hoist, kelasnya tidak. */
+function buatHttpError(status, message, code) {
+  return new HttpError(status, message, code);
+}
+
+/** Upline akun baru dari cookie affiliate atau undangan. Gagal di sini tidak menggagalkan pendaftaran. */
+async function catatReferralAman(client, req, storeId, userId, email) {
+  await client.query('savepoint referral');
+  try {
+    const c = await client.query('select id from public.customers where user_id = $1 and store_id = $2 limit 1', [userId, storeId]);
+    if (c.rows[0]) {
+      await catatReferralDaftar(client, { storeId, customerId: c.rows[0].id, email, cookieHeader: req.headers.cookie, rahasia: authSecret });
+    }
+    await client.query('release savepoint referral');
+  } catch (error) {
+    await client.query('rollback to savepoint referral');
+    console.error('[affiliate] referral daftar gagal:', error.message);
+  }
 }
 
 class HttpError extends Error {

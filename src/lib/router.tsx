@@ -73,6 +73,13 @@ export function Routes({ children }: { children: ReactNode }) {
       fallback = child;
       continue;
     }
+    // `/aff/*` cocok dengan `/aff` dan semua jalur di bawahnya; halamannya
+    // sendiri yang membaca sisa jalur dari location.pathname.
+    if (child.props.path.endsWith('/*')) {
+      const awalan = normalizePath(child.props.path.slice(0, -2));
+      if (current === awalan || current.startsWith(`${awalan}/`)) return <>{child.props.element}</>;
+      continue;
+    }
     if (normalizePath(child.props.path) === current) return <>{child.props.element}</>;
   }
 

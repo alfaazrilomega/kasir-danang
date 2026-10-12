@@ -145,8 +145,7 @@ aplikasi dibuka atau login.
 - Per 3 Okt belum ada ID yang diisi di produksi, jadi belum ada yang terlacak sampai client mengisinya.
 
 Bagian kedua baris 8.1, fitur afiliasi ("ketika member ada yang bisa tertentu mau
-jualan bisa dpatin komisi"), **ditunda atas instruksi user**: dikerjakan paling
-akhir, digabung dengan tugas afiliasi yang akan diberikan kemudian.
+jualan bisa dpatin komisi"), dikerjakan sebagai butir 18 di Gelombang 10.
 
 ## Gelombang 9 — Riwayat Transaksi: label kirim dan asal pesanan (spreadsheet 6,3 dan 6.4, 3 Okt)
 
@@ -175,6 +174,28 @@ berikut indeksnya.
 
 ---
 
+## Gelombang 10 — Program affiliate, disamakan dengan Sejoli (spreadsheet 8.1 dan pesan leader, 11 Okt)
+
+| # | Permintaan (kutipan) | Letak di aplikasi |
+|---|---|---|
+| 18 | Spreadsheet 8.1: "ketika member ada yang bisa tertentu mau jualan bisa dpatin komisi". Client: "SAMAKAN DENGAN SEJOLI". Leader, bagian Sejoli yang diminta: "analytics / share kode affiliate dashboard affiliate / komisi affiliate / referral / invitation email (token) / pengaturan affiliate (ada cookies token bertahan berapa lama)" | Toko online: `/toko/affiliate` (Ringkasan, Link, Order, Komisi, Jaringan, Undang, Rekening), menu Affiliate di `/toko/akun`, link `/aff/{KODE}`, tombol "Bagikan & dapat komisi" di halaman produk. Admin: menu Affiliate (Ringkasan, Komisi, Pembayaran, Affiliate, Pengaturan), bagian Affiliasi di formulir produk, blok Affiliate di detail pesanan |
+
+**Cara butir 18 dijalankan (11 Okt 2026):**
+- Tidak ada akses ke akun Sejoli client. Perilakunya diambil dari kode sumber Sejoli 1.14.7 (lisensi GPL v2, terbuka) dan dicatat baris per baris di [docs/sejoli-referensi.md](docs/sejoli-referensi.md). Kebutuhan lengkapnya di [docs/02-prd.md](docs/02-prd.md).
+- "member ada yang bisa tertentu": bawaan program adalah hanya member yang diizinkan admin (tab Affiliate, tombol Ubah). Admin bisa mengubahnya menjadi semua member.
+- **Analytics:** Klik, Lead, Sales, Omset, Komisi untuk hari ini, bulan ini, dan semua, grafik omset per hari dan per bulan, serta data akuisisi per sumber (parameter `utm_source` dan `utm_media` di link, seperti Sejoli). Admin punya ringkasan seluruh affiliate dengan rentang tanggal dan 10 produk teratas.
+- **Share kode dan dashboard:** tiap affiliate mendapat kode otomatis (huruf nama depan dan angka). Link seluruh toko `/aff/KODE`, link per produk `/aff/KODE/{id produk}`, tombol Salin dan WhatsApp. Pesan galat link memakai teks Sejoli.
+- **Komisi:** bertingkat sampai 5 tier, persen atau nilai tetap, bawaan toko ditambah komisi khusus per produk. Dasar komisi adalah nilai barang tanpa ongkir dan pajak. Status mengikuti Sejoli: Order belum selesai, Belum dibayar, Sudah dibayar, Dibatalkan, dan berubah sendiri mengikuti status pesanan dari jalur mana pun. Pembayaran per affiliate dengan bukti transfer, dan bisa dicatat sebagai pengeluaran "Komisi Affiliate" sehingga masuk Laba Rugi.
+- **Referral:** yang mendaftar lewat link atau undangan menjadi downline. Halaman Jaringan menampilkan pohonnya. "Kaitkan affiliasi" Sejoli (pembeli selalu milik affiliate pertamanya) ada sebagai pengaturan.
+- **Invitation email (token):** fitur ini TIDAK ADA di Sejoli versi mana pun yang diperiksa (1.5.4, 1.13.14, 1.14.7, dan add-on resminya), jadi dibangun baru mengikuti aturan link Sejoli: affiliate mengirim undangan ke satu email, penerima mendapat tautan bertoken yang berlaku sekian hari, membukanya sama dengan mengeklik link affiliate, dan mendaftar menjadikannya downline. Token disimpan sebagai sidik, bukan teks asli.
+- **Pengaturan (umur cookie):** Umur cookie dalam hari (0 berarti selamanya), General cookie, Kaitkan affiliasi, komisi bawaan, kedalaman jaringan, masa berlaku dan batas harian undangan, daftar platform, dan saklar tiap email. Umur cookie dijaga browser dan server.
+- Satu hal yang berbeda dari Sejoli karena susunan data toko ini: di Sejoli satu produk mencakup semua variannya, di sini tiap varian adalah baris produk sendiri. Jadi link untuk satu varian diberlakukan untuk semua varian produk itu (SKU Induk yang sama).
+- Email affiliate (order baru, komisi masuk, komisi dibayar) memakai judul Sejoli dan dikirim lewat antrean di server VPS. Di Vercel antrean tidak berjalan.
+- Di luar cakupan butir ini karena tidak diminta: kupon affiliate, marketing kit, bonus editor, pixel per affiliate, papan peringkat, notifikasi WhatsApp/SMS, dan user group.
+- **Status per 11 Okt 2026: dibangun dan lolos uji di lokal, BELUM tayang.** Butir ini baru selesai setelah migrasi 044 diterapkan dan fiturnya terlihat bekerja di store.gnnkracing.id.
+
+---
+
 ## Masih menunggu client
 
 | Hal | Yang ditunggu |
@@ -184,8 +205,8 @@ berikut indeksnya.
 | WhatsApp API resmi | Akun WhatsApp Business Cloud API milik client |
 | Pembayaran Tripay | Kunci produksi dan whitelist IP |
 | Katalog | Data SKU/varian baru berikut fotonya |
-| Domain store.gnnkracing.id | Per 3 Okt domain ini mengarah ke server lain (103.160.62.131) yang hanya menampilkan "Hello World", dan belum terpasang di proyek Vercel. Pixel butir 15 baru berjalan di domain itu setelah DNS-nya diarahkan ke Vercel |
-| Afiliasi (sisa 8.1) | Ditunda user, digabung tugas afiliasi berikutnya |
+| Domain store.gnnkracing.id | Selesai. Sejak 6 Okt 2026 domain ini mengarah ke VPS (45.92.158.108) dengan HTTPS. Toko di alamat ini dilayani VPS, bukan Vercel |
+| Afiliasi (butir 18) | Jawaban client untuk pertanyaan Q-1 sampai Q-11 di [docs/02-prd.md](docs/02-prd.md): besaran komisi, siapa yang boleh jadi affiliate, umur cookie, kontak pembeli, cara bayar, undangan, retur, nasib toko di Vercel. Sampai dijawab, dipakai usulan di kolom kanan tabel itu |
 
 ---
 

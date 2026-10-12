@@ -33,6 +33,9 @@ import { PublicLogin } from '@/pages/public/PublicLogin';
 import { PublicResetPassword } from '@/pages/public/PublicResetPassword';
 import { PublicKebijakanPrivasi, PublicSyaratKetentuan } from '@/pages/public/PublicKebijakan';
 import { PublicAccount } from '@/pages/public/PublicAccount';
+import { PublicAffiliate } from '@/pages/public/PublicAffiliate';
+import { AffiliateOpen } from '@/pages/public/AffiliateOpen';
+import { AffiliateAdmin } from '@/pages/AffiliateAdmin';
 import { useAuth } from '@/stores/auth';
 import { applyTheme, useUI } from '@/stores/ui';
 import { applyAccent } from '@/lib/accents';
@@ -102,6 +105,7 @@ export default function App() {
         <Route path="/reports" element={<ProtectedRoute><AdminLayout><Reports /></AdminLayout></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><AdminLayout><UsersPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><AdminLayout><Settings /></AdminLayout></ProtectedRoute>} />
+        <Route path="/affiliate" element={<ProtectedRoute><AdminLayout><AffiliateAdmin /></AdminLayout></ProtectedRoute>} />
         <Route path="/customer" element={<ProtectedRoute><AppShell><CustomerPortal /></AppShell></ProtectedRoute>} />
         <Route path="/toko" element={<PublicCatalog />} />
         <Route path="/toko/produk" element={<PublicProductDetail />} />
@@ -113,6 +117,8 @@ export default function App() {
         <Route path="/toko/kebijakan-privasi" element={<PublicKebijakanPrivasi />} />
         <Route path="/toko/syarat-ketentuan" element={<PublicSyaratKetentuan />} />
         <Route path="/toko/akun" element={<PublicAccount />} />
+        <Route path="/toko/affiliate" element={<PublicAffiliate />} />
+        <Route path="/aff/*" element={<AffiliateOpen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </PinLockGate>

@@ -28,6 +28,7 @@ const REQUIRED_COLUMNS = {
     'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
     'footer_links', 'chat_enabled',
     'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+    'affiliate_settings',
   ],
   profiles: ['id', 'store_id', 'full_name', 'email', 'role', 'avatar_url', 'created_at'],
   categories: ['id', 'store_id', 'name', 'icon', 'sort_order', 'created_at'],
@@ -38,6 +39,7 @@ const REQUIRED_COLUMNS = {
     'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
     'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
     'highlights', 'license_type', 'license_code', 'video_url',
+    'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission',
   ],
   product_reviews: [
     'id', 'store_id', 'product_id', 'order_id', 'customer_id', 'reviewer_name', 'rating',
@@ -55,6 +57,7 @@ const REQUIRED_COLUMNS = {
     'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
     'is_active', 'points', 'created_at', 'address', 'user_id', 'privacy_accepted_at',
     'address_province', 'address_city',
+    'affiliate_code', 'affiliate_access', 'referred_by', 'referred_at', 'referral_source', 'bank_info',
   ],
   promos: ['id', 'store_id', 'code', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'created_at'],
   flash_sales: ['id', 'store_id', 'name', 'starts_at', 'ends_at', 'is_active', 'created_at'],
@@ -74,6 +77,7 @@ const REQUIRED_COLUMNS = {
     'payment_channel', 'payment_reference', 'payment_url',
     'delivery_province', 'delivery_city',
     'marketplace_fee', 'net_settled', 'settlement_date', 'fee_detail',
+    'affiliate_id', 'affiliate_source', 'acquisition_source', 'acquisition_media',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',
@@ -139,6 +143,21 @@ const REQUIRED_COLUMNS = {
     'payment_method', 'shift_id', 'created_by', 'created_at',
     'purchase_id', 'purchase_cost_slot',
   ],
+  affiliate_clicks: ['id', 'store_id', 'affiliate_id', 'product_id', 'kind', 'source', 'media', 'visitor_hash', 'created_at'],
+  affiliate_payouts: [
+    'id', 'store_id', 'affiliate_id', 'amount', 'commission_count', 'paid_at', 'paid_by',
+    'note', 'proof_image', 'expense_id', 'created_at',
+  ],
+  affiliate_commissions: [
+    'id', 'store_id', 'order_id', 'order_item_id', 'product_id', 'affiliate_id', 'tier',
+    'base_amount', 'rate_type', 'rate_value', 'commission', 'status', 'paid', 'paid_at',
+    'payout_id', 'created_at', 'updated_at',
+  ],
+  affiliate_invitations: [
+    'id', 'store_id', 'affiliate_id', 'email', 'name', 'message', 'token_hash', 'status',
+    'sent_at', 'opened_at', 'expires_at', 'registered_customer_id', 'resend_count', 'last_error', 'created_at',
+  ],
+  affiliate_outbox: ['id', 'store_id', 'kind', 'ref_id', 'status', 'attempts', 'next_attempt_at', 'sent_at', 'last_error', 'created_at'],
   product_channel_mappings: [
     'id', 'store_id', 'product_id', 'channel_code', 'external_sku',
     'external_url', 'is_synced', 'last_synced_at', 'created_at',

@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Heart,
   MapPin,
+  Megaphone,
   MessageCircle,
   Minus,
   Play,
@@ -44,6 +45,7 @@ import { usePublicCart } from '@/stores/publicCart';
 import { useWishlist } from '@/stores/wishlist';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
+import { affiliateApi, linkAffiliate } from '@/lib/affiliate';
 
 const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 const PER_HALAMAN = 5;
@@ -171,6 +173,8 @@ export function PublicProductDetail() {
   const klikMasuk = useKlikMasuk();
   const me = useCustomer((s) => s.me);
   const favorit = useWishlist((s) => s.ids.includes(productId));
+  // Link affiliate produk ini, hanya untuk affiliate berhak atas produk ini (FR-14).
+  const [linkKomisi, setLinkKomisi] = useState<string | null>(null);
   const toggleFavorit = useWishlist((s) => s.toggle);
 
   useEffect(() => {
@@ -195,6 +199,22 @@ export function PublicProductDetail() {
   useEffect(() => {
     fetchPublicCatalog(PUBLIC_STORE_ID).then(setCatalog).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setLinkKomisi(null);
+    if (!token || !productId) return;
+    let hidup = true;
+    void (async () => {
+      const saya = await affiliateApi.me(token);
+      const kode = saya.data?.eligible ? saya.data.profile?.code : null;
+      if (!kode || !hidup) return;
+      const p = await affiliateApi.products(token, productId);
+      if (hidup && p.data?.[0]?.eligible) setLinkKomisi(linkAffiliate(window.location.origin, kode, productId));
+    })();
+    return () => {
+      hidup = false;
+    };
+  }, [token, productId]);
 
   // Sesi flash sale toko, tanpa cache supaya harganya segar tiap halaman dibuka.
   useEffect(() => {
@@ -510,6 +530,16 @@ export function PublicProductDetail() {
       }
     } catch {
       // Dibatalkan pengguna.
+    }
+  }
+
+  async function salinLinkKomisi() {
+    if (!linkKomisi) return;
+    try {
+      await navigator.clipboard.writeText(linkKomisi);
+      toast.success('Link affiliate produk ini disalin. Bagikan untuk dapat komisi.');
+    } catch {
+      toast.error('Gagal menyalin. Salin dari halaman Affiliate > Link.');
     }
   }
 
@@ -1077,6 +1107,16 @@ export function PublicProductDetail() {
                 <Heart size={20} className={favorit ? 'fill-rose-500' : ''} /> Suka
               </button>
             </div>
+            {linkKomisi && (
+              <button
+                type="button"
+                onClick={salinLinkKomisi}
+                data-bagikan-komisi
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 text-sm font-semibold text-brand-700 transition-colors duration-150 hover:bg-brand-100 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200"
+              >
+                <Megaphone size={16} /> Bagikan &amp; dapat komisi
+              </button>
+            )}
           </div>
 
           {/* ----- Info (HP) ----- */}
@@ -1115,6 +1155,16 @@ export function PublicProductDetail() {
             <a href="#ulasan-hp" className="flex items-center gap-1.5 text-xs">
               <Bintang nilai={rataRata} ukuran={12} /> {rataRata.toFixed(1)} ({formatNumber(jumlahUlasan)})
             </a>
+            {linkKomisi && (
+              <button
+                type="button"
+                onClick={salinLinkKomisi}
+                data-bagikan-komisi
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 text-sm font-semibold text-brand-700 transition-colors duration-150 hover:bg-brand-100 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200"
+              >
+                <Megaphone size={16} /> Bagikan &amp; dapat komisi
+              </button>
+            )}
           </div>
         </Blok>
 

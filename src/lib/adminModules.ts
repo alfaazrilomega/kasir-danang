@@ -21,6 +21,7 @@ import {
   Users,
   WalletCards,
   type LucideIcon,
+  Megaphone,
 } from 'lucide-react';
 import { canAccessRoute, hasCapability, type Capability } from '@/lib/roles';
 import type { UserRole } from '@/types';
@@ -41,6 +42,7 @@ export type AdminModuleKey =
   | 'returns'
   | 'feedback'
   | 'promos'
+  | 'affiliate'
   | 'expenses'
   | 'sales-report'
   | 'stock-report';
@@ -112,6 +114,7 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
       { key: 'returns', label: 'Retur Barang', icon: Undo2, route: '/returns', capability: 'useCashier', description: 'Retur barang berbasis nomor pemesanan.' },
       { key: 'feedback', label: 'Ulasan Produk', icon: MessageSquareText, route: '/feedback', description: 'Balas dan kelola ulasan pembeli toko online.' },
       { key: 'promos', label: 'Promo', icon: Percent, route: '/promos', description: 'Diskon, voucher, dan kampanye penjualan.' },
+      { key: 'affiliate', label: 'Affiliate', icon: Megaphone, route: '/affiliate', capability: 'manageStoreSettings', description: 'Program affiliate: link, komisi, pembayaran, dan pengaturan.' },
       { key: 'expenses', label: 'Pengeluaran', icon: WalletCards, route: '/expenses', capability: 'manageExpenses', description: 'Biaya operasional toko: sewa, gaji, listrik, dll.' },
     ],
   },

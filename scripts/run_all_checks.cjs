@@ -28,6 +28,13 @@ const SUITES = [
   'verify_label_kirim',
   'verify_kanal_riwayat',
   'verify_permintaan_client',
+  'verify_affiliate_rules',
+  'verify_affiliate_email',
+  'verify_affiliate_flow',
+  'verify_affiliate_invitation',
+  'verify_affiliate_isolation',
+  'verify_affiliate_seams',
+  'verify_affiliate_seams2',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

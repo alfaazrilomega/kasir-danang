@@ -285,6 +285,12 @@ export class KasirApiClient {
     return { data: data?.data ?? null, error };
   }
 
+  /** Endpoint khusus di luar /api/query dan /api/rpc, misalnya /api/admin/affiliate/... */
+  async request<T = unknown>(path: string, options: { method?: string; body?: unknown } = {}): Promise<QueryResult<T>> {
+    const { data, error } = await requestJson<{ data: T }>(this.apiBaseUrl, path, options);
+    return { data: data?.data ?? null, error };
+  }
+
   async health(): Promise<QueryResult<{ ok: boolean; database: string }>> {
     const { data, error } = await requestJson<{ ok: boolean; database: string }>(
       this.apiBaseUrl,

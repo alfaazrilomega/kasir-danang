@@ -54,9 +54,9 @@ function simpanToken(token: string | null) {
   }
 }
 
-type Hasil<T> = { data: T | null; error: string | null; status: number };
+export type Hasil<T> = { data: T | null; error: string | null; status: number };
 
-async function panggil<T>(
+export async function panggil<T>(
   path: string,
   opts: { method?: string; body?: unknown; token?: string | null } = {},
 ): Promise<Hasil<T>> {

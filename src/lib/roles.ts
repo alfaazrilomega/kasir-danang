@@ -17,6 +17,7 @@ import {
   Wallet,
   WalletCards,
   type LucideIcon,
+  Megaphone,
 } from 'lucide-react';
 import type { UserRole } from '@/types';
 
@@ -99,6 +100,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/suppliers', label: 'Supplier', icon: Truck },
   { to: '/purchases', label: 'Pembelian', icon: ShoppingBag },
   { to: '/promos', label: 'Promos', icon: Percent },
+  { to: '/affiliate', label: 'Affiliate', icon: Megaphone },
   { to: '/shifts', label: 'Shifts', icon: WalletCards },
   { to: '/stock-mutation', label: 'Mutasi Stok', icon: RotateCcw },
   { to: '/stock-opname', label: 'Stock Opname', icon: ClipboardCheck },
@@ -119,6 +121,7 @@ const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
   '/suppliers': ['managePurchasing'],
   '/purchases': ['managePurchasing'],
   '/promos': ['managePromos'],
+  '/affiliate': ['manageStoreSettings'],
   '/shifts': ['manageShifts'],
   '/stock-mutation': ['manageInventory'],
   '/stock-opname': ['manageInventory'],

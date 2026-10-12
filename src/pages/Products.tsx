@@ -57,6 +57,7 @@ import { formatBytes, resizeImageToDataUrl } from '@/lib/imageUpload';
 import { resolveFeatures } from '@/lib/industries';
 import { BarcodeLabelModal } from '@/components/products/BarcodeLabelModal';
 import { useNavigate } from '@/lib/router';
+import { TierKomisi } from '@/pages/AffiliateAdmin';
 import type {
   Category,
   Product,
@@ -110,6 +111,10 @@ interface FormState {
   license_type: string;
   license_code: string;
   video_url: string;
+  affiliate_enabled: boolean;
+  affiliate_if_bought: boolean;
+  /** Kosong = memakai komisi bawaan toko (FR-10). */
+  affiliate_commission: { type: 'percentage' | 'fixed'; value: number }[];
   /** Baris "Tambah SKU" yang belum disimpan; lihat VariantDraft. */
   newVariants: VariantDraft[];
 }
@@ -152,6 +157,9 @@ const emptyForm: FormState = {
   license_type: '',
   license_code: '',
   video_url: '',
+  affiliate_enabled: true,
+  affiliate_if_bought: false,
+  affiliate_commission: [],
   newVariants: [],
 };
 
@@ -403,6 +411,9 @@ export function Products() {
       license_type: p.license_type ?? '',
       license_code: p.license_code ?? '',
       video_url: p.video_url ?? '',
+      affiliate_enabled: p.affiliate_enabled ?? true,
+      affiliate_if_bought: p.affiliate_if_bought ?? false,
+      affiliate_commission: p.affiliate_commission ?? [],
       setComponents: (isiByParent.get(p.id) ?? []).map((c, i) => ({
         key: `isi-${c.id}-${i}`,
         component_product_id: c.component_product_id,
@@ -466,6 +477,9 @@ export function Products() {
       license_type: p.license_type ?? '',
       license_code: p.license_code ?? '',
       video_url: p.video_url ?? '',
+      affiliate_enabled: p.affiliate_enabled ?? true,
+      affiliate_if_bought: p.affiliate_if_bought ?? false,
+      affiliate_commission: p.affiliate_commission ?? [],
       // Kalau produk asalnya sebuah set, susunan isinya ikut tersalin — itu
       // bagian yang paling lama diketik ulang. Kalau bukan set, biarkan kosong.
       setComponents: isiSet.map((c, i) => ({
@@ -562,6 +576,21 @@ export function Products() {
 
     // Isi set yang belum dipilih barangnya cuma baris kosong; yang sudah
     // dipilih wajib punya takaran yang masuk akal.
+    for (const t of form.affiliate_commission) {
+      if (Number.isNaN(t.value)) {
+        toast.error('Besar komisi khusus wajib diisi, atau hapus tier itu.');
+        return;
+      }
+      if (t.type === 'percentage' && !(t.value >= 0 && t.value <= 100)) {
+        toast.error('Persentase komisi harus 0 sampai 100.');
+        return;
+      }
+      if (t.type === 'fixed' && !(t.value >= 0)) {
+        toast.error('Nilai tetap komisi tidak boleh minus.');
+        return;
+      }
+    }
+
     const isiSet = form.setComponents.filter((d) => d.component_product_id);
     if (isiSet.some((d) => Number(d.qty || 0) <= 0)) {
       toast.error('Takaran isi set harus lebih dari nol.');
@@ -668,6 +697,9 @@ export function Products() {
       license_type: form.license_type.trim() || null,
       license_code: form.license_code.trim() || null,
       video_url: form.video_url.trim() || null,
+      affiliate_enabled: form.affiliate_enabled,
+      affiliate_if_bought: form.affiliate_if_bought,
+      affiliate_commission: form.affiliate_commission.length ? form.affiliate_commission : null,
     };
     try {
       // writeThrough: kalau offline, perubahan masuk antrean dan dikirim saat
@@ -714,6 +746,9 @@ export function Products() {
           license_type: null,
           license_code: null,
           video_url: null,
+          affiliate_enabled: row.affiliate_enabled,
+          affiliate_if_bought: row.affiliate_if_bought,
+          affiliate_commission: row.affiliate_commission,
         };
         await writeThrough('products', 'upsert', variantRow);
         await db.products.put(variantRow);
@@ -1507,6 +1542,46 @@ function ProductForm({
               <Plus size={14} /> Tambah varian
             </Button>
           </div>
+        </section>
+
+        {/* Affiliasi (Sejoli, FR-10) =================================== */}
+        <section className="rounded-xl border border-ink-100 p-3 dark:border-ink-800" data-seksi-affiliasi>
+          <div className="text-xs font-semibold uppercase tracking-wide text-ink-500 mb-2">Affiliasi</div>
+          <div className="space-y-1">
+            <label className="flex min-h-[44px] items-center gap-2 text-sm sm:min-h-0">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-brand-600"
+                checked={form.affiliate_enabled}
+                onChange={(e) => setForm({ ...form, affiliate_enabled: e.target.checked })}
+              />
+              Aktifkan fitur affiliasi pada produk ini
+            </label>
+            <label className="flex min-h-[44px] items-center gap-2 text-sm sm:min-h-0">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-brand-600"
+                checked={form.affiliate_if_bought}
+                disabled={!form.affiliate_enabled}
+                onChange={(e) => setForm({ ...form, affiliate_if_bought: e.target.checked })}
+              />
+              Aktifkan fitur affiliasi jika user telah membeli produk ini
+            </label>
+          </div>
+          {form.affiliate_enabled && (
+            <div className="mt-3">
+              <div className="text-sm font-medium">Komisi khusus produk</div>
+              <p className="mb-2 text-xs text-ink-500">Kosongkan untuk memakai komisi bawaan di Pengaturan affiliate.</p>
+              <TierKomisi
+                tier={form.affiliate_commission}
+                kosongBoleh
+                onUbah={(t) => setForm({ ...form, affiliate_commission: t })}
+                onUbahSatu={(i, t) =>
+                  setForm({ ...form, affiliate_commission: form.affiliate_commission.map((x, j) => (j === i ? { ...x, ...t } : x)) })
+                }
+              />
+            </div>
+          )}
         </section>
 
         <label className="flex items-center gap-2 text-sm">

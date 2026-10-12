@@ -132,6 +132,10 @@ export interface Product {
   license_code?: string | null;
   /** Tautan video produk (YouTube atau file video) untuk galeri. */
   video_url?: string | null;
+  /** Program affiliate (Sejoli): produk boleh diaffiliasikan, syarat sudah membeli, komisi khusus per tier. */
+  affiliate_enabled?: boolean;
+  affiliate_if_bought?: boolean;
+  affiliate_commission?: { type: 'percentage' | 'fixed'; value: number }[] | null;
 }
 
 export interface Customer {
@@ -411,6 +415,8 @@ export type ExpenseCategory =
   | 'pajak_retribusi'
   /** Biaya jasa pihak ketiga saat mengirim uang ke supplier. */
   | 'biaya_admin'
+  /** Pembayaran komisi affiliate yang dicentang "catat sebagai pengeluaran". */
+  | 'komisi_affiliate'
   | 'lainnya';
 
 export type ExpensePaymentMethod = 'cash' | 'transfer' | 'card' | 'ewallet' | 'other';

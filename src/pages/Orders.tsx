@@ -63,6 +63,7 @@ import {
 } from '@/lib/receipt';
 import { skuMapFor } from '@/lib/printSupport';
 import { hitungStokSet } from '@/components/products/ProductSetSection';
+import { InfoAffiliatePesanan } from '@/components/orders/InfoAffiliatePesanan';
 
 type StatusFilter = 'all' | 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
 type PaymentFilter = 'all' | PaymentMethod;
@@ -1419,6 +1420,11 @@ export function Orders() {
                   </ul>
                 )}
               </div>
+            )}
+
+            {/* Hanya pesanan toko online yang bisa membawa affiliate. */}
+            {selected.sales_channel === 'website' && hasCapability(profile?.role, 'manageStoreSettings') && (
+              <InfoAffiliatePesanan orderId={selected.id} currency={store?.currency} />
             )}
 
             <div className="flex flex-wrap justify-end gap-2 border-t border-ink-100 pt-2 dark:border-ink-800">

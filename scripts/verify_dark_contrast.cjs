@@ -14,12 +14,19 @@
 // lantai keterbacaan, bukan sebagai sertifikasi AA.
 const { chromium } = require('playwright');
 const { BASE_URL, trackApi, loginAdmin } = require('./lib/harness.cjs');
+const A = require('./lib/affiliate.cjs');
 
 const RUTE_ADMIN = ['/', '/menu', '/orders', '/returns', '/customers', '/products', '/suppliers',
   '/purchases', '/promos', '/shifts', '/stock-mutation', '/stock-opname', '/feedback',
-  '/expenses', '/reports', '/users', '/settings'];
+  '/expenses', '/reports', '/users', '/settings',
+  '/affiliate', '/affiliate?tab=komisi', '/affiliate?tab=pembayaran', '/affiliate?tab=affiliate', '/affiliate?tab=pengaturan'];
 const RUTE_TOKO = ['/toko', '/toko/keranjang', '/toko/masuk', '/toko/lupa-sandi',
   '/toko/kebijakan-privasi', '/toko/syarat-ketentuan', '/toko/checkout', '/toko/selesai'];
+// Dashboard affiliate butuh sesi pembeli yang berhak. Sesi itu dipasang SETELAH
+// rute toko di atas selesai diukur, karena /toko/masuk langsung mengalihkan
+// pengguna yang sudah masuk dan halaman masuknya jadi tidak terukur.
+const RUTE_AFFILIATE = ['ringkasan', 'link', 'order', 'komisi', 'jaringan', 'undang', 'rekening']
+  .map((t) => '/toko/affiliate?tab=' + t);
 
 const PERIKSA = () => {
   const urai = (s) => {
@@ -93,6 +100,8 @@ const PERIKSA = () => {
   const page = await ctx.newPage();
   trackApi(page);
   const hasil = [];
+  let pulihkanAffiliate = null;
+  let bersihkanAffiliate = null;
   const record = (n, p, d) => {
     hasil.push({ n, p });
     console.log((p ? 'PASS  ' : 'FAIL  ') + n + (d ? ' — ' + d : ''));
@@ -101,7 +110,7 @@ const PERIKSA = () => {
   try {
     await loginAdmin(page, { theme: 'dark' });
 
-    for (const rute of [...RUTE_ADMIN, ...RUTE_TOKO]) {
+    const ukurRute = async (rute) => {
       const publik = rute.startsWith('/toko');
       // Navigasi kadang digugurkan saat halaman sebelumnya masih menyinkron
       // (net::ERR_ABORTED). Itu bukan cacat produk, jadi dicoba ulang.
@@ -125,11 +134,35 @@ const PERIKSA = () => {
         m.gagal.length + ' teks, mis. ' + m.gagal.slice(0, 3)
           .map((x) => x.rasio + ':1 "' + x.teks + '" ' + x.fg + ' di ' + x.bg + ' [' + x.kelas + ']')
           .join(' ; '));
-    }
+    };
+    for (const rute of [...RUTE_ADMIN, ...RUTE_TOKO]) await ukurRute(rute);
+
+    // Affiliate berisi data: satu pesanan selesai, satu undangan, satu downline.
+    const toko = A.idToko();
+    const admin = await A.tokenAdmin();
+    const asli = A.psql(`select affiliate_settings::text from public.stores where id = '${toko}'`);
+    pulihkanAffiliate = () => A.psql(`update public.stores set affiliate_settings = $j$${asli || '{}'}$j$::jsonb where id = '${toko}'`);
+    const cap = Date.now().toString().slice(-6);
+    // Dua akun uji (gelap, gelapb) beserta pesanan, komisi, klik, dan undangannya
+    // dihapus di akhir, supaya suite lain tidak membaca data uji affiliate.
+    bersihkanAffiliate = () => A.bersihkanUji(admin, `aff.gelap%.${cap}@contoh.id`);
+    await A.aturProgram(admin, { enabled: true, access_mode: 'approved', general_cookie: true, permanent: false });
+    const aff = await A.daftarPembeli(toko, cap, 'gelap');
+    await A.izinkan(admin, aff.id);
+    const klik = await A.klik(toko, await A.kodeAffiliate(aff.token), { source: 'fb', media: 'gelap' });
+    const pembeli = await A.daftarPembeli(toko, cap, 'gelapb', { cookie: klik.cookie });
+    const [produk] = A.produkUji(toko, 1);
+    const pesanan = await A.pesan(toko, pembeli, [{ product_id: produk.id, qty: 1 }], { cookie: klik.cookie });
+    await A.konfirmasi(admin, pesanan.id);
+    await A.panggil('POST', '/api/customer/affiliate/invitations', { token: aff.token, body: { email: `aff.undang.gelap.${cap}@contoh.id` } });
+    await page.evaluate((t) => localStorage.setItem('tokoku.customer.token.v1', t), aff.token);
+    for (const rute of RUTE_AFFILIATE) await ukurRute(rute);
   } catch (e) {
     console.log('ERROR: ' + e.message);
     record('Suite selesai tanpa galat', false, e.message.slice(0, 120));
   } finally {
+    if (bersihkanAffiliate) await bersihkanAffiliate().catch((e) => record('Data uji affiliate terhapus', false, e.message));
+    if (pulihkanAffiliate) pulihkanAffiliate();
     await browser.close();
   }
 
