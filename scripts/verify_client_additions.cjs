@@ -129,6 +129,18 @@ const record = (nama, ok, ket) => {
     await page.waitForTimeout(800);
 
     // ================= 3.3: kolom channel & no. pesanan di ekspor mutasi =================
+    //
+    // Halaman Mutasi Stok hanya menarik 1000 mutasi terbaru, dan pesanan uji suite
+    // lain dihapus saat bersih-bersih (ref_order_id ikut kosong). Jadi suite ini
+    // membuat sendiri satu penjualan Shopee beserta mutasinya, dihapus lagi di akhir.
+    const toko33 = psql("select id from public.stores order by created_at limit 1;").split(String.fromCharCode(10))[0].trim();
+    const pesanan33 = psql(`insert into public.orders (id, store_id, order_number, subtotal, tax, discount, total,
+            payment_method, payment_status, order_status, order_type, sales_channel, external_order_no, created_at)
+          values (gen_random_uuid(), '${toko33}', 'UJI-ORD-${CAP}-MUTASI', 10000, 0, 0, 10000,
+            'cash', 'paid', 'done', 'take_away', 'shopee', 'SHP${CAP}', now()) returning id;`).split(String.fromCharCode(10))[0].trim();
+    psql(`insert into public.stock_movements (store_id, product_id, type, qty_delta, ref_order_id, reason)
+          select '${toko33}', id, 'sale', -1, '${pesanan33}', 'Uji mutasi ${CAP}'
+            from public.products where store_id = '${toko33}' order by created_at limit 1;`);
     await page.goto(BASE + '/stock-mutation', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 3500, minWaitMs: 3000 });
     const dates33 = page.locator('input[type="date"]');
@@ -151,11 +163,12 @@ const record = (nama, ok, ket) => {
       record('Kolom Channel ada di berkas ekspor mutasi', /Channel/i.test(header), header.slice(0, 90));
       record('Kolom No. Pesanan Platform ada di berkas ekspor mutasi', /No\. Pesanan Platform/i.test(header));
       const baris = teks.trim().split(/\r?\n/).slice(2);
-      const adaChannelTerisi = baris.some((b) => {
+      const iChannel = header.split(';').findIndex((h) => h.replace(/"/g, '').trim() === 'Channel');
+      const adaChannelTerisi = iChannel >= 0 && baris.some((b) => {
         const kolom = b.split(';');
-        return kolom[7] && kolom[7].trim() && kolom[7].trim() !== '""';
+        return kolom[iChannel] && kolom[iChannel].trim() && kolom[iChannel].trim() !== '""';
       });
-      record('Setidaknya satu baris penjualan punya nilai Channel terisi', adaChannelTerisi);
+      record('Setidaknya satu baris penjualan punya nilai Channel terisi', adaChannelTerisi, `kolom ${iChannel}`);
     } else {
       record('Kolom Channel ada di berkas ekspor mutasi', false);
       record('Kolom No. Pesanan Platform ada di berkas ekspor mutasi', false);
@@ -431,6 +444,7 @@ const record = (nama, ok, ket) => {
       psql(`delete from public.products where sku like 'UJIKEL-%-${CAP}';`);
       psql(`delete from public.customers where name like '%Uji%${CAP}%' or phone = '0811${CAP}';`);
       psql(`delete from public.expenses where description like '%uji ${CAP}%';`);
+      psql(`delete from public.stock_movements where reason = 'Uji mutasi ${CAP}';`);
       psql(`delete from public.orders where order_number like 'UJI-ORD-${CAP}%';`);
     } catch (_) { /* biarkan */ }
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) { /* biarkan */ }
