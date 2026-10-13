@@ -97,6 +97,11 @@ flowchart TD
 | WF-13 | Pilihan periode ringkasan berlabel "Hari ini", "Bulan ini", "Semua" | "Sepanjang waktu" terlipat dua baris di HP karena tiga pilihan berbagi satu baris |
 | WF-14 | Keterangan di ubin angka boleh dua baris, tidak dipotong | Keterangan itu definisi angkanya (misalnya "Tanpa pesanan batal"). Terpotong, artinya hilang |
 | WF-15 | Halaman pembuka link menampilkan layar galat hanya untuk link yang memang salah (kode, produk, izin, undangan). Jaringan putus, galat server, dan batas laju meneruskan pengunjung ke produk, toko, atau formulir daftar tanpa layar galat | Halaman itu ada untuk mengantar pengunjung ke produk. Layar galat karena gangguan sementara menghilangkan penjualan (D-29) |
+| WF-16 | Kartu target bonus di Ringkasan affiliate, tepat di bawah ubin angka, dengan bilah kemajuan dan kalimat sisa target | Target bulanan adalah angka yang dikejar affiliate tiap hari; letaknya di layar pertama tab yang paling sering dibuka |
+| WF-17 | Bonus dan potongan di tab Komisi: ubin hanya muncul bila nilainya ada, daftarnya di bawah daftar komisi | Sebagian besar affiliate tidak pernah punya potongan; ubin Rp 0 hanya menambah gulir di HP |
+| WF-18 | Rincian bonus, potongan, dan yang ditransfer di admin Pembayaran ditulis sebagai baris kecil di bawah angka Belum dibayar, bukan kolom baru | Tabel 1.280 px sudah memenuhi wadahnya; kolom baru membuatnya terpotong |
+| WF-19 | Tarif affiliate dipilih dengan tombol Ikut bawaan, 5%, 10%, 15%, Manual; Manual membuka jenis dan besar tarif | Tiga tarif yang disebut klien sekali sentuh, tarif lain tetap bisa (AS-3) |
+| WF-20 | Undang affiliate adalah tombol di bilah cari tab Affiliate; daftar undangan admin di bawah daftar member | Mengundang dan mengubah akses member adalah pekerjaan yang sama: membuka akses affiliate |
 
 ## Pertanyaan
 

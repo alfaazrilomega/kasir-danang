@@ -43,17 +43,33 @@ export interface AffiliateMe {
     name: string;
     bank_info: string | null;
     upline_name: string | null;
+    /** Tarif yang berlaku untuk produk tanpa komisi khusus (D-31). */
+    commission: CommissionTier[];
   };
   settings?: {
     cookie_days: number;
     platforms: AffiliatePlatform[];
     invite_days: number;
+    /** 0 = tanpa batas harian (D-35). */
     invite_daily_limit: number;
-    show_buyer_contact: boolean;
-    show_downline_contact: boolean;
     downline_depth: number;
+    /** 0 = tanpa minimal pencairan (D-34). */
+    payout_minimum: number;
   };
   summary?: { today: AffiliateStat; month: AffiliateStat; all: AffiliateStat };
+  /** Kartu target bonus bulan ini, null bila bonus mati (D-38). */
+  target?: AffiliateTarget | null;
+}
+
+export interface AffiliateTarget {
+  bulan: string;
+  target: number;
+  omset: number;
+  sisa: number;
+  tercapai: boolean;
+  bonus_type: 'percentage' | 'fixed';
+  bonus_value: number;
+  bonus: number;
 }
 
 export interface AffiliateChartPoint {
@@ -93,9 +109,9 @@ export interface AffiliateOrderRow {
   order_number: string;
   created_at: string;
   buyer_name: string;
-  buyer_phone?: string | null;
-  buyer_email?: string | null;
   items_value: number;
+  /** Nilai retur pesanan ini; omset = items_value - returned_value (D-39). */
+  returned_value: number;
   status: AffiliateOrderStatus;
   commission: number;
 }
@@ -106,6 +122,35 @@ export interface CommissionTotals {
   paid: number;
 }
 
+/** Total di tab Komisi affiliate: komisi, bonus, dan potongan (D-36, D-38). */
+export interface AffiliateCommissionTotals extends CommissionTotals {
+  deductions: number;
+  bonus_unpaid: number;
+  bonus_running: number;
+}
+
+export interface AffiliateBonusRow {
+  id: string;
+  /** Hari pertama bulan, `YYYY-MM-DD`. */
+  month: string;
+  omset: number;
+  target: number;
+  amount: number;
+  status: 'berjalan' | 'added';
+  paid: boolean;
+  paid_at: string | null;
+}
+
+export interface AffiliateDeductionRow {
+  id: string;
+  kind: 'retur' | 'batal';
+  amount: number;
+  created_at: string;
+  /** Sudah dipotong dari sebuah pembayaran. */
+  settled: boolean;
+  order_number: string;
+}
+
 export interface AffiliateCommissionRow {
   id: string;
   created_at: string;
@@ -113,6 +158,8 @@ export interface AffiliateCommissionRow {
   product_name: string;
   tier: number;
   commission: number;
+  /** Komisi sebelum dipotong retur (D-36). */
+  commission_original: number;
   status: CommissionStatus;
   paid: boolean;
   paid_at: string | null;
@@ -125,8 +172,6 @@ export interface NetworkNode {
   joined_at: string;
   downline_count: number;
   depth: number;
-  email?: string | null;
-  phone?: string | null;
 }
 
 export interface AffiliateNetwork {
@@ -164,10 +209,13 @@ export interface AffiliateSettings {
   commission: CommissionTier[];
   downline_depth: number;
   upline_depth: number;
-  show_downline_contact: boolean;
-  show_buyer_contact: boolean;
   invite_days: number;
   invite_daily_limit: number;
+  payout_minimum: number;
+  bonus_enabled: boolean;
+  bonus_target: number;
+  bonus_type: 'percentage' | 'fixed';
+  bonus_value: number;
   platforms: string;
   email_new_order: boolean;
   email_commission: boolean;
@@ -220,6 +268,12 @@ export interface PayoutSummaryRow {
   pending: number;
   unpaid: number;
   paid: number;
+  bonus: number;
+  bonus_running: number;
+  deductions: number;
+  /** Yang akan ditransfer: unpaid + bonus - deductions (D-40). */
+  net: number;
+  below_minimum: boolean;
 }
 
 export interface PayoutHistoryRow {
@@ -232,6 +286,14 @@ export interface PayoutHistoryRow {
   note: string | null;
   has_proof: boolean;
   expense_id: string | null;
+  commission_total: number;
+  bonus_total: number;
+  deduction_total: number;
+}
+
+export interface AdminInvitationRow extends InvitationRow {
+  commission: CommissionTier[] | null;
+  registered_name: string | null;
 }
 
 export interface AdminMemberRow {
@@ -244,6 +306,8 @@ export interface AdminMemberRow {
   eligible: boolean;
   upline_id: string | null;
   upline_name: string | null;
+  /** Tarif khusus affiliate ini, null = ikut bawaan toko (D-31). */
+  commission: CommissionTier[] | null;
   downline_count: number;
   clicks: number;
   sales: number;
@@ -276,6 +340,18 @@ export const LABEL_AKSES: Record<AffiliateAccess, string> = {
   blocked: 'Diblokir',
 };
 
+/** Tarif ringkas untuk layar: "15%" atau "Rp 5.000 per barang". */
+export function teksTarif(tier: CommissionTier[] | null | undefined): string | null {
+  const t = tier?.[0];
+  if (!t) return null;
+  return t.type === 'fixed'
+    ? `Rp ${new Intl.NumberFormat('id-ID').format(t.value)} per barang`
+    : `${new Intl.NumberFormat('id-ID').format(t.value)}%`;
+}
+
+/** Pilihan cepat tarif affiliate (Q-1, AS-3). */
+export const PRESET_TARIF = [5, 10, 15] as const;
+
 /** Link affiliate seluruh toko atau satu produk, dengan parameter akuisisi bila diisi. */
 export function linkAffiliate(origin: string, code: string, productId?: string | null, param?: { source?: string; media?: string }): string {
   const path = productId ? `/aff/${encodeURIComponent(code)}/${encodeURIComponent(productId)}` : `/aff/${encodeURIComponent(code)}`;
@@ -298,7 +374,10 @@ export const affiliateApi = {
     panggil<AffiliateProduct[]>(`/api/customer/affiliate/products${id ? `?id=${encodeURIComponent(id)}` : ''}`, { token }),
   orders: (token: string, r: RentangTanggal = {}) => panggil<AffiliateOrderRow[]>(`/api/customer/affiliate/orders${qs({ ...r })}`, { token }),
   commissions: (token: string, r: RentangTanggal = {}) =>
-    panggil<{ totals: CommissionTotals; rows: AffiliateCommissionRow[] }>(`/api/customer/affiliate/commissions${qs({ ...r })}`, { token }),
+    panggil<{ totals: AffiliateCommissionTotals; rows: AffiliateCommissionRow[]; bonuses: AffiliateBonusRow[]; deductions: AffiliateDeductionRow[] }>(
+      `/api/customer/affiliate/commissions${qs({ ...r })}`,
+      { token },
+    ),
   network: (token: string) => panggil<AffiliateNetwork>('/api/customer/affiliate/network', { token }),
   invitations: (token: string) => panggil<AffiliateInvitations>('/api/customer/affiliate/invitations', { token }),
   invite: (token: string, body: { email: string; name?: string; message?: string }) =>
@@ -343,13 +422,18 @@ export const affiliateAdminApi = {
     getBackendClient().request<{ updated: number }>('/api/admin/affiliate/commissions/bulk', { method: 'POST', body: { ids, action } }),
   payoutSummary: (r: RentangTanggal) => getBackendClient().request<PayoutSummaryRow[]>(`/api/admin/affiliate/payouts/summary${qs({ ...r })}`),
   payoutHistory: () => getBackendClient().request<PayoutHistoryRow[]>('/api/admin/affiliate/payouts'),
-  pay: (body: { affiliate_id: string; from?: string; to?: string; note?: string; proof_image?: string | null; record_expense: boolean }) =>
+  pay: (body: { affiliate_id: string; from?: string; to?: string; note?: string; proof_image?: string | null; record_expense: boolean; abaikan_minimal?: boolean }) =>
     getBackendClient().request<PayoutHistoryRow>('/api/admin/affiliate/payouts', { method: 'POST', body }),
   payoutProof: (id: string) => getBackendClient().request<{ proof_image: string | null }>(`/api/admin/affiliate/payouts/${encodeURIComponent(id)}/proof`),
   members: (f: { q?: string; access?: string }) => getBackendClient().request<AdminMemberRow[]>(`/api/admin/affiliate/members${qs({ ...f })}`),
-  updateMember: (id: string, body: Partial<{ access: AffiliateAccess; code: string; referred_by: string | null }>) =>
+  updateMember: (id: string, body: Partial<{ access: AffiliateAccess; code: string; referred_by: string | null; commission: CommissionTier[] | null }>) =>
     getBackendClient().request<AdminMemberRow>(`/api/admin/affiliate/members/${encodeURIComponent(id)}`, { method: 'PATCH', body }),
   order: (id: string) => getBackendClient().request<AdminOrderAffiliate>(`/api/admin/affiliate/order/${encodeURIComponent(id)}`),
+  invitations: () => getBackendClient().request<AdminInvitationRow[]>('/api/admin/affiliate/invitations'),
+  invite: (body: { email: string; name?: string; message?: string; commission: CommissionTier[] | null }) =>
+    getBackendClient().request<AdminInvitationRow>('/api/admin/affiliate/invitations', { method: 'POST', body }),
+  resendInvite: (id: string) =>
+    getBackendClient().request<AdminInvitationRow>(`/api/admin/affiliate/invitations/${encodeURIComponent(id)}/resend`, { method: 'POST', body: {} }),
   memberNetwork: (id: string) =>
     getBackendClient().request<{ uplines: { id: string; name: string; depth: number }[]; nodes: NetworkNode[] }>(
       `/api/admin/affiliate/members/${encodeURIComponent(id)}/network`,

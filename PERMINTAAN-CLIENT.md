@@ -193,6 +193,16 @@ berikut indeksnya.
 - Email affiliate (order baru, komisi masuk, komisi dibayar) memakai judul Sejoli dan dikirim lewat antrean di server VPS. Di Vercel antrean tidak berjalan.
 - Di luar cakupan butir ini karena tidak diminta: kupon affiliate, marketing kit, bonus editor, pixel per affiliate, papan peringkat, notifikasi WhatsApp/SMS, dan user group.
 - **Status per 13 Okt 2026: tayang di VPS (store.gnnkracing.id, rilis `2dfb451`). Program masih mati sampai admin menyalakannya di menu Affiliate > Pengaturan. Pertanyaan Q-1 sampai Q-9 sudah dikirim ke klien.** Riwayat: 11 Okt dibangun dan lolos uji di lokal. Butir ini baru selesai setelah migrasi 047 diterapkan dan fiturnya terlihat bekerja di store.gnnkracing.id.
+- **Jawaban klien 13 Okt 2026 (PRD bagian 14, D-31 sampai D-40), dibangun di lokal, BELUM tayang:**
+  - Q-1 tarif: tiap affiliate satu tarif 5%, 10%, 15%, atau manual, diatur admin saat mengundang atau mengubah member. Hanya affiliate yang membawa penjualan yang mendapat komisi.
+  - Q-2 akses: hanya lewat admin, termasuk undangan khusus dari admin yang langsung membuka akses affiliate. Undangan dari affiliate ke temannya hanya membentuk jaringan.
+  - Q-4 kontak pembeli dan downline: tidak pernah terlihat affiliate, hanya admin.
+  - Q-5 minimal pencairan: diatur admin; di bawah minimal admin tetap bisa membayar setelah mengonfirmasi.
+  - Q-6 undangan: berlaku 7 hari, tanpa batas harian.
+  - Q-7 retur: memotong komisi; komisi yang sudah ditransfer dipotong dari pembayaran berikutnya.
+  - Q-9 bonus target bulanan: target (bawaan Rp 5.000.000) dan besar bonus (persen omset atau rupiah) diatur admin.
+  - Belum dijawab: Q-3 umur cookie (dipakai 30 hari) dan Q-8 nasib toko Vercel (push ke GitHub ditahan).
+  - Ini pekerjaan baru di luar cakupan awal butir 18 (enam bagian Sejoli), kecuali Q-4 dan Q-6 yang hanya pengaturan.
 
 ---
 

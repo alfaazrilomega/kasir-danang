@@ -42,7 +42,7 @@ const q = (token, body) => panggil('POST', '/api/query', { token, body: { column
   try {
     const dasar = {
       enabled: true, access_mode: 'approved', cookie_days: 30, general_cookie: true, permanent: false,
-      commission: [{ type: 'percentage', value: 10 }], show_buyer_contact: false, show_downline_contact: false,
+      commission: [{ type: 'percentage', value: 10 }], 
     };
     await A.aturProgram(admin, dasar);
     const Af = await A.daftarPembeli(toko, CAP, 'a');
@@ -261,7 +261,6 @@ const q = (token, body) => panggil('POST', '/api/query', { token, body: { column
     record('Setelah masuk, pengguna tiba di tab yang dituju tautan (Komisi) (AC-64)', new URL(sesi.url()).searchParams.get('tab') === 'komisi' && (await sesi.locator('[data-total-komisi]').count()) === 1, sesi.url());
 
     // ---------- 12. Layar sempit dengan nilai terpanjang ----------
-    await A.aturProgram(admin, { show_buyer_contact: true, show_downline_contact: true });
     const namaPanjang = `Muhammad Fathurrahman Al Ghifari Kusumawardhana Putra Wijayakusuma Adiningrat Suryodiningrat Hadikusumo ${CAP}`.slice(0, 118);
     const L = await A.daftarPembeli(toko, CAP, 'panjang', { name: namaPanjang });
     await A.izinkan(admin, L.id);

@@ -4,7 +4,7 @@ Produk: Toko online GNNK Racing · Versi 0.1 · 11 Okt 2026 · Status: draft · 
 
 ## 1. Tujuan
 
-Membuktikan setiap kriteria penerimaan AC-1 sampai AC-69 dan NFR-1 sampai NFR-11 untuk rilis pertama Program Affiliate (irisan 1 dan 2), sebelum dipasang di VPS.
+Membuktikan setiap kriteria penerimaan AC-1 sampai AC-84 dan NFR-1 sampai NFR-11 untuk rilis pertama Program Affiliate (irisan 1 dan 2), sebelum dipasang di VPS.
 
 ## 2. Cakupan
 
@@ -129,6 +129,20 @@ Membuktikan setiap kriteria penerimaan AC-1 sampai AC-69 dan NFR-1 sampai NFR-11
 | TC-91 | Kedalaman jaringan di admin | Rantai tiga upline: kedalaman upline 1 menampilkan satu, kedalaman 2 dua. Downline 1 lalu 2 tingkat | AC-69 | ya |
 | TC-92 | Callback Tripay | Permintaan bertanda tangan kunci lokal: tanda tangan salah 403. PAID: lunas, komisi tetap Order belum selesai sampai dikonfirmasi. EXPIRED: pesanan batal, komisi Dibatalkan | D-7, AC-33 | ya |
 | TC-93 | Data gagal dimuat | Satu permintaan diputus: tab dashboard affiliate dan tiap tab admin menampilkan "Data affiliate gagal dimuat. Coba lagi." dengan tombol 44 px, bukan kerangka tanpa akhir atau daftar kosong. Coba lagi memuat datanya. Rentang tanggal yang gagal tidak tampil sebagai "tidak ada data" | AL-1 | ya |
+| TC-94 | Tarif per affiliate | Affiliate 15%: produk biasa 15%, produk berkomisi khusus Rp 5.000 tetap Rp 5.000, affiliate tanpa tarif 10%. Dua tier untuk satu affiliate ditolak | AC-70 | ya, `verify_affiliate_klien.cjs` |
+| TC-95 | Undangan khusus admin | Undangan admin bertarif 10%: membuka tautan tanpa cookie, mendaftar menjadi Diizinkan 10% tanpa upline. Email yang sama dan email anggota ditolak 409. Mendaftar tanpa membuka tautan juga Diizinkan | AC-71, AC-72 | ya |
+| TC-96 | Undangan affiliate tetap jaringan | Teman yang diundang affiliate menjadi downline, aksesnya Ikut pengaturan, dashboard menolaknya | AC-73 | ya |
+| TC-97 | Kontak terkunci | Pengaturan tersimpan dengan saklar kontak menyala: order dan jaringan affiliate tanpa HP dan email | AC-74 | ya |
+| TC-98 | Minimal pencairan | Minimal di atas saldo: ringkasan menandai, Bayar tanpa konfirmasi 409, dengan konfirmasi 200 | AC-75 | ya |
+| TC-99 | Undangan tanpa batas | Batas 0: undangan ke-22 di hari yang sama diterima | AC-76 | ya |
+| TC-100 | Retur memotong komisi | Retur 1 dari 2: komisi separuh; retur kedua: 0, baris membawa komisi awal | AC-77 | ya |
+| TC-101 | Potongan dari pembayaran berikutnya | Retur sesudah dibayar: potongan separuh; pembayaran berikutnya mentransfer selisihnya, pengeluaran sama, potongan terpakai | AC-78 | ya |
+| TC-102 | Batal sesudah dibayar | Potongan batal sebesar komisi; selesai lagi: potongan hilang | AC-79 | ya |
+| TC-103 | Potongan menutup komisi | Komisi lebih kecil atau sama dengan potongan: Bayar 409, tidak ada yang berubah | AC-80 | ya |
+| TC-104 | Bonus target | Omset bulan ini lewat target: bonus berjalan dan kartu target; retur menurunkan omset: bonus hilang. Bonus bulan lalu: Belum dibayar, ikut dibayar, tidak berubah sesudahnya | AC-81, AC-82 | ya |
+| TC-105 | Omset bersih retur | Omset ringkasan affiliate dan admin sama dengan pesanan Selesai dikurangi retur menurut SQL | AC-83 | ya |
+| TC-106 | Batal bayar melepas bonus dan potongan | Seluruh pembayaran dibatalkan: bonus Belum dibayar lagi, potongan menunggu lagi | AC-84 | ya |
+| TC-107 | Pemicu retur dan batal di basis data | Transaksi yang dibatalkan: retur 1/2 dan 2/2, potongan retur, potongan batal, selesai lagi, retur dihapus | AC-77, AC-78, AC-79 | manual, SQL |
 | TC-89 | Server berzona UTC | Semua suite affiliate dijalankan terhadap API lokal dengan proses dan sesi basis data UTC: hasil sama dengan zona WIB | D-10, TC-78 | manual |
 | TC-90 | Migrasi dijalankan dua kali | `047_affiliate.sql` dijalankan dua kali berturut-turut di dalam satu transaksi yang dibatalkan: tanpa galat, jumlah objek tidak berubah | Spesifikasi 0001, langkah migrasi | manual |
 
@@ -208,6 +222,21 @@ Membuktikan setiap kriteria penerimaan AC-1 sampai AC-69 dan NFR-1 sampai NFR-11
 | AC-67 | TC-85 |
 | AC-68 | TC-88 |
 | AC-69 | TC-91 |
+| AC-70 | TC-94 |
+| AC-71 | TC-95 |
+| AC-72 | TC-95 |
+| AC-73 | TC-96 |
+| AC-74 | TC-97 |
+| AC-75 | TC-98 |
+| AC-76 | TC-99 |
+| AC-77 | TC-100, TC-107 |
+| AC-78 | TC-101, TC-107 |
+| AC-79 | TC-102, TC-107 |
+| AC-80 | TC-103 |
+| AC-81 | TC-104 |
+| AC-82 | TC-104 |
+| AC-83 | TC-105 |
+| AC-84 | TC-106 |
 
 ## 8. Cacat
 
@@ -267,6 +296,13 @@ Semua ditemukan dan diperbaiki di lokal pada 11 Okt 2026, sebelum tayang. "Audit
 | DF-51 | QC sub-agent C11 | Admin tab Affiliate di HP menampilkan 96 member sekaligus, halaman setinggi 13.111 px | Daftar dibuka 30 per tahap dengan tombol Tampilkan lagi | `verify_affiliate_seams2` | Selesai |
 | DF-52 | QC sub-agent | Dashboard affiliate: galat server pada data induk menampilkan pesan mentah dari server | Jaringan putus dan galat 5xx memakai pesan AL-1, penolakan yang disengaja tetap memakai pesan server | `verify_affiliate_seams2` | Selesai |
 | DF-53 | Pemeriksaan sebelum deploy VPS | VPS menjalankan rilis `20261008-integrations` yang tidak ada di git (integrasi API per toko, OneSender, Meta WhatsApp, migrasi 044 sampai 046). Deploy commit affiliate apa adanya akan menghapus fitur itu dari produksi, dan nomor migrasi affiliate 044 bertabrakan | Kode rilis VPS disalin (18 berkas, MD5 cocok), digabung tiga arah sebagai commit `e3e9999`, migrasi affiliate dinomori ulang 047. Uji callback Tripay disesuaikan dengan aturan baru (reference wajib, header X-Callback-Event) | Regresi penuh, `verify_affiliate_seams2` | Selesai |
+| DF-54 | QC sub-agent QC3 D1 | "Sudah dibayar" (dashboard affiliate dan admin) menjumlahkan komisi berstatus dibayar, termasuk bagian yang kemudian dipotong dari pembayaran berikutnya: Rp 716.250 padahal yang ditransfer Rp 573.000 | Sudah dibayar = komisi dibayar dikurangi potongan yang terpakai, ditambah bonus dibayar (dashboard: jumlah pembayaran). Komisi di ringkasan affiliate juga dikurangi potongan retur | `verify_affiliate_klien` | Selesai |
+| DF-55 | QC3 D2 | Pilihan Jenis bonus di HP 393 memotong teks ("Persen dari om") | Selebar kolom di HP | Mata sendiri: lebar 333 dari isi 333 px | Selesai |
+| DF-56 | QC3 D3 | Daftar undangan admin di HP berada di bawah 30 kartu member | Dipindah ke atas daftar member | Mata sendiri: y 472 vs daftar member 598 | Selesai |
+| DF-57 | QC3 D4 | Email undangan panjang dipatah di tengah domain | Dipatah sebelum @; bagian nama yang lebih panjang dari satu baris tetap dipatah | Mata sendiri | Selesai |
+| DF-58 | QC3 D5 | Dua baris bonus bernilai sama di Pembayaran tanpa penjelasan | "bonus siap dibayar" dan "bonus bulan ini, dibayar setelah bulan berakhir" | Mata sendiri | Selesai |
+| DF-59 | Tinjauan kode | Email komisi dibayar hanya menyebut jumlah transfer; dengan bonus atau potongan angkanya tidak sama dengan jumlah komisi | Baris Rincian: komisi + bonus - potongan | Uji unit `affiliatePekerja.test.js` | Selesai |
+| DF-60 | Regresi 13 Okt 2026 | `verify_mobile_tables` merah di Shift Kasir: halaman menampilkan 30 hari terakhir secara bawaan, sedangkan shift terbaru di basis data uji bertanggal 13 Sep 2026, jadi sejak 13 Okt tabelnya kosong. Cacat uji, bukan cacat produk: halaman Shift tidak berubah sejak 27 Sep | Suite melebarkan rentang tanggal Shift sebelum mengukur | Regresi penuh | Selesai |
 | DF-28 | TC-61 | LCP halaman produk toko 2.764 sampai 2.840 ms (median 7 putaran, build produksi, gzip setingkat nginx VPS) di profil HP menengah, di atas NFR-1 2.500 ms. Build commit yang sedang tayang mengukur 2.796 ms pada kondisi yang sama, jadi sudah begitu sebelum fitur affiliate. Lewat link affiliate 2.764 ms, langsung 2.840 ms: lompatan `/aff` tidak menambah waktu. Fitur affiliate menambah berkas JS dari 1.788.005 menjadi 1.890.036 byte (+5,7%). Urutan yang memakan waktu: unduh JS selesai di 985 ms, JS selesai dijalankan di 1.880 ms, data produk tiba di 2.030 ms, gambar produk baru diminta di 2.380 ms (sekitar 330 ms merender halaman pada CPU yang diperlambat 4 kali), gambar selesai di 2.640 ms | Belum, dan belum ada tuas yang diuji. Calon tuas: pemecahan berkas JS toko dan admin supaya JS lebih cepat dijalankan, dan meminta gambar utama begitu data produk tiba. Di luar cakupan butir 18 | TC-61 | Terbuka, sudah ada sebelum fitur affiliate |
 
 ### Temuan di luar fitur affiliate (tidak diperbaiki di butir 18)
@@ -280,6 +316,7 @@ Semua ditemukan dan diperbaiki di lokal pada 11 Okt 2026, sebelum tayang. "Audit
 | L-5 | Satu berkas JS 1,89 MB (1,80 MB di versi yang tayang, 577 KB terkirim dengan gzip nginx) untuk seluruh aplikasi: 0,9 detik menjalankannya di HP menengah sebelum permintaan data pertama | DF-28 | LCP halaman produk 2,8 detik di HP menengah, baik di versi yang tayang maupun versi baru |
 | L-6 | Emulasi tidak menghitung waktu sambung ke host gambar (`gnnkracing.id`), jadi manfaat `preconnect` tidak bisa dibuktikan di sini | Dengan dan tanpa preconnect: 2.884 vs 2.832 ms, selisih di dalam simpangan | Perlu diukur di HP sungguhan sebelum diputuskan |
 | L-7 | Tombol "Pesan" yang mengambang menutupi isi di atasnya pada tampilan pertama di semua halaman toko di HP | DF-44 | Kontrol di bawahnya harus digulir dulu baru bisa disentuh |
+| L-8 | Ringkasan affiliate menulis konversi di atas 100% ("300% dari klik") bila satu klik menghasilkan beberapa pesanan | QC3 | Angkanya benar, hanya terlihat aneh |
 
 ## 9. Ringkasan hasil
 

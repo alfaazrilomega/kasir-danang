@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { toast } from 'sonner';
-import { PublicShell, tautanWhatsApp } from '@/components/layout/PublicShell';
+import { PublicShell } from '@/components/layout/PublicShell';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { cn, formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { useCustomer } from '@/lib/customerAccount';
@@ -38,7 +38,11 @@ import {
   type AffiliateOrderRow,
   type AffiliateProduct,
   type AffiliateStat,
-  type CommissionTotals,
+  type AffiliateBonusRow,
+  type AffiliateCommissionTotals,
+  type AffiliateDeductionRow,
+  type AffiliateTarget,
+  teksTarif,
   type InvitationStatus,
   type RentangTanggal,
 } from '@/lib/affiliate';
@@ -102,7 +106,7 @@ interface DataAffiliate {
   acquisition: AcquisitionRow[] | null;
   products: AffiliateProduct[] | null;
   orders: AffiliateOrderRow[] | null;
-  commissions: { totals: CommissionTotals; rows: AffiliateCommissionRow[] } | null;
+  commissions: { totals: AffiliateCommissionTotals; rows: AffiliateCommissionRow[]; bonuses: AffiliateBonusRow[]; deductions: AffiliateDeductionRow[] } | null;
   network: AffiliateNetwork | null;
   invitations: AffiliateInvitations | null;
 }
@@ -363,7 +367,7 @@ export function PublicAffiliate() {
             (gagal.has('orders') ? (
               <GagalMuat onUlang={muatUlang} />
             ) : (
-              <TabOrder rows={data.orders} kontak={!!me.settings?.show_buyer_contact} token={token} onLink={() => setTab('link')} />
+              <TabOrder rows={data.orders} token={token} onLink={() => setTab('link')} />
             ))}
           {tab === 'komisi' &&
             (gagal.has('commissions') ? (
@@ -372,6 +376,7 @@ export function PublicAffiliate() {
               <TabKomisi
                 data={data.commissions}
                 rekeningKosong={!profile.bank_info}
+                minimal={me.settings?.payout_minimum ?? 0}
                 onRekening={() => setTab('rekening')}
                 onLink={() => setTab('link')}
                 token={token}
@@ -381,7 +386,7 @@ export function PublicAffiliate() {
             (gagal.has('network') ? (
               <GagalMuat onUlang={muatUlang} />
             ) : (
-              <TabJaringan data={data.network} kontak={!!me.settings?.show_downline_contact} onUndang={() => setTab('undang')} />
+              <TabJaringan data={data.network} onUndang={() => setTab('undang')} />
             ))}
           {tab === 'undang' && gagal.has('invitations') && <GagalMuat onUlang={muatUlang} />}
           {tab === 'undang' && !gagal.has('invitations') && (
@@ -469,6 +474,8 @@ function TabRingkasan({
         <Ubin label="Komisi" nilai={formatMoney(s.commission)} ket="Belum + sudah dibayar" tonjol className="col-span-2 lg:col-span-1" />
       </div>
 
+      {me.target && <KartuTarget t={me.target} />}
+
       {kosongSemua ? (
         <div className={cn(PANEL, 'p-5 text-center')}>
           <p className="text-sm font-medium text-ink-800 dark:text-ink-100">Belum ada kunjungan dari link kamu.</p>
@@ -524,7 +531,7 @@ function TabRingkasan({
 
           <div className={cn(PANEL, 'overflow-hidden')}>
             <h2 className="px-4 pt-4 text-sm font-semibold text-ink-900 dark:text-ink-100">Data akuisisi</h2>
-            <p className="px-4 pb-3 text-xs text-ink-500">Asal pengunjung dan pembeli dari parameter link kamu.</p>
+            <p className="px-4 pb-3 text-xs text-ink-500">Asal pengunjung dan pembeli dari parameter link kamu, sepanjang waktu.</p>
             {gagal.has('acquisition') ? (
               <GagalMuat onUlang={onUlang} polos />
             ) : acquisition === null ? (
@@ -589,6 +596,38 @@ function ringkas(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`;
   if (n >= 1_000) return `${(n / 1_000).toLocaleString('id-ID', { maximumFractionDigits: 0 })} rb`;
   return String(n);
+}
+
+/** Target bonus bulan ini (D-38): omset bersih retur dibanding target, dan bonus yang didapat. */
+function KartuTarget({ t }: { t: AffiliateTarget }) {
+  const persen = Math.min(100, Math.round((t.omset / t.target) * 100));
+  const besar = t.bonus_type === 'fixed' ? formatMoney(t.bonus_value) : `${t.bonus_value.toLocaleString('id-ID')}% dari omset bulan ini`;
+  return (
+    <div className={cn(PANEL, 'p-4')} data-kartu-target>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-100">Target bonus bulan ini</h2>
+        <span className="text-xs text-ink-500">Bonus {besar}</span>
+      </div>
+      <div className="mt-2 text-sm tabular-nums text-ink-700 dark:text-ink-200">
+        <b className="text-ink-900 dark:text-white">{formatMoney(t.omset)}</b> dari {formatMoney(t.target)}
+      </div>
+      <div
+        className="mt-2 h-2.5 overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800"
+        role="progressbar"
+        aria-label="Omset bulan ini terhadap target"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={persen}
+      >
+        <div className={cn('h-full rounded-full', t.tercapai ? 'bg-emerald-500' : 'bg-brand-500')} style={{ width: `${persen}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-ink-600 dark:text-ink-300">
+        {t.tercapai
+          ? `Target tercapai. Bonus ${formatMoney(t.bonus)} dibayar setelah bulan ini berakhir, selama omset tetap di atas target.`
+          : `Kurang ${formatMoney(t.sisa)} lagi untuk mendapat bonus. Omset dihitung dari pesanan selesai, dikurangi retur.`}
+      </p>
+    </div>
+  );
 }
 
 function Ubin({ label, nilai, ket, tonjol, className }: { label: string; nilai: string; ket?: string; tonjol?: boolean; className?: string }) {
@@ -674,6 +713,12 @@ function TabLink({ code, me, products, gagal, onUlang }: { code: string; me: Aff
           <div className="mt-0.5 font-mono text-2xl font-bold tracking-wider text-ink-900 dark:text-ink-100" data-kode-affiliate>
             {code}
           </div>
+          {teksTarif(me.profile?.commission) && (
+            <div className="mt-1 text-xs text-ink-600 dark:text-ink-300" data-tarif-affiliate>
+              Komisi kamu {teksTarif(me.profile?.commission)}
+              {me.profile?.commission?.[0]?.type === 'percentage' ? ' dari nilai barang' : ''}
+            </div>
+          )}
         </div>
         <button type="button" onClick={() => void salin(code)} className={TOMBOL_GARIS}>
           <Copy size={15} /> Salin kode
@@ -795,17 +840,7 @@ function TabLink({ code, me, products, gagal, onUlang }: { code: string; me: Aff
 
 type FilterOrder = 'semua' | AffiliateOrderRow['status'];
 
-function TabOrder({
-  rows: awal,
-  kontak,
-  token,
-  onLink,
-}: {
-  rows: AffiliateOrderRow[] | null;
-  kontak: boolean;
-  token: string | null;
-  onLink: () => void;
-}) {
+function TabOrder({ rows: awal, token, onLink }: { rows: AffiliateOrderRow[] | null; token: string | null; onLink: () => void }) {
   const [filter, setFilter] = useState<FilterOrder>('semua');
   const { rentang, setRentang, data, memuat, terisi, galat, ulang } = useBerentang<AffiliateOrderRow[]>(awal, (r) =>
     token && !FIXTURE ? affiliateApi.orders(token, r) : Promise.resolve({ data: (awal ?? []).filter((o) => dalamRentang(o.created_at, r)), error: null }),
@@ -839,7 +874,6 @@ function TabOrder({
         <ul className="space-y-2" data-daftar-order-affiliate>
           {tampil.map((o) => {
             const [label, chip] = CHIP_ORDER[o.status];
-            const wa = kontak && o.buyer_phone ? tautanWhatsApp(o.buyer_phone, `Halo ${o.buyer_name}, terima kasih sudah memesan di GNNK Racing (${o.order_number}).`) : null;
             return (
               <li key={o.order_number} className={cn(PANEL, 'p-3 sm:p-4')}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -849,17 +883,6 @@ function TabOrder({
                 <div className="mt-1 text-xs text-ink-500">
                   {formatDateTime(o.created_at)} · <span className="text-ink-700 dark:text-ink-300">{o.buyer_name}</span>
                 </div>
-                {kontak && (o.buyer_phone || o.buyer_email) && (
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-600 dark:text-ink-300">
-                    {o.buyer_phone && <span>{o.buyer_phone}</span>}
-                    {o.buyer_email && <span className="break-all">{o.buyer_email}</span>}
-                    {wa && (
-                      <a href={wa} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
-                        <MessageCircle size={14} /> Follow up
-                      </a>
-                    )}
-                  </div>
-                )}
                 <div className="mt-2 grid grid-cols-2 gap-2 border-t border-ink-100 pt-2 text-xs dark:border-ink-800">
                   <span className="text-ink-500">
                     Nilai barang <b className="block text-sm font-semibold tabular-nums text-ink-900 dark:text-ink-100">{formatMoney(o.items_value)}</b>
@@ -875,6 +898,11 @@ function TabOrder({
                     </span>
                   )}
                 </div>
+                {o.returned_value > 0 && (
+                  <div className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">
+                    Diretur {formatMoney(o.returned_value)}. Komisi barang yang diretur ikut dipotong.
+                  </div>
+                )}
               </li>
             );
           })}
@@ -893,13 +921,15 @@ type FilterKomisi = 'semua' | ReturnType<typeof statusKomisi>;
 function TabKomisi({
   data: awal,
   rekeningKosong,
+  minimal,
   onRekening,
   onLink,
   token,
 }: {
-  data: { totals: CommissionTotals; rows: AffiliateCommissionRow[] } | null;
+  data: { totals: AffiliateCommissionTotals; rows: AffiliateCommissionRow[]; bonuses: AffiliateBonusRow[]; deductions: AffiliateDeductionRow[] } | null;
   onLink: () => void;
   rekeningKosong: boolean;
+  minimal: number;
   onRekening: () => void;
   token: string | null;
 }) {
@@ -913,13 +943,31 @@ function TabKomisi({
   if (awal === null) return <KerangkaDaftar />;
   const data = { totals: awal.totals, rows: berentang.data ?? [] };
   const tampil = filter === 'semua' ? data.rows : data.rows.filter((r) => statusKomisi(r) === filter);
+  const t = data.totals;
+  // Yang akan ditransfer berikutnya (D-40): komisi + bonus - potongan.
+  const bersih = t.unpaid + t.bonus_unpaid - t.deductions;
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3" data-total-komisi>
-        <Ubin label="Komisi potensial" nilai={formatMoney(data.totals.pending)} ket="Order belum selesai" />
-        <Ubin label="Belum dibayar" nilai={formatMoney(data.totals.unpaid)} ket="Menunggu transfer admin" tonjol />
-        <Ubin label="Sudah dibayar" nilai={formatMoney(data.totals.paid)} ket="Total yang sudah ditransfer" />
+        <Ubin label="Komisi potensial" nilai={formatMoney(t.pending)} ket="Order belum selesai" />
+        <Ubin label="Belum dibayar" nilai={formatMoney(t.unpaid)} ket="Menunggu transfer admin" tonjol />
+        <Ubin label="Sudah dibayar" nilai={formatMoney(t.paid)} ket="Total yang sudah ditransfer" />
       </div>
+      {(t.bonus_unpaid > 0 || t.bonus_running > 0 || t.deductions > 0) && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3" data-total-bonus-potongan>
+          {(t.bonus_unpaid > 0 || t.bonus_running > 0) && (
+            <Ubin label="Bonus target" nilai={formatMoney(t.bonus_unpaid)} ket={t.bonus_running > 0 ? `+ ${formatMoney(t.bonus_running)} masih berjalan bulan ini` : 'Belum dibayar'} />
+          )}
+          {t.deductions > 0 && <Ubin label="Potongan" nilai={`- ${formatMoney(t.deductions)}`} ket="Dipotong dari transfer berikutnya" />}
+          <Ubin label="Transfer berikutnya" nilai={formatMoney(Math.max(0, bersih))} ket="Komisi + bonus - potongan" />
+        </div>
+      )}
+      {minimal > 0 && (
+        <p className="text-xs text-ink-600 dark:text-ink-300" data-minimal-pencairan>
+          Minimal pencairan {formatMoney(minimal)}.{' '}
+          {bersih >= minimal ? 'Saldo kamu sudah mencukupi.' : `Kurang ${formatMoney(Math.max(0, minimal - bersih))} lagi.`}
+        </p>
+      )}
       {rekeningKosong && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
           <span>Isi informasi rekening supaya komisi bisa ditransfer.</span>
@@ -963,6 +1011,11 @@ function TabKomisi({
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="text-sm font-semibold tabular-nums text-ink-900 dark:text-ink-100">{formatMoney(k.commission)}</div>
+                  {k.commission < k.commission_original && (
+                    <div className="text-[11px] tabular-nums text-amber-700 dark:text-amber-300" data-dipotong-retur>
+                      Dipotong retur, awal <s>{formatMoney(k.commission_original)}</s>
+                    </div>
+                  )}
                   <span className={cn('mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold', CHIP_KOMISI[st])}>{LABEL_STATUS_KOMISI[st]}</span>
                 </div>
               </li>
@@ -971,14 +1024,71 @@ function TabKomisi({
         </ul>
       )}
       <CatatanBatas jumlah={data.rows.length} batas={500} apa="komisi" />
+      {awal.bonuses.length > 0 && (
+        <section className={cn(PANEL, 'p-4')} data-daftar-bonus>
+          <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-100">Bonus target</h2>
+          <ul className="mt-2 divide-y divide-ink-100 dark:divide-ink-800">
+            {awal.bonuses.map((b) => (
+              <li key={b.id} className="flex items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0 text-sm">
+                  <div className="text-ink-900 dark:text-ink-100">{namaBulan(b.month)}</div>
+                  <div className="text-xs text-ink-500">
+                    Omset {formatMoney(b.omset)} dari target {formatMoney(b.target)}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-semibold tabular-nums text-ink-900 dark:text-ink-100">{formatMoney(b.amount)}</div>
+                  <span
+                    className={cn(
+                      'mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                      b.paid ? CHIP_KOMISI.paid : b.status === 'berjalan' ? CHIP_KOMISI.pending : CHIP_KOMISI.added,
+                    )}
+                  >
+                    {b.paid ? 'Sudah dibayar' : b.status === 'berjalan' ? 'Berjalan' : 'Belum dibayar'}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {awal.deductions.length > 0 && (
+        <section className={cn(PANEL, 'p-4')} data-daftar-potongan>
+          <h2 className="text-sm font-semibold text-ink-900 dark:text-ink-100">Potongan</h2>
+          <p className="text-xs text-ink-500">Komisi yang sudah ditransfer lalu barangnya diretur atau pesanannya dibatalkan.</p>
+          <ul className="mt-2 divide-y divide-ink-100 dark:divide-ink-800">
+            {awal.deductions.map((p) => (
+              <li key={p.id} className="flex items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0 text-sm">
+                  <div className="text-ink-900 dark:text-ink-100">{p.kind === 'retur' ? 'Barang diretur' : 'Pesanan dibatalkan'}</div>
+                  <div className="text-xs text-ink-500">
+                    <span className="font-mono">{p.order_number}</span> · {formatDate(p.created_at)}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-semibold tabular-nums text-ink-900 dark:text-ink-100">- {formatMoney(p.amount)}</div>
+                  <span className={cn('mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold', p.settled ? CHIP_KOMISI.paid : CHIP_KOMISI.pending)}>
+                    {p.settled ? 'Sudah dipotong' : 'Menunggu transfer berikutnya'}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
+}
+
+/** "Oktober 2026" dari `2026-10-01`. */
+function namaBulan(tanggal: string): string {
+  return new Date(`${tanggal}T00:00:00`).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
 }
 
 // ---------------------------------------------------------------------------
 // Jaringan
 
-function TabJaringan({ data, kontak, onUndang }: { data: AffiliateNetwork | null; kontak: boolean; onUndang: () => void }) {
+function TabJaringan({ data, onUndang }: { data: AffiliateNetwork | null; onUndang: () => void }) {
   if (data === null) return <KerangkaDaftar />;
   return (
     <div className="space-y-3">
@@ -1007,12 +1117,6 @@ function TabJaringan({ data, kontak, onUndang }: { data: AffiliateNetwork | null
                   <div className="text-xs text-ink-500">
                     Bergabung {formatDate(n.joined_at)} · {n.downline_count} downline{n.depth > 1 ? ` · tingkat ${n.depth}` : ''}
                   </div>
-                  {kontak && (n.phone || n.email) && (
-                    <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-ink-600 dark:text-ink-300">
-                      {n.phone && <span>{n.phone}</span>}
-                      {n.email && <span className="break-all">{n.email}</span>}
-                    </div>
-                  )}
                 </div>
               </div>
             </li>
@@ -1043,7 +1147,8 @@ function TabUndang({
   const [galat, setGalat] = useState<string | null>(null);
   const [kirim, setKirim] = useState(false);
   if (data === null) return <KerangkaDaftar />;
-  const penuh = data.sent_today >= data.daily_limit;
+  // 0 = tanpa batas harian (D-35).
+  const penuh = data.daily_limit > 0 && data.sent_today >= data.daily_limit;
 
   async function onKirim(e: FormEvent) {
     e.preventDefault();
@@ -1137,7 +1242,7 @@ function TabUndang({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-col gap-0.5 text-xs text-ink-500">
             <span data-kuota-undangan>
-              {data.sent_today} dari {data.daily_limit} undangan hari ini
+              {data.daily_limit > 0 ? `${data.sent_today} dari ${data.daily_limit} undangan hari ini` : `${data.sent_today} undangan hari ini · tanpa batas harian`}
             </span>
             <span>Tautan undangan berlaku {masaBerlaku} hari.</span>
           </div>

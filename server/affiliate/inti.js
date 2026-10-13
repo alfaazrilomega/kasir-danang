@@ -14,10 +14,16 @@ export const PENGATURAN_BAWAAN = Object.freeze({
   commission: [{ type: 'percentage', value: 10 }],
   downline_depth: 1,
   upline_depth: 1,
-  show_downline_contact: false,
-  show_buyer_contact: false,
   invite_days: 7,
-  invite_daily_limit: 20,
+  // D-35: 0 = tanpa batas harian.
+  invite_daily_limit: 0,
+  // D-34: 0 = tanpa minimal pencairan.
+  payout_minimum: 0,
+  // D-38: bonus target bulanan, mati sampai admin mengisi besarnya.
+  bonus_enabled: false,
+  bonus_target: 5_000_000,
+  bonus_type: 'percentage',
+  bonus_value: 0,
   platforms: 'fb;Facebook\nins;Instagram\ninsto;Instagram Story\nwhat;WhatsApp\nemail;Email\nline;Line\ntiktok;TikTok',
   email_new_order: true,
   email_commission: true,
@@ -95,8 +101,16 @@ export function normalisasiPengaturan(masukan) {
   if (bawah === null || atas === null) return { pengaturan: null, galat: 'Kedalaman jaringan harus 1 sampai 10.' };
   const hari = bulatAntara(m.invite_days, 1, 90);
   if (hari === null) return { pengaturan: null, galat: 'Masa berlaku undangan harus 1 sampai 90 hari.' };
-  const batas = bulatAntara(m.invite_daily_limit, 1, 200);
-  if (batas === null) return { pengaturan: null, galat: 'Batas undangan per hari harus 1 sampai 200.' };
+  const batas = bulatAntara(m.invite_daily_limit, 0, 200);
+  if (batas === null) return { pengaturan: null, galat: 'Batas undangan per hari harus 0 sampai 200.' };
+  const minimal = bulatAntara(m.payout_minimum, 0, 100_000_000);
+  if (minimal === null) return { pengaturan: null, galat: 'Minimal pencairan harus 0 sampai 100.000.000.' };
+  const target = bulatAntara(m.bonus_target, 1, 10_000_000_000);
+  if (target === null) return { pengaturan: null, galat: 'Target bonus harus 1 sampai 10.000.000.000.' };
+  if (m.bonus_type !== 'percentage' && m.bonus_type !== 'fixed') return { pengaturan: null, galat: 'Jenis bonus tidak dikenal.' };
+  const nilaiBonus = angkaIsian(m.bonus_value);
+  if (m.bonus_type === 'percentage' && !(nilaiBonus >= 0 && nilaiBonus <= 100)) return { pengaturan: null, galat: 'Persentase bonus harus 0 sampai 100.' };
+  if (m.bonus_type === 'fixed' && !(nilaiBonus >= 0 && nilaiBonus <= 100_000_000)) return { pengaturan: null, galat: 'Bonus tetap harus 0 sampai 100.000.000.' };
   if (m.access_mode !== 'all' && m.access_mode !== 'approved') return { pengaturan: null, galat: 'Pilih siapa yang bisa menjadi affiliate.' };
   const teks = String(m.no_access_text ?? '').trim();
   if (teks.length > 1000) return { pengaturan: null, galat: 'Pesan tanpa akses maksimal 1.000 karakter.' };
@@ -132,10 +146,13 @@ export function normalisasiPengaturan(masukan) {
       commission: tier.tier,
       downline_depth: bawah,
       upline_depth: atas,
-      show_downline_contact: benar(m.show_downline_contact, false),
-      show_buyer_contact: benar(m.show_buyer_contact, false),
       invite_days: hari,
       invite_daily_limit: batas,
+      payout_minimum: minimal,
+      bonus_enabled: benar(m.bonus_enabled, false),
+      bonus_target: target,
+      bonus_type: m.bonus_type,
+      bonus_value: nilaiBonus,
       platforms: terisi.join('\n'),
       email_new_order: benar(m.email_new_order, true),
       email_commission: benar(m.email_commission, true),
@@ -328,12 +345,58 @@ export function bangunRantai({ tier1, maksTier, uplineDari, berhak, pembeliId })
 
 /** Tier komisi produk: komisi khusus bila diisi, selain itu komisi bawaan toko (D-5). */
 export function tierUntukProduk(produk, pengaturan) {
-  const khusus = produk?.affiliate_commission;
-  if (Array.isArray(khusus) && khusus.length > 0) {
-    const t = periksaTier(khusus);
-    if (!t.galat) return t.tier;
+  return tarifBarang(produk, null, pengaturan);
+}
+
+/** Daftar tier yang sah, atau null bila kosong atau rusak. */
+function tierSah(daftar) {
+  if (!Array.isArray(daftar) || daftar.length === 0) return null;
+  const t = periksaTier(daftar);
+  return t.galat ? null : t.tier;
+}
+
+/**
+ * Tarif satu barang (D-31): komisi khusus produk, lalu tarif affiliate tier 1,
+ * lalu komisi bawaan toko. Tarif yang rusak dilewati, tidak menjadi 0%.
+ */
+export function tarifBarang(produk, tarifAffiliate, pengaturan) {
+  return tierSah(produk?.affiliate_commission) ?? tierSah(tarifAffiliate) ?? pengaturan?.commission ?? PENGATURAN_BAWAAN.commission;
+}
+
+/** Tarif affiliate dari admin (FR-49): kosong = ikut bawaan toko, selain itu tepat satu tier. */
+export function validasiTarif(daftar) {
+  if (daftar === null || daftar === undefined || (Array.isArray(daftar) && daftar.length === 0)) return { tier: null, galat: null };
+  if (!Array.isArray(daftar)) return { tier: null, galat: 'Tipe dan besar komisi wajib diisi.' };
+  if (daftar.length > 1) return { tier: null, galat: 'Tarif affiliate hanya satu tier.' };
+  const t = periksaTier(daftar);
+  return t.galat ? { tier: null, galat: t.galat } : { tier: t.tier, galat: null };
+}
+
+/** Bonus target satu bulan (D-38): 0 bila mati, belum mencapai target, atau besarnya 0. */
+export function hitungBonus(omset, pengaturan) {
+  const n = Number(omset) || 0;
+  if (!pengaturan?.bonus_enabled || !(Number(pengaturan.bonus_value) > 0)) return 0;
+  if (n < Number(pengaturan.bonus_target)) return 0;
+  return pengaturan.bonus_type === 'fixed' ? Math.floor(Number(pengaturan.bonus_value)) : Math.floor((n * Number(pengaturan.bonus_value)) / 100);
+}
+
+const rupiahTeks = (n) => `Rp ${new Intl.NumberFormat('id-ID').format(Math.round(Number(n) || 0))}`;
+
+/**
+ * Isi satu pembayaran (D-40): komisi + bonus - potongan. Ditolak bila tidak ada
+ * yang dibayar, bila potongan menutup semuanya, atau di bawah minimal tanpa
+ * konfirmasi admin (D-34).
+ */
+export function rincianBayar({ komisi = 0, bonus = 0, potongan = 0, minimal = 0, abaikanMinimal = false }) {
+  const kotor = Math.round((Number(komisi) + Number(bonus)) * 100) / 100;
+  const bersih = Math.round((kotor - Number(potongan)) * 100) / 100;
+  if (!(kotor > 0)) return { bersih: 0, galat: 'Tidak ada komisi Belum dibayar untuk affiliate ini pada rentang tanggal ini.', kurangMinimal: false };
+  if (!(bersih > 0)) {
+    return { bersih, galat: `Saldo komisi masih tertutup potongan ${rupiahTeks(potongan)}. Potongan dipotong dari pembayaran berikutnya.`, kurangMinimal: false };
   }
-  return pengaturan?.commission ?? PENGATURAN_BAWAAN.commission;
+  const kurangMinimal = Number(minimal) > 0 && bersih < Number(minimal);
+  if (kurangMinimal && !abaikanMinimal) return { bersih, galat: `Komisi belum mencapai minimal pencairan ${rupiahTeks(minimal)}.`, kurangMinimal };
+  return { bersih, galat: null, kurangMinimal };
 }
 
 /**

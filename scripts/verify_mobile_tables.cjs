@@ -31,6 +31,14 @@ const SELEKTOR_BARIS = '[class*="max-w-[1400px]"] table tbody tr';
 // sampai baris tabelnya benar-benar ada.
 async function bukaSampaiBarisAda(page, rute) {
   await page.goto(BASE_URL + rute, { waitUntil: 'domcontentloaded' });
+  // Shift Kasir menampilkan 30 hari terakhir secara bawaan. Data shift di basis
+  // data uji tidak bertambah, jadi lama-lama rentang itu kosong dan tabelnya
+  // tidak dirender. Yang diukur tata letak tabel, jadi rentangnya dilebarkan.
+  if (rute === '/shifts') {
+    const dari = page.locator('input[type="date"]').first();
+    await dari.waitFor({ timeout: 30000 }).catch(() => {});
+    await dari.fill('2020-01-01').catch(() => {});
+  }
   await page
     .waitForSelector(SELEKTOR_BARIS, { timeout: 60000 })
     .catch(() => {});

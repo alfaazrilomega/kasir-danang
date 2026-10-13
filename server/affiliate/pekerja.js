@@ -86,11 +86,19 @@ export function emailKomisiMasuk({ toko, affiliate, order, produk, komisi, tauta
 export function emailKomisiDibayar({ toko, affiliate, payout, tautan }) {
   const subject = satuBaris(`${affiliate.name}, Komisi untuk anda sudah dibayarkan`);
   const tanggal = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeZone: 'Asia/Jakarta' }).format(new Date(payout.paid_at));
+  // D-40: bila ada bonus atau potongan, jumlah transfer tidak sama dengan jumlah komisi.
+  const bonus = Number(payout.bonus_total) || 0;
+  const potongan = Number(payout.deduction_total) || 0;
+  const rincian =
+    bonus > 0 || potongan > 0
+      ? `Rincian: komisi ${rupiah(payout.commission_total)}${bonus > 0 ? ` + bonus target ${rupiah(bonus)}` : ''}${potongan > 0 ? ` - potongan retur dan pembatalan ${rupiah(potongan)}` : ''}`
+      : null;
   const text = [
     `Halo ${affiliate.name},`,
     '',
     `${toko} sudah membayarkan komisi affiliate anda.`,
     `Jumlah: ${rupiah(payout.amount)} (${payout.commission_count} komisi)`,
+    ...(rincian ? [rincian] : []),
     `Tanggal: ${tanggal}`,
     ...(payout.note ? [`Catatan: ${payout.note}`] : []),
     '',
@@ -101,6 +109,7 @@ export function emailKomisiDibayar({ toko, affiliate, payout, tautan }) {
     `<p>Halo ${esc(affiliate.name)},</p><p>${esc(toko)} sudah membayarkan komisi affiliate anda.</p>` +
       `<table style="border-collapse:collapse">` +
       `<tr><td style="padding:2px 12px 2px 0;color:#666">Jumlah</td><td><b>${esc(rupiah(payout.amount))}</b> (${esc(payout.commission_count)} komisi)</td></tr>` +
+      (rincian ? `<tr><td style="padding:2px 12px 2px 0;color:#666">Rincian</td><td>${esc(rincian.replace('Rincian: ', ''))}</td></tr>` : '') +
       `<tr><td style="padding:2px 12px 2px 0;color:#666">Tanggal</td><td>${esc(tanggal)}</td></tr>` +
       (payout.note ? `<tr><td style="padding:2px 12px 2px 0;color:#666">Catatan</td><td>${esc(payout.note)}</td></tr>` : '') +
       `</table>`,
@@ -128,6 +137,32 @@ export function emailUndangan({ toko, affiliate, nama, pesan, tautan, hari }) {
     (pesan ? `<blockquote style="margin:12px 0;padding:8px 12px;border-left:3px solid #5A41E5;color:#333">${esc(pesan)}</blockquote>` : '') +
     `<p><a href="${esc(tautan)}" style="display:inline-block;background:#5A41E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Terima undangan</a></p>` +
     `<p style="color:#666;font-size:12px">Tautan ini berlaku ${esc(hari)} hari. Bila tombol tidak bisa ditekan, buka: ${esc(tautan)}</p>`;
+  return { subject, text, html };
+}
+
+/** Teks tarif komisi untuk email: "15% dari nilai barang" atau "Rp 5.000 per barang". */
+export function teksTarif(tarif) {
+  const t = Array.isArray(tarif) ? tarif[0] : null;
+  if (!t) return null;
+  return t.type === 'fixed' ? `${rupiah(t.value)} per barang` : `${new Intl.NumberFormat('id-ID').format(Number(t.value))}% dari nilai barang`;
+}
+
+/** Undangan khusus dari admin (D-32): penerima yang mendaftar langsung menjadi affiliate. */
+export function emailUndanganAdmin({ toko, nama, pesan, tautan, hari, tarif }) {
+  const sapa = nama ? `Halo ${nama},` : 'Halo,';
+  const subject = satuBaris(`${toko} mengundang kamu menjadi affiliate`);
+  const komisi = teksTarif(tarif);
+  const text =
+    `${sapa}\n\n${toko} mengundang kamu menjadi affiliate. Bagikan link produk ${toko} dan dapatkan komisi dari setiap pembelian lewat link kamu.\n` +
+    (komisi ? `\nKomisi kamu: ${komisi}.\n` : '') +
+    (pesan ? `\nPesan dari ${toko}: "${pesan}"\n` : '') +
+    `\nDaftar sebagai affiliate: ${tautan}\nTautan ini berlaku ${hari} hari. Daftar dengan alamat email ini supaya akses affiliate langsung aktif.`;
+  const html =
+    `<p>${esc(sapa)}</p><p><b>${esc(toko)}</b> mengundang kamu menjadi affiliate. Bagikan link produk dan dapatkan komisi dari setiap pembelian lewat link kamu.</p>` +
+    (komisi ? `<p>Komisi kamu: <b>${esc(komisi)}</b>.</p>` : '') +
+    (pesan ? `<blockquote style="margin:12px 0;padding:8px 12px;border-left:3px solid #5A41E5;color:#333">${esc(pesan)}</blockquote>` : '') +
+    `<p><a href="${esc(tautan)}" style="display:inline-block;background:#5A41E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">Daftar sebagai affiliate</a></p>` +
+    `<p style="color:#666;font-size:12px">Tautan ini berlaku ${esc(hari)} hari. Daftar dengan alamat email ini supaya akses affiliate langsung aktif. Bila tombol tidak bisa ditekan, buka: ${esc(tautan)}</p>`;
   return { subject, text, html };
 }
 
@@ -200,7 +235,8 @@ async function susunKelompok(pool, k, pengaturan, asalToko) {
   if (k.kind === 'komisi_dibayar') {
     if (!pengaturan.email_paid) return { lewati: 'email pembayaran dimatikan' };
     const r = await pool.query(
-      `select id, affiliate_id, amount::float8 as amount, commission_count, paid_at, note
+      `select id, affiliate_id, amount::float8 as amount, commission_count, paid_at, note,
+              commission_total::float8 as commission_total, bonus_total::float8 as bonus_total, deduction_total::float8 as deduction_total
          from public.affiliate_payouts where id = $1`,
       [k.refId],
     );

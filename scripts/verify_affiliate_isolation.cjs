@@ -20,7 +20,7 @@ const TANPA_AKSES = 'Halaman ini hanya bisa diakses jika anda memiliki fitur aff
   try {
     await A.aturProgram(admin, {
       enabled: true, access_mode: 'approved', general_cookie: true, permanent: false,
-      commission: [{ type: 'percentage', value: 10 }], show_buyer_contact: false, show_downline_contact: false,
+      commission: [{ type: 'percentage', value: 10 }], 
     });
     const Af = await A.daftarPembeli(toko, CAP, 'a');
     const C = await A.daftarPembeli(toko, CAP, 'c');
@@ -77,10 +77,11 @@ const TANPA_AKSES = 'Halaman ini hanya bisa diakses jika anda memiliki fitur aff
     // ---- Kontak hanya bila pengaturan mengizinkan (D-9) ------------------
     record('Bawaan: kunci kontak pembeli dan downline tidak dikirim server sama sekali (AC-40, AC-49)',
       !('buyer_phone' in milikA.orders[0]) && !('buyer_email' in milikA.orders[0]) && !('email' in milikA.network.nodes[0]) && !('phone' in milikA.network.nodes[0]), Object.keys(milikA.orders[0]).join(','));
-    await A.aturProgram(admin, { show_buyer_contact: true, show_downline_contact: true });
+    // D-33: saklar kontak sudah dihapus. Pengaturan lama yang masih menyimpannya tidak membuka kontak.
+    psql(`update public.stores set affiliate_settings = affiliate_settings || '{"show_buyer_contact": true, "show_downline_contact": true}'::jsonb where id = '${toko}'`);
     const terbuka = { orders: await ambil(Af.token, '/orders'), network: await ambil(Af.token, '/network') };
-    record('Pengaturan kontak dinyalakan: kontak pembeli dan downline terkirim', terbuka.orders[0].buyer_email === B.email && !!terbuka.orders[0].buyer_phone && terbuka.network.nodes[0].email === B.email, JSON.stringify(terbuka.orders[0]).slice(0, 160));
-    await A.aturProgram(admin, { show_buyer_contact: false, show_downline_contact: false });
+    record('Saklar kontak lama tersimpan menyala: kontak pembeli dan downline tetap tidak terkirim (D-33, AC-74)',
+      !JSON.stringify(terbuka).includes(B.email) && !('buyer_phone' in terbuka.orders[0]) && !('email' in terbuka.network.nodes[0]), JSON.stringify(terbuka.orders[0]).slice(0, 160));
 
     // ---- Member tanpa akses dan member diblokir --------------------------
     const sayaM = await ambil(M.token, '');

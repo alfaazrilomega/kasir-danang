@@ -3,6 +3,10 @@
 **Date**: 2026-10-11
 **Status**: In Progress
 
+## Structure
+
+- [0002-jawaban-klien.md](0002-jawaban-klien.md): tarif per affiliate, undangan admin, retur dan potongan, bonus target, minimal pencairan (jawaban klien 13 Okt 2026, PRD D-31 sampai D-40).
+
 ## Summary
 
 Spesifikasi ini menjelaskan cara membangun program affiliate di toko online GNNK Racing: link dan kode affiliate, pencatatan pembeli lewat cookie, komisi bertingkat, pembayaran komisi, jaringan referral, undangan email bertoken, dan statistiknya. Perilakunya mengikuti Sejoli 1.14.7. Keputusan teknis utamanya: siapa yang membawa pembeli disimpan di cookie yang ditandatangani server (tidak bisa dipalsukan), komisi dibuat oleh server saat pesanan masuk, lalu statusnya diikat ke status pesanan oleh pemicu (aturan otomatis) di database sehingga jalur mana pun yang mengubah pesanan ikut menggerakkan komisi. Email dikirim lewat antrean yang dikerjakan proses server.

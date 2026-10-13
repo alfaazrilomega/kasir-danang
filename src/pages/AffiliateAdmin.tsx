@@ -33,8 +33,12 @@ import {
   affiliateAdminApi,
   LABEL_AKSES,
   LABEL_STATUS_KOMISI,
+  LABEL_STATUS_UNDANGAN,
+  PRESET_TARIF,
   statusKomisi,
+  teksTarif,
   type AdminCommissionRow,
+  type AdminInvitationRow,
   type AdminMemberRow,
   type AdminOverview,
   type AffiliateAccess,
@@ -150,7 +154,7 @@ export function AffiliateAdmin() {
 
       {tab === 'ringkasan' && <TabRingkasan />}
       {tab === 'komisi' && <TabKomisi />}
-      {tab === 'pembayaran' && <TabPembayaran />}
+      {tab === 'pembayaran' && <TabPembayaran minimal={settings?.payout_minimum ?? 0} />}
       {tab === 'affiliate' && <TabAnggota />}
       {tab === 'pengaturan' && settings && <TabPengaturan awal={settings} onTersimpan={setSettings} />}
       {tab === 'pengaturan' &&
@@ -584,7 +588,12 @@ function TabKomisi() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <span className="line-clamp-2 min-w-0">{r.product_name}</span>
-                      <span className="shrink-0 font-semibold tabular-nums">{formatMoney(r.commission)}</span>
+                      <span className="shrink-0 text-right font-semibold tabular-nums">
+                        {formatMoney(r.commission)}
+                        {r.commission < r.commission_original && (
+                          <span className="block text-[11px] font-normal text-amber-700 dark:text-amber-400">dipotong retur dari {formatMoney(r.commission_original)}</span>
+                        )}
+                      </span>
                     </div>
                     <div className="mt-0.5 text-[11px] text-ink-500">
                       <span className="font-mono">{r.order_number}</span> · {r.affiliate_name} · Tier {r.tier} · {formatDate(r.created_at)}
@@ -649,7 +658,12 @@ function TabKomisi() {
                         <span className="line-clamp-2">{r.product_name}</span>
                       </td>
                       <td className="px-3 py-2.5 text-center tabular-nums">{r.tier}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums">{formatMoney(r.commission)}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                        {formatMoney(r.commission)}
+                        {r.commission < r.commission_original && (
+                          <div className="text-[11px] font-normal text-amber-700 dark:text-amber-400">dipotong retur dari {formatMoney(r.commission_original)}</div>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5">
                         <Badge tone={TONE_KOMISI[st]}>{LABEL_STATUS_KOMISI[st]}</Badge>
                         {tindakLanjut && (
@@ -679,7 +693,21 @@ function TabKomisi() {
 // ---------------------------------------------------------------------------
 // Pembayaran
 
-function TabPembayaran() {
+/** Rincian di bawah angka Belum dibayar: bonus, potongan, dan yang ditransfer (D-40). Kosong bila keduanya 0. */
+function RincianBersih({ r, minimal }: { r: PayoutSummaryRow; minimal: number }) {
+  if (r.bonus <= 0 && r.deductions <= 0 && r.bonus_running <= 0 && !r.below_minimum) return null;
+  return (
+    <div className="mt-0.5 space-y-0.5 text-[11px] font-normal text-ink-500" data-rincian-bersih>
+      {r.bonus > 0 && <div className="tabular-nums">+ bonus siap dibayar {formatMoney(r.bonus)}</div>}
+      {r.bonus_running > 0 && <div className="tabular-nums">bonus bulan ini {formatMoney(r.bonus_running)}, dibayar setelah bulan berakhir</div>}
+      {r.deductions > 0 && <div className="tabular-nums text-amber-700 dark:text-amber-400">- potongan {formatMoney(r.deductions)}</div>}
+      {(r.bonus > 0 || r.deductions > 0) && <div className="font-semibold tabular-nums text-ink-800 dark:text-ink-100">ditransfer {formatMoney(Math.max(0, r.net))}</div>}
+      {r.below_minimum && <div className="font-semibold text-amber-700 dark:text-amber-400">di bawah minimal {formatMoney(minimal)}</div>}
+    </div>
+  );
+}
+
+function TabPembayaran({ minimal }: { minimal: number }) {
   const [rentang, setRentang] = useRentang('semua');
   const [rows, setRows] = useState<PayoutSummaryRow[] | null>(null);
   const [riwayat, setRiwayat] = useState<PayoutHistoryRow[] | null>(null);
@@ -754,14 +782,17 @@ function TabPembayaran() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-[11px] text-ink-500">
                   <span>Potensial<b className="block text-sm font-semibold tabular-nums text-ink-800 dark:text-ink-100">{formatMoney(r.pending)}</b></span>
-                  <span>Belum dibayar<b className="block text-sm font-semibold tabular-nums text-ink-900 dark:text-white">{formatMoney(r.unpaid)}</b></span>
+                  <span>
+                    Belum dibayar<b className="block text-sm font-semibold tabular-nums text-ink-900 dark:text-white">{formatMoney(r.unpaid)}</b>
+                  </span>
                   <span>Sudah dibayar<b className="block text-sm font-semibold tabular-nums text-ink-800 dark:text-ink-100">{formatMoney(r.paid)}</b></span>
                 </div>
+                <RincianBersih r={r} minimal={minimal} />
                 <div className="flex items-center justify-between gap-3">
                   <span className="min-w-0 text-xs">
                     {r.bank_info ? <span className="line-clamp-2">{r.bank_info}</span> : <span className="font-semibold text-amber-700 dark:text-amber-400">Rekening belum diisi</span>}
                   </span>
-                  <Button disabled={r.unpaid <= 0} onClick={() => setBayarUntuk(r)} className={cn('shrink-0', SENTUH)}>
+                  <Button disabled={r.net <= 0} onClick={() => setBayarUntuk(r)} className={cn('shrink-0', SENTUH)}>
                     <Banknote size={15} /> Bayar
                   </Button>
                 </div>
@@ -790,13 +821,16 @@ function TabPembayaran() {
                       <div className="truncate text-[11px] text-ink-500">{r.email ?? '-'}</div>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(r.pending)}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums">{formatMoney(r.unpaid)}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                      {formatMoney(r.unpaid)}
+                      <RincianBersih r={r} minimal={minimal} />
+                    </td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{formatMoney(r.paid)}</td>
                     <td className="max-w-[200px] px-3 py-2.5 text-xs">
                       {r.bank_info ? <span className="line-clamp-2">{r.bank_info}</span> : <span className="font-semibold text-amber-700 dark:text-amber-400">Belum diisi</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <Button size="sm" disabled={r.unpaid <= 0} onClick={() => setBayarUntuk(r)}>
+                      <Button size="sm" disabled={r.net <= 0} onClick={() => setBayarUntuk(r)}>
                         <Banknote size={15} /> Bayar
                       </Button>
                     </td>
@@ -823,6 +857,13 @@ function TabPembayaran() {
                     {formatDateTime(p.paid_at)} · {p.commission_count} komisi{p.note ? ` · ${p.note}` : ''}
                     {p.expense_id ? ' · tercatat di Pengeluaran' : ''}
                   </div>
+                  {(p.bonus_total > 0 || p.deduction_total > 0) && (
+                    <div className="text-xs tabular-nums text-ink-500">
+                      Komisi {formatMoney(p.commission_total)}
+                      {p.bonus_total > 0 ? ` + bonus ${formatMoney(p.bonus_total)}` : ''}
+                      {p.deduction_total > 0 ? ` - potongan ${formatMoney(p.deduction_total)}` : ''}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {p.has_proof && (
@@ -841,6 +882,7 @@ function TabPembayaran() {
       {bayarUntuk && (
         <DialogBayar
           baris={bayarUntuk}
+          minimal={minimal}
           rentang={rentang.r}
           onTutup={() => setBayarUntuk(null)}
           onSelesai={() => {
@@ -856,8 +898,22 @@ function TabPembayaran() {
   );
 }
 
-function DialogBayar({ baris, rentang, onTutup, onSelesai }: { baris: PayoutSummaryRow; rentang: RentangTanggal; onTutup: () => void; onSelesai: () => void }) {
+function DialogBayar({
+  baris,
+  minimal,
+  rentang,
+  onTutup,
+  onSelesai,
+}: {
+  baris: PayoutSummaryRow;
+  minimal: number;
+  rentang: RentangTanggal;
+  onTutup: () => void;
+  onSelesai: () => void;
+}) {
   const [catatan, setCatatan] = useState('');
+  // D-34: di bawah minimal, admin memutuskan sendiri dengan mencentang konfirmasi.
+  const [tetapBayar, setTetapBayar] = useState(false);
   const [bukti, setBukti] = useState<string | null>(null);
   const [catatPengeluaran, setCatatPengeluaran] = useState(true);
   const [sibuk, setSibuk] = useState(false);
@@ -881,7 +937,7 @@ function DialogBayar({ baris, rentang, onTutup, onSelesai }: { baris: PayoutSumm
 
   async function konfirmasi() {
     if (FIXTURE) {
-      toast.success(`Komisi ${baris.name} sebesar ${formatMoney(baris.unpaid)} ditandai TELAH DIBAYAR.`);
+      toast.success(`Komisi ${baris.name} sebesar ${formatMoney(baris.net)} ditandai TELAH DIBAYAR.`);
       onSelesai();
       return;
     }
@@ -893,13 +949,14 @@ function DialogBayar({ baris, rentang, onTutup, onSelesai }: { baris: PayoutSumm
       note: catatan.trim() || undefined,
       proof_image: bukti,
       record_expense: catatPengeluaran,
+      abaikan_minimal: baris.below_minimum ? tetapBayar : undefined,
     });
     setSibuk(false);
     if (r.error) {
       toast.error(r.error.message);
       return;
     }
-    toast.success(`Komisi ${baris.name} sebesar ${formatMoney(r.data?.amount ?? baris.unpaid)} ditandai TELAH DIBAYAR.`);
+    toast.success(`Komisi ${baris.name} sebesar ${formatMoney(r.data?.amount ?? baris.net)} ditandai TELAH DIBAYAR.`);
     onSelesai();
   }
 
@@ -922,10 +979,46 @@ function DialogBayar({ baris, rentang, onTutup, onSelesai }: { baris: PayoutSumm
             </div>
           )}
         </div>
-        <div>
-          <div className="text-xs text-ink-500">Total Komisi</div>
-          <div className="text-2xl font-bold tabular-nums">{formatMoney(baris.unpaid)}</div>
+        <div data-rincian-bayar>
+          {baris.bonus > 0 || baris.deductions > 0 ? (
+            <dl className="space-y-1 text-sm tabular-nums">
+              <div className="flex justify-between gap-3">
+                <dt className="text-ink-500">Komisi belum dibayar</dt>
+                <dd>{formatMoney(baris.unpaid)}</dd>
+              </div>
+              {baris.bonus > 0 && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-ink-500">Bonus target</dt>
+                  <dd>+ {formatMoney(baris.bonus)}</dd>
+                </div>
+              )}
+              {baris.deductions > 0 && (
+                <div className="flex justify-between gap-3 text-amber-700 dark:text-amber-400">
+                  <dt>Potongan retur dan pembatalan</dt>
+                  <dd>- {formatMoney(baris.deductions)}</dd>
+                </div>
+              )}
+              <div className="flex items-baseline justify-between gap-3 border-t border-ink-100 pt-1 dark:border-ink-800">
+                <dt className="text-xs text-ink-500">Ditransfer</dt>
+                <dd className="text-2xl font-bold">{formatMoney(baris.net)}</dd>
+              </div>
+            </dl>
+          ) : (
+            <>
+              <div className="text-xs text-ink-500">Total Komisi</div>
+              <div className="text-2xl font-bold tabular-nums">{formatMoney(baris.net)}</div>
+            </>
+          )}
         </div>
+        {baris.below_minimum && (
+          <label className="flex min-h-[44px] items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <input type="checkbox" checked={tetapBayar} onChange={(e) => setTetapBayar(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-600" />
+            <span>
+              Tetap bayar di bawah minimal pencairan {formatMoney(minimal)}
+              <span className="block text-xs opacity-80">Jumlah ini belum mencapai minimal yang diatur di Pengaturan.</span>
+            </span>
+          </label>
+        )}
         <div>
           <span className="mb-1 block text-xs font-medium text-ink-500">Bukti Transfer (opsional)</span>
           {bukti ? (
@@ -960,7 +1053,7 @@ function DialogBayar({ baris, rentang, onTutup, onSelesai }: { baris: PayoutSumm
           <Button variant="secondary" onClick={onTutup} disabled={sibuk} className={SENTUH}>
             Batal
           </Button>
-          <Button onClick={() => void konfirmasi()} disabled={sibuk} className={SENTUH}>
+          <Button onClick={() => void konfirmasi()} disabled={sibuk || (baris.below_minimum && !tetapBayar)} className={SENTUH}>
             <BadgeCheck size={16} /> {sibuk ? 'Menyimpan...' : 'Tandai TELAH DIBAYAR'}
           </Button>
         </div>
@@ -985,6 +1078,8 @@ function TabAnggota() {
   const [galat, setGalat] = useState(false);
   const [ubah, setUbah] = useState<AdminMemberRow | null>(null);
   const [versi, setVersi] = useState(0);
+  const [undang, setUndang] = useState(false);
+  const [versiUndangan, setVersiUndangan] = useState(0);
 
   useEffect(() => {
     let batal = false;
@@ -1022,7 +1117,12 @@ function TabAnggota() {
           onUbah={setAkses}
           pilihan={[['', 'Semua'], ['eligible', 'Berhak'], ['default', LABEL_AKSES.default], ['allowed', LABEL_AKSES.allowed], ['blocked', LABEL_AKSES.blocked]]}
         />
+        <Button onClick={() => setUndang(true)} className={cn('sm:ml-auto', SENTUH)}>
+          <Plus size={15} /> Undang affiliate
+        </Button>
       </Card>
+      {/* Di atas daftar member: di HP daftar member bisa ratusan baris. */}
+      <DaftarUndanganAdmin versi={versiUndangan} />
       <Card className="overflow-hidden">
         {galat ? (
           <GagalMuat
@@ -1057,6 +1157,7 @@ function TabAnggota() {
                     Kode <b className="font-mono text-ink-800 dark:text-ink-100">{m.code ?? '-'}</b>
                   </span>
                   <span>{LABEL_AKSES[m.access]}</span>
+                  <span>Tarif {teksTarif(m.commission) ?? 'bawaan'}</span>
                   <span>Upline {m.upline_name ?? '-'}</span>
                   <span>{m.downline_count} downline</span>
                 </div>
@@ -1097,7 +1198,10 @@ function TabAnggota() {
                         {m.email ?? '-'}
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-xs">{m.code ?? '-'}</td>
+                    <td className="px-3 py-2.5 text-xs">
+                      <div className="font-mono">{m.code ?? '-'}</div>
+                      <div className="mt-0.5 text-[11px] text-ink-500">Tarif {teksTarif(m.commission) ?? 'bawaan'}</div>
+                    </td>
                     <td className="px-3 py-2.5">
                       <Badge tone={m.access === 'blocked' ? 'danger' : m.eligible ? 'success' : 'neutral'}>{m.eligible ? 'Berhak' : 'Tidak berhak'}</Badge>
                       <div className="mt-0.5 text-[11px] text-ink-500">{LABEL_AKSES[m.access]}</div>
@@ -1135,6 +1239,15 @@ function TabAnggota() {
           Menampilkan 500 member pertama. Gunakan pencarian untuk menemukan member lain.
         </p>
       )}
+      {undang && (
+        <DialogUndangAdmin
+          onTutup={() => setUndang(false)}
+          onSelesai={() => {
+            setUndang(false);
+            setVersiUndangan((v) => v + 1);
+          }}
+        />
+      )}
       {ubah && (
         <DialogAnggota
           baris={ubah}
@@ -1150,10 +1263,281 @@ function TabAnggota() {
   );
 }
 
+/** Pesan galat tarif di layar, sama dengan validasiTarif di server. */
+function periksaTarif(t: CommissionTier[] | null): string | null {
+  const x = t?.[0];
+  if (!x) return null;
+  if (Number.isNaN(x.value)) return 'Tipe dan besar komisi wajib diisi.';
+  if (x.type === 'percentage' && !(x.value >= 0 && x.value <= 100)) return 'Persentase komisi harus 0 sampai 100.';
+  if (x.type === 'fixed' && !(x.value >= 0 && x.value <= 100_000_000)) return 'Nilai tetap komisi harus 0 sampai 100.000.000.';
+  return null;
+}
+
+/**
+ * Tarif komisi satu affiliate (FR-49): ikut bawaan toko, pilihan cepat 5, 10,
+ * 15 persen (AS-3), atau manual. Komisi khusus produk tetap didahulukan (D-31).
+ */
+function PilihTarif({ nilai, onUbah }: { nilai: CommissionTier[] | null; onUbah: (t: CommissionTier[] | null) => void }) {
+  const t = nilai?.[0] ?? null;
+  const preset = t && t.type === 'percentage' && (PRESET_TARIF as readonly number[]).includes(t.value) ? t.value : null;
+  const [manual, setManual] = useState(!!t && preset === null);
+  const pil = (aktif: boolean) =>
+    cn(
+      'min-h-[44px] rounded-full border px-3.5 text-sm font-medium transition-colors duration-150 sm:min-h-[36px]',
+      aktif ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-950/40 dark:text-brand-200' : 'border-ink-200 text-ink-600 hover:bg-ink-50 dark:border-ink-700 dark:text-ink-300 dark:hover:bg-ink-800',
+    );
+  return (
+    <fieldset data-pilih-tarif>
+      <legend className="mb-1 text-xs font-medium text-ink-500">Tarif komisi affiliate ini</legend>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-pressed={!t && !manual}
+          className={pil(!t && !manual)}
+          onClick={() => {
+            setManual(false);
+            onUbah(null);
+          }}
+        >
+          Ikut bawaan
+        </button>
+        {PRESET_TARIF.map((p) => (
+          <button
+            key={p}
+            type="button"
+            aria-pressed={!manual && preset === p}
+            className={pil(!manual && preset === p)}
+            onClick={() => {
+              setManual(false);
+              onUbah([{ type: 'percentage', value: p }]);
+            }}
+          >
+            {p}%
+          </button>
+        ))}
+        <button
+          type="button"
+          aria-pressed={manual}
+          className={pil(manual)}
+          onClick={() => {
+            setManual(true);
+            onUbah([{ type: t?.type ?? 'percentage', value: t?.value ?? NaN }]);
+          }}
+        >
+          Manual
+        </button>
+      </div>
+      {manual && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Jenis tarif manual"
+            value={t?.type ?? 'percentage'}
+            onChange={(e) => onUbah([{ type: e.target.value as CommissionTier['type'], value: t?.value ?? NaN }])}
+            className={cn(KOLOM, TINGGI, 'w-40')}
+          >
+            <option value="percentage">Persen</option>
+            <option value="fixed">Rupiah per barang</option>
+          </select>
+          <input
+            aria-label="Besar tarif manual"
+            type="number"
+            min={0}
+            step={t?.type === 'fixed' ? 500 : 0.5}
+            value={t && !Number.isNaN(t.value) ? t.value : ''}
+            onChange={(e) => onUbah([{ type: t?.type ?? 'percentage', value: angkaIsian(e.target.value) }])}
+            className={cn(KOLOM, TINGGI, 'w-32 tabular-nums')}
+          />
+        </div>
+      )}
+      <p className="mt-1 text-xs text-ink-500">Produk yang punya komisi khusus tetap memakai komisi produk itu.</p>
+    </fieldset>
+  );
+}
+
+/** Undangan khusus dari admin (D-32, FR-51): penerima yang mendaftar langsung menjadi affiliate. */
+function DialogUndangAdmin({ onTutup, onSelesai }: { onTutup: () => void; onSelesai: () => void }) {
+  const [email, setEmail] = useState('');
+  const [nama, setNama] = useState('');
+  const [pesan, setPesan] = useState('');
+  const [tarif, setTarif] = useState<CommissionTier[] | null>(null);
+  const [galat, setGalat] = useState<string | null>(null);
+  const [sibuk, setSibuk] = useState(false);
+
+  async function kirim() {
+    const e = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      setGalat('Email tidak valid.');
+      return;
+    }
+    const g = periksaTarif(tarif);
+    if (g) {
+      setGalat(g);
+      return;
+    }
+    if (FIXTURE) {
+      onSelesai();
+      return;
+    }
+    setSibuk(true);
+    const r = await affiliateAdminApi.invite({ email: e, name: nama.trim() || undefined, message: pesan.trim() || undefined, commission: tarif });
+    setSibuk(false);
+    if (r.error) {
+      setGalat(r.error.message);
+      return;
+    }
+    toast.success(`Undangan affiliate terkirim ke ${e}.`);
+    onSelesai();
+  }
+
+  return (
+    <Modal open onClose={onTutup} title="Undang affiliate" size="md">
+      <div className="space-y-4 text-sm" data-dialog-undang-admin>
+        <p className="text-xs text-ink-500">Penerima yang mendaftar dengan email ini langsung menjadi affiliate dengan tarif di bawah. Tautan berlaku sesuai pengaturan undangan.</p>
+        <div>
+          <label htmlFor="undang-admin-email" className="mb-1 block text-xs font-medium text-ink-500">
+            Email <span className="text-rose-600">*</span>
+          </label>
+          <input
+            id="undang-admin-email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setGalat(null);
+            }}
+            placeholder="nama@gmail.com"
+            className={cn(KOLOM, TINGGI)}
+          />
+        </div>
+        <div>
+          <label htmlFor="undang-admin-nama" className="mb-1 block text-xs font-medium text-ink-500">
+            Nama (opsional)
+          </label>
+          <input id="undang-admin-nama" value={nama} maxLength={80} onChange={(e) => setNama(e.target.value)} className={cn(KOLOM, TINGGI)} />
+        </div>
+        <PilihTarif
+          nilai={tarif}
+          onUbah={(t) => {
+            setTarif(t);
+            setGalat(null);
+          }}
+        />
+        <div>
+          <label htmlFor="undang-admin-pesan" className="mb-1 block text-xs font-medium text-ink-500">
+            Pesan (opsional)
+          </label>
+          <textarea id="undang-admin-pesan" rows={3} maxLength={300} value={pesan} onChange={(e) => setPesan(e.target.value)} className={cn(KOLOM, 'py-2')} />
+          <p className="mt-0.5 text-[11px] text-ink-500">Tanpa tautan atau alamat web.</p>
+        </div>
+        {galat && (
+          <p className="text-xs font-medium text-rose-600 dark:text-rose-400" role="alert">
+            {galat}
+          </p>
+        )}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="secondary" onClick={onTutup} disabled={sibuk} className={SENTUH}>
+            Batal
+          </Button>
+          <Button onClick={() => void kirim()} disabled={sibuk} className={SENTUH}>
+            {sibuk ? 'Mengirim...' : 'Kirim undangan'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/** Email yang terlalu panjang dipatah sebelum @, bukan di tengah kata. */
+function EmailPatah({ email }: { email: string }) {
+  const at = email.indexOf('@');
+  if (at <= 0) return <>{email}</>;
+  return (
+    <>
+      {email.slice(0, at)}
+      <wbr />
+      {email.slice(at)}
+    </>
+  );
+}
+
+const CHIP_UNDANGAN_ADMIN: Record<AdminInvitationRow['status'], 'success' | 'warning' | 'neutral' | 'danger'> = {
+  registered: 'success',
+  opened: 'warning',
+  sent: 'neutral',
+  failed: 'danger',
+  expired: 'neutral',
+};
+
+/** Daftar undangan khusus admin dengan Kirim ulang (FR-51). */
+function DaftarUndanganAdmin({ versi }: { versi: number }) {
+  const [rows, setRows] = useState<AdminInvitationRow[] | null>(null);
+  const [ulang, setUlang] = useState(0);
+  const [kirimId, setKirimId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let batal = false;
+    void (async () => {
+      if (FIXTURE) {
+        if (!batal) setRows([]);
+        return;
+      }
+      const r = await affiliateAdminApi.invitations();
+      if (!batal) setRows(r.data ?? []);
+    })();
+    return () => {
+      batal = true;
+    };
+  }, [versi, ulang]);
+
+  if (!rows || rows.length === 0) return null;
+
+  async function kirimUlang(id: string) {
+    setKirimId(id);
+    const r = await affiliateAdminApi.resendInvite(id);
+    setKirimId(null);
+    if (r.error) {
+      toast.error(r.error.message);
+      return;
+    }
+    toast.success('Undangan dikirim ulang.');
+    setUlang((v) => v + 1);
+  }
+
+  return (
+    <Card className="overflow-hidden" data-daftar-undangan-admin>
+      <h2 className="p-4 pb-2 text-sm font-semibold">Undangan affiliate dari admin</h2>
+      <ul className="divide-y divide-ink-100 dark:divide-ink-800">
+        {rows.map((u) => (
+          <li key={u.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+            <div className="min-w-0 flex-1">
+              <div className="font-medium [overflow-wrap:anywhere]">
+                <EmailPatah email={u.email} />
+              </div>
+              <div className="text-xs text-ink-500">
+                Tarif {teksTarif(u.commission) ?? 'bawaan'} · dikirim {formatDate(u.sent_at)}
+                {u.registered_name ? ` · terdaftar sebagai ${u.registered_name}` : ''}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge tone={CHIP_UNDANGAN_ADMIN[u.status]}>{LABEL_STATUS_UNDANGAN[u.status]}</Badge>
+              {u.can_resend && (
+                <Button size="sm" variant="secondary" disabled={kirimId === u.id} onClick={() => void kirimUlang(u.id)} className={SENTUH}>
+                  {kirimId === u.id ? 'Mengirim...' : 'Kirim ulang'}
+                </Button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function DialogAnggota({ baris, semua, onTutup, onSelesai }: { baris: AdminMemberRow; semua: AdminMemberRow[]; onTutup: () => void; onSelesai: () => void }) {
   const [akses, setAkses] = useState<AffiliateAccess>(baris.access);
   const [kode, setKode] = useState(baris.code ?? '');
   const [upline, setUpline] = useState<string>(baris.upline_id ?? '');
+  const [tarif, setTarif] = useState<CommissionTier[] | null>(baris.commission ?? null);
   const [jaringan, setJaringan] = useState<{ uplines: { id: string; name: string; depth: number }[]; nodes: NetworkNode[] } | null>(null);
   // Calon upline dimuat sendiri: daftar di tab bisa sedang tersaring pencarian,
   // sedangkan upline boleh member mana pun.
@@ -1184,6 +1568,11 @@ function DialogAnggota({ baris, semua, onTutup, onSelesai }: { baris: AdminMembe
       setGalat('Kode hanya boleh huruf besar dan angka, 4 sampai 20 karakter.');
       return;
     }
+    const tarifGalat = periksaTarif(tarif);
+    if (tarifGalat) {
+      setGalat(tarifGalat);
+      return;
+    }
     if (FIXTURE) {
       onSelesai();
       return;
@@ -1191,6 +1580,7 @@ function DialogAnggota({ baris, semua, onTutup, onSelesai }: { baris: AdminMembe
     setSibuk(true);
     const r = await affiliateAdminApi.updateMember(baris.id, {
       access: akses,
+      ...(JSON.stringify(tarif) !== JSON.stringify(baris.commission ?? null) ? { commission: tarif } : {}),
       ...(kodeBersih && kodeBersih !== baris.code ? { code: kodeBersih } : {}),
       ...(upline !== (baris.upline_id ?? '') ? { referred_by: upline || null } : {}),
     });
@@ -1253,6 +1643,13 @@ function DialogAnggota({ baris, semua, onTutup, onSelesai }: { baris: AdminMembe
             </select>
           </div>
         </div>
+        <PilihTarif
+          nilai={tarif}
+          onUbah={(t) => {
+            setTarif(t);
+            setGalat(null);
+          }}
+        />
         {kode.trim() !== (baris.code ?? '') && baris.code && (
           <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
             <AlertTriangle size={13} /> Link lama dengan kode {baris.code} akan berhenti berfungsi.
@@ -1328,7 +1725,11 @@ function TabPengaturan({ awal, onTersimpan }: { awal: AffiliateSettings; onTersi
     if (!(s.cookie_days >= 0 && s.cookie_days <= 3650)) return 'Umur cookie harus 0 sampai 3.650 hari.';
     if (!(s.downline_depth >= 1 && s.downline_depth <= 10 && s.upline_depth >= 1 && s.upline_depth <= 10)) return 'Kedalaman jaringan harus 1 sampai 10.';
     if (!(s.invite_days >= 1 && s.invite_days <= 90)) return 'Masa berlaku undangan harus 1 sampai 90 hari.';
-    if (!(s.invite_daily_limit >= 1 && s.invite_daily_limit <= 200)) return 'Batas undangan per hari harus 1 sampai 200.';
+    if (!(s.invite_daily_limit >= 0 && s.invite_daily_limit <= 200)) return 'Batas undangan per hari harus 0 sampai 200.';
+    if (!(s.payout_minimum >= 0 && s.payout_minimum <= 100_000_000)) return 'Minimal pencairan harus 0 sampai 100.000.000.';
+    if (!(s.bonus_target >= 1 && s.bonus_target <= 10_000_000_000)) return 'Target bonus harus 1 sampai 10.000.000.000.';
+    if (s.bonus_type === 'percentage' && !(s.bonus_value >= 0 && s.bonus_value <= 100)) return 'Persentase bonus harus 0 sampai 100.';
+    if (s.bonus_type === 'fixed' && !(s.bonus_value >= 0 && s.bonus_value <= 100_000_000)) return 'Bonus tetap harus 0 sampai 100.000.000.';
     return null;
   }
 
@@ -1429,14 +1830,51 @@ function TabPengaturan({ awal, onTersimpan }: { awal: AffiliateSettings; onTersi
           <AngkaKecil id="dalam-downline" label="Kedalaman jaringan (downline)" nilai={s.downline_depth} min={1} max={10} onUbah={(v) => ubah('downline_depth', v)} />
           <AngkaKecil id="dalam-upline" label="Kedalaman jaringan (upline)" nilai={s.upline_depth} min={1} max={10} onUbah={(v) => ubah('upline_depth', v)} />
         </div>
-        <Saklar label="Tampilkan kontak downline di pohon jaringan" ket="Email dan nomor HP downline terlihat oleh affiliate." nilai={s.show_downline_contact} onUbah={(v) => ubah('show_downline_contact', v)} />
-        <Saklar label="Tampilkan kontak pembeli di order affiliate" ket="Email dan nomor HP pembeli terlihat oleh affiliate untuk follow up." nilai={s.show_buyer_contact} onUbah={(v) => ubah('show_buyer_contact', v)} />
+        <p className="text-xs text-ink-500">Nomor HP dan email pembeli serta downline hanya terlihat oleh admin, di Pesanan dan Pelanggan. Affiliate tidak pernah melihatnya.</p>
+      </Bagian>
+
+      <Bagian judul="Pembayaran komisi" ket="Komisi Belum dibayar ditambah bonus, dikurangi potongan retur, dibayar lewat tab Pembayaran.">
+        <AngkaKecil
+          id="minimal-pencairan"
+          label="Minimal pencairan (Rp, 0 = tanpa minimal)"
+          nilai={s.payout_minimum}
+          min={0}
+          max={100_000_000}
+          lebar="w-44"
+          onUbah={(v) => ubah('payout_minimum', v)}
+        />
+        <p className="text-xs text-ink-500">Di bawah minimal, admin tetap bisa membayar setelah mengonfirmasi.</p>
+      </Bagian>
+
+      <Bagian judul="Bonus target bulanan" ket="Affiliate yang omsetnya dalam satu bulan mencapai target mendapat bonus. Omset dihitung dari pesanan selesai yang dibawa affiliate itu, dikurangi retur.">
+        <Saklar label="Aktifkan bonus target" nilai={s.bonus_enabled} onUbah={(v) => ubah('bonus_enabled', v)} />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <AngkaKecil id="target-bonus" label="Target omset per bulan (Rp)" nilai={s.bonus_target} min={1} max={10_000_000_000} lebar="w-44" onUbah={(v) => ubah('bonus_target', v)} />
+          <div>
+            <label htmlFor="jenis-bonus" className="mb-1 block text-xs font-medium text-ink-500">
+              Jenis bonus
+            </label>
+            <select id="jenis-bonus" value={s.bonus_type} onChange={(e) => ubah('bonus_type', e.target.value as AffiliateSettings['bonus_type'])} className={cn(KOLOM, TINGGI, 'w-full sm:w-44')}>
+              <option value="percentage">Persen dari omset</option>
+              <option value="fixed">Rupiah tetap</option>
+            </select>
+          </div>
+          <AngkaKecil
+            id="nilai-bonus"
+            label={s.bonus_type === 'fixed' ? 'Besar bonus (Rp)' : 'Besar bonus (%)'}
+            nilai={s.bonus_value}
+            min={0}
+            max={s.bonus_type === 'fixed' ? 100_000_000 : 100}
+            lebar="w-44"
+            onUbah={(v) => ubah('bonus_value', v)}
+          />
+        </div>
       </Bagian>
 
       <Bagian judul="Undangan email">
         <div className="grid gap-3 sm:grid-cols-2">
           <AngkaKecil id="hari-undangan" label="Masa berlaku undangan (hari)" nilai={s.invite_days} min={1} max={90} onUbah={(v) => ubah('invite_days', v)} />
-          <AngkaKecil id="batas-undangan" label="Batas undangan per affiliate per hari" nilai={s.invite_daily_limit} min={1} max={200} onUbah={(v) => ubah('invite_daily_limit', v)} />
+          <AngkaKecil id="batas-undangan" label="Batas undangan per affiliate per hari (0 = tanpa batas)" nilai={s.invite_daily_limit} min={0} max={200} onUbah={(v) => ubah('invite_daily_limit', v)} />
         </div>
       </Bagian>
 
@@ -1571,7 +2009,7 @@ export function angkaIsian(teks: string): number {
   return teks.trim() === '' ? NaN : Number(teks);
 }
 
-function AngkaKecil({ id, label, nilai, min, max, onUbah }: { id: string; label: string; nilai: number; min: number; max: number; onUbah: (v: number) => void }) {
+function AngkaKecil({ id, label, nilai, min, max, lebar = 'w-32', onUbah }: { id: string; label: string; nilai: number; min: number; max: number; lebar?: string; onUbah: (v: number) => void }) {
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-xs font-medium text-ink-500">
@@ -1584,7 +2022,7 @@ function AngkaKecil({ id, label, nilai, min, max, onUbah }: { id: string; label:
         max={max}
         value={Number.isNaN(nilai) ? '' : nilai}
         onChange={(e) => onUbah(angkaIsian(e.target.value))}
-        className={cn(KOLOM, TINGGI, 'w-32')}
+        className={cn(KOLOM, TINGGI, lebar)}
       />
     </div>
   );

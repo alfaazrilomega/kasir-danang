@@ -474,3 +474,111 @@ Dua irisan, lihat [03 Peta cerita](03-story-map.md). Irisan 2 dibangun setelah i
 | Q-7 | Retur sebagian mengubah komisi? | Tidak, mengikuti Sejoli. Pembatalan pesanan tetap membatalkan komisi |
 | Q-8 | Toko di Vercel tetap hidup? | Tidak. Affiliate hanya di VPS, Vercel dimatikan setelah data terakhir disalin |
 | Q-9 | Ada target angka untuk OB-1? | Belum di versi ini |
+
+## 14. Perubahan dari jawaban klien (13 Okt 2026)
+
+Klien menjawab Q-1, Q-2, Q-4, Q-5, Q-6, Q-7, dan Q-9. Empat kalimat jawaban bisa dibaca dua arah. Tafsirnya dipilih user pada 13 Okt 2026 (kolom "Tafsir" di bawah). Keputusan lama yang berubah tidak disunting; keputusan baru menggantikannya.
+
+| Kode | Jawaban klien | Tafsir yang dipilih user |
+|---|---|---|
+| Q-1 | "boleh bisa 3 tingkat 5% / 10 / 15 bisa juga disetting manual undang affiliator tujuan" | Level per affiliate: tiap affiliate mendapat satu tarif 5%, 10%, atau 15%, atau tarif manual, diatur admin saat mengundang atau mengubah member. Hanya affiliate yang membawa penjualan yang mendapat komisi |
+| Q-2 | "hanya di izinkan (fitur aktifkan bagi yang memiliki undangan khusus) tidak di publik" | Hanya admin yang membuka akses: mengizinkan member, atau mengirim undangan khusus. Undangan dari affiliate ke temannya hanya membentuk jaringan |
+| Q-4 | "(tidak) fitur ini hanya diakses oleh seller / gnnkracing" | Kontak pembeli dan downline tidak pernah terlihat affiliate |
+| Q-5 | "saldo minimal bisa disetting manual saja jadi menentukan case pada saat running" | Minimal pencairan diatur admin. Admin tetap bisa membayar di bawah minimal setelah mengonfirmasi |
+| Q-6 | "undangan affiliasi berlaku 7 hari / undangan bebas" | 7 hari, tanpa batas harian |
+| Q-7 | "ya pasti akan memotong" | Retur memotong komisi. Komisi yang sudah ditransfer dipotong dari pembayaran berikutnya |
+| Q-9 | "ada, target penjualan 5jt sbulan dpt tambahan komisi (atau fitur ini bisa setting manual)" | Bonus target bulanan: target dan besar bonus (persen omset atau rupiah) diatur admin |
+
+### Keputusan baru
+
+| Kode | Keputusan | Alasan | Menggantikan | Tanggal | Status |
+|---|---|---|---|---|---|
+| D-31 | Tiap affiliate punya satu tarif komisi: ikut bawaan toko, 5%, 10%, 15%, atau manual (persen, atau rupiah per barang). Urutan sumber tarif per barang: komisi khusus produk, lalu tarif affiliate, lalu komisi bawaan toko. Komisi bawaan toko tetap satu tier, jadi upline tidak mendapat komisi kecuali admin menambah tier | Q-1. Komisi khusus produk didahulukan supaya produk bermargin tipis tetap terlindungi | D-5 (urutan sumber tarif) | 13 Okt 2026 | Dibangun |
+| D-32 | Akses affiliate hanya dari admin: mengizinkan member, atau undangan khusus dari admin. Penerima undangan khusus yang mendaftar langsung Diizinkan dengan tarif dari undangan, tanpa upline. Undangan dari affiliate tetap hanya membentuk jaringan | Q-2 "tidak di publik" | D-11 (sebagian) | 13 Okt 2026 | Dibangun |
+| D-33 | Kontak pembeli dan downline tidak pernah dikirim ke affiliate. Dua saklar kontak dihapus dari Pengaturan. Admin tetap melihat kontak di Pesanan dan Pelanggan | Q-4 | D-9 | 13 Okt 2026 | Dibangun |
+| D-34 | Minimal pencairan per affiliate (rupiah, 0 = tanpa minimal). Di bawah minimal, admin tetap bisa membayar setelah mengonfirmasi | Q-5 "menentukan case pada saat running" | FR-26 (bagian pembayaran) | 13 Okt 2026 | Dibangun |
+| D-35 | Batas undangan harian 0 berarti tanpa batas, dan menjadi bawaan. Batas 10 undangan per menit per affiliate tetap (NFR-6) | Q-6. Batas per menit mencegah fitur undangan dipakai mengirim email massal | Bawaan `invite_daily_limit` 20 | 13 Okt 2026 | Dibangun |
+| D-36 | Retur memotong komisi barang yang diretur sebanding jumlahnya: komisi baru = komisi awal x (1 - r), dibulatkan ke bawah, r = jumlah produk itu yang diretur dibagi jumlah produk itu di pesanan (paling besar 1). Komisi yang belum dibayar langsung berubah. Komisi yang sudah dibayar tidak berubah; selisihnya menjadi potongan yang dipotong otomatis dari pembayaran berikutnya | Q-7 | Q-7 usulan, spesifikasi 0001 "Retur sebagian tidak mengurangi komisi" | 13 Okt 2026 | Dibangun |
+| D-37 | Komisi yang sudah dibayar lalu pesanannya dibatalkan menjadi potongan sebesar komisinya. Bila pesanan kembali Selesai sebelum potongan terpakai, potongan dihapus | Satu aturan untuk uang yang sudah keluar, sama dengan D-36 | AC-38 (hanya ditandai) | 13 Okt 2026 | Dibangun |
+| D-38 | Bonus target bulanan: saklar, target omset (bawaan Rp 5.000.000), bonus berupa persen dari omset bulan itu atau rupiah tetap. Dihitung per affiliate per bulan kalender WIB dari pesanan yang dibuat di bulan itu, berstatus Selesai, dan dibawa affiliate itu langsung. Selama bulan berjalan bonus berstatus Berjalan dan bisa hilang bila omset turun. Setelah bulan berakhir dan target tetap tercapai, bonus menjadi Belum dibayar. Bonus yang sudah dibayar tidak dihitung ulang | Q-9 | Q-9 usulan | 13 Okt 2026 | Dibangun |
+| D-39 | Omset di semua layar (ringkasan affiliate, grafik, data akuisisi, ringkasan admin, bonus) = nilai barang pesanan Selesai dikurangi nilai retur pesanan itu | Tanpa ini omset berbeda dengan komisi yang sudah dipotong retur | D-10 (definisi omset) | 13 Okt 2026 | Dibangun |
+| D-40 | Satu pembayaran = komisi Belum dibayar + bonus Belum dibayar - potongan yang belum terpakai. Pembayaran ditolak bila hasilnya 0 atau kurang; potongan menunggu komisi berikutnya. Pembayaran menyimpan rinciannya. Konfirmasi massal (centang komisi) tidak memakai bonus dan potongan | Potongan otomatis butuh satu tempat yang menjumlahkannya | FR-26 | 13 Okt 2026 | Dibangun |
+
+### Asumsi yang belum dijawab klien
+
+| Kode | Asumsi | Pemilik | Bila salah |
+|---|---|---|---|
+| AS-1 | Q-3: umur cookie 30 hari, Kaitkan affiliasi mati | Klien | Satu pengaturan diubah admin |
+| AS-2 | Q-8: toko Vercel belum diputuskan, push ke GitHub ditahan | Klien | Push menunggu, atau migrasi 044-047 diterapkan di Supabase |
+| AS-3 | Pilihan cepat tarif 5%, 10%, 15% tetap di layar, tarif lain lewat isian manual | User | Mengubah tiga angka di layar |
+| AS-4 | Bulan bonus mengikuti tanggal pesanan dibuat, bukan tanggal selesai | User | Mengubah satu kolom tanggal di perhitungan bonus |
+
+### Kebutuhan fungsional tambahan
+
+| Kode | Kebutuhan | Sumber |
+|---|---|---|
+| FR-49 | Dialog Ubah affiliate punya isian Tarif komisi: Ikut komisi bawaan, 5%, 10%, 15%, atau Manual (persen 0 sampai 100, atau rupiah per barang 0 sampai 100.000.000) | D-31 |
+| FR-50 | Komisi per barang memakai tarif dengan urutan D-31 | D-31 |
+| FR-51 | Admin tab Affiliate punya Undang affiliate: email (wajib), nama, pesan, tarif komisi (seperti FR-49). Ditolak bila email tidak sah, sudah member, atau sudah diundang admin kurang dari 24 jam lalu. Daftar undangan admin menampilkan email, tarif, tanggal, status, dan Kirim ulang | D-32 |
+| FR-52 | Pendaftaran lewat undangan admin (membuka tautannya, atau mendaftar dengan email yang sama selama undangan berlaku, termasuk lewat Google) membuat akses Diizinkan dan tarif dari undangan, status undangan Terdaftar | D-32 |
+| FR-53 | Endpoint affiliate tidak pernah mengirim nomor HP atau email pembeli dan downline | D-33 |
+| FR-54 | Pengaturan punya Minimal pencairan. Tab Pembayaran menandai affiliate yang di bawah minimal, dan tombol Bayar untuknya meminta konfirmasi. Tab Komisi affiliate menyebut minimal pencairan | D-34 |
+| FR-55 | Batas undangan per hari 0 sampai 200, 0 = tanpa batas. Penghitung undangan menulis "tanpa batas harian" | D-35 |
+| FR-56 | Mencatat retur menghitung ulang komisi barang yang diretur sesuai D-36, dari jalur mana pun retur ditulis | D-36 |
+| FR-57 | Pembatalan pesanan yang komisinya sudah dibayar membuat potongan sesuai D-37 | D-37 |
+| FR-58 | Bonus target dihitung ulang paling lambat 1 menit setelah pesanan atau retur berubah, untuk bulan berjalan dan bulan lalu | D-38 |
+| FR-59 | Dialog Bayar dan riwayat pembayaran menampilkan komisi, bonus, potongan, dan jumlah yang ditransfer. Pengeluaran Komisi Affiliate sebesar jumlah yang ditransfer | D-40 |
+| FR-60 | Ringkasan affiliate menampilkan kartu target bila bonus aktif: omset bulan ini, target, sisa, dan bonus yang akan didapat. Tab Komisi menampilkan baris bonus dan potongan | D-38, D-36 |
+| FR-61 | Omset dihitung sesuai D-39 | D-39 |
+
+### Kamus data tambahan
+
+| Tempat | Kolom | Tipe dan batas | Bawaan |
+|---|---|---|---|
+| Pengaturan toko | payout_minimum | rupiah 0 sampai 100.000.000, 0 = tanpa minimal | 0 |
+| Pengaturan toko | bonus_enabled | ya/tidak | tidak |
+| Pengaturan toko | bonus_target | rupiah 1 sampai 10.000.000.000 | 5.000.000 |
+| Pengaturan toko | bonus_type, bonus_value | `percentage` 0 sampai 100, atau `fixed` 0 sampai 100.000.000 | `percentage`, 0 |
+| Pengaturan toko | invite_daily_limit | 0 sampai 200, 0 = tanpa batas | 0 |
+| Pengaturan toko | show_buyer_contact, show_downline_contact | dihapus, selalu tidak | |
+| Member | affiliate_commission | daftar 1 tier seperti komisi produk, kosong = ikut bawaan | kosong |
+| Undangan | dari_admin, commission | undangan admin: tanpa pengirim affiliate, tarif opsional | tidak, kosong |
+| Komisi | commission_awal | komisi sebelum dipotong retur | sama dengan komisi |
+| Potongan (baru) | affiliate, komisi, jenis (`retur` atau `batal`), jumlah, pembayaran yang memakainya | jumlah lebih dari 0 | |
+| Bonus (baru) | affiliate, bulan, omset, target, tarif, jumlah, status (`berjalan`, `added`), dibayar, pembayaran | satu baris per affiliate per bulan | |
+| Pembayaran | commission_total, bonus_total, deduction_total | rincian; `amount` = yang ditransfer | 0 |
+
+### Pesan baru
+
+| Saat | Pesan |
+|---|---|
+| Admin mengundang email yang sudah member | Email ini sudah terdaftar sebagai member. Ubah aksesnya di daftar Affiliate. |
+| Admin mengundang email yang sudah diundang admin kurang dari 24 jam | Email ini sudah diundang dalam 24 jam terakhir. |
+| Bayar ditolak karena potongan | Saldo komisi masih tertutup potongan Rp {jumlah}. Potongan dipotong dari pembayaran berikutnya. |
+| Bayar di bawah minimal tanpa konfirmasi | Komisi belum mencapai minimal pencairan Rp {minimal}. |
+| Email undangan khusus | Judul: "{toko} mengundang kamu menjadi affiliate". Isi menyebut tarif komisi bila diisi |
+
+### Kriteria penerimaan tambahan
+
+- **AC-70** (FR-49, FR-50) Diberikan affiliate bertarif 15%, ketika pembeli membeli produk tanpa komisi khusus lewat link-nya, maka komisinya 15% dari nilai barang. Produk dengan komisi khusus Rp 5.000 tetap Rp 5.000 per barang. Affiliate tanpa tarif memakai komisi bawaan toko.
+- **AC-71** (FR-51, FR-52) Diberikan admin mengundang email baru dengan tarif 10%, ketika penerima membuka tautan dan mendaftar, maka aksesnya Diizinkan, tarifnya 10%, tanpa upline, dan undangan berstatus Terdaftar.
+- **AC-72** (FR-52) Diberikan undangan admin yang masih berlaku, ketika penerima mendaftar dengan email itu tanpa membuka tautan, maka hasilnya sama dengan AC-71.
+- **AC-73** (D-32) Diberikan affiliate mengundang temannya, ketika teman itu mendaftar, maka upline-nya affiliate itu dan aksesnya tetap Ikut pengaturan, sehingga dashboard affiliate menolaknya.
+- **AC-74** (FR-53) Diberikan pengaturan tersimpan yang masih berisi `show_buyer_contact: true`, maka daftar order dan jaringan affiliate tetap tidak memuat nomor HP atau email.
+- **AC-75** (FR-54) Diberikan minimal pencairan Rp 100.000 dan komisi Belum dibayar Rp 60.000, maka tab Pembayaran menandainya di bawah minimal, Bayar tanpa konfirmasi ditolak dengan pesan minimal, dan dengan konfirmasi berhasil.
+- **AC-76** (FR-55) Diberikan batas harian 0, maka undangan ke-21 di hari yang sama diterima dan penghitung menulis "tanpa batas harian".
+- **AC-77** (FR-56) Diberikan komisi Rp 20.000 Belum dibayar untuk 2 barang, ketika 1 barang diretur, maka komisinya Rp 10.000. Ketika barang kedua diretur, komisinya Rp 0 dan tertulis Dipotong retur.
+- **AC-78** (FR-56, FR-59) Diberikan komisi Rp 20.000 untuk 2 barang sudah dibayar, ketika 1 barang diretur, maka muncul potongan Rp 10.000. Pembayaran berikutnya dengan komisi Belum dibayar Rp 50.000 mentransfer Rp 40.000, mencatat pengeluaran Rp 40.000, dan potongannya terpakai.
+- **AC-79** (FR-57) Diberikan komisi sudah dibayar, ketika pesanannya dibatalkan, maka muncul potongan sebesar komisinya. Ketika pesanan kembali Selesai sebelum potongan terpakai, potongannya hilang.
+- **AC-80** (D-40) Diberikan komisi Belum dibayar Rp 5.000 dan potongan Rp 10.000, maka Bayar ditolak dengan pesan potongan dan tidak ada yang berubah.
+- **AC-81** (FR-58, FR-60) Diberikan bonus aktif, target Rp 5.000.000, bonus 2%, ketika pesanan Selesai affiliate bulan ini berjumlah Rp 5.200.000, maka muncul bonus Berjalan Rp 104.000 dan kartu target di ringkasan. Ketika retur menurunkan omset ke Rp 4.900.000, bonus itu hilang.
+- **AC-82** (D-38, D-40) Diberikan bonus bulan lalu yang targetnya tercapai, maka statusnya Belum dibayar dan ikut di pembayaran berikutnya. Setelah dibayar, perubahan pesanan bulan itu tidak mengubahnya.
+- **AC-83** (FR-61) Diberikan pesanan Selesai Rp 1.000.000 dengan retur Rp 200.000, maka omset di ringkasan affiliate dan admin Rp 800.000.
+- **AC-84** (D-40) Diberikan pembayaran yang memakai potongan dan bonus, ketika admin membatalkan seluruh pembayaran itu, maka potongan kembali menunggu dan bonus kembali Belum dibayar.
+
+### Pertanyaan yang masih terbuka
+
+| Kode | Pertanyaan | Dipakai sementara |
+|---|---|---|
+| Q-3 | Umur cookie dan Kaitkan affiliasi? | AS-1 |
+| Q-8 | Toko di Vercel tetap hidup? | AS-2 |

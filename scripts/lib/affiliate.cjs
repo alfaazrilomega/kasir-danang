@@ -200,14 +200,20 @@ async function bersihkanUji(admin, pola) {
     psql(`delete from public.app_users u using public.profiles p
            where p.id = u.id and p.role = 'customer' and lower(u.email) like '${pola}'
              and not exists (select 1 from public.customers c where c.user_id = u.id)`);
+  // Undangan khusus admin tidak punya affiliate pengirim, jadi dicari lewat email.
+  const buangUndanganAdmin = () => psql(`delete from public.affiliate_invitations where dari_admin and lower(email) like '${pola}'`);
   if (!akun.length) {
     buangAkunYatim();
+    buangUndanganAdmin();
     return { akun: 0, pesanan: 0 };
   }
   const pesanan = daftarId(
     `select coalesce(string_agg(id::text, ','), '') from public.orders where customer_id in (${kutip(akun)}) or affiliate_id in (${kutip(akun)})`,
   );
   psql(`begin;
+    ${pesanan.length ? `delete from public.order_returns where order_id in (${kutip(pesanan)});` : ''}
+    delete from public.affiliate_bonuses where affiliate_id in (${kutip(akun)});
+    delete from public.affiliate_potongan where affiliate_id in (${kutip(akun)});
     delete from public.expenses where id in (select expense_id from public.affiliate_payouts where affiliate_id in (${kutip(akun)}) and expense_id is not null);
     delete from public.affiliate_commissions where affiliate_id in (${kutip(akun)})${pesanan.length ? ` or order_id in (${kutip(pesanan)})` : ''};
     delete from public.affiliate_payouts where affiliate_id in (${kutip(akun)});
@@ -225,6 +231,7 @@ async function bersihkanUji(admin, pola) {
     delete from public.customers where id in (${kutip(akun)});
     commit;`);
   buangAkunYatim();
+  buangUndanganAdmin();
   return { akun: akun.length, pesanan: pesanan.length };
 }
 

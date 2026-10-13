@@ -35,6 +35,7 @@ const SUITES = [
   'verify_affiliate_isolation',
   'verify_affiliate_seams',
   'verify_affiliate_seams2',
+  'verify_affiliate_klien',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

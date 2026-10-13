@@ -1,6 +1,9 @@
 // Data contoh untuk merender setiap keadaan layar affiliate (wireframe dan QC).
 // Hanya dipakai lewat `?fixture=` di mode pengembangan; produksi tidak memuatnya.
 import type {
+  AffiliateBonusRow,
+  AffiliateCommissionTotals,
+  AffiliateDeductionRow,
   AcquisitionRow,
   AdminCommissionRow,
   AdminMemberRow,
@@ -24,7 +27,7 @@ export interface AffiliateFixture {
   acquisition: AcquisitionRow[];
   products: AffiliateProduct[];
   orders: AffiliateOrderRow[];
-  commissions: { totals: CommissionTotals; rows: AffiliateCommissionRow[] };
+  commissions: { totals: AffiliateCommissionTotals; rows: AffiliateCommissionRow[]; bonuses: AffiliateBonusRow[]; deductions: AffiliateDeductionRow[] };
   network: AffiliateNetwork;
   invitations: AffiliateInvitations;
 }
@@ -43,10 +46,9 @@ const SETTINGS = {
   cookie_days: 30,
   platforms: PLATFORM,
   invite_days: 7,
-  invite_daily_limit: 20,
-  show_buyer_contact: false,
-  show_downline_contact: false,
+  invite_daily_limit: 0,
   downline_depth: 2,
+  payout_minimum: 100000,
 };
 
 const PRODUK: AffiliateProduct[] = [
@@ -60,13 +62,14 @@ export const FIXTURE_AFFILIATE: Record<string, AffiliateFixture> = {
   ringkasan: {
     me: {
       eligible: true,
-      profile: { code: 'ANDI24', name: 'Andi Saputra', bank_info: 'BCA 1234567890 a.n. Andi Saputra', upline_name: 'Budi Santoso' },
+      profile: { code: 'ANDI24', name: 'Andi Saputra', bank_info: 'BCA 1234567890 a.n. Andi Saputra', upline_name: 'Budi Santoso', commission: [{ type: 'percentage', value: 15 }] },
       settings: SETTINGS,
       summary: {
         today: { clicks: 14, leads: 2, sales: 1, omset: 655000, commission: 65500 },
         month: { clicks: 236, leads: 19, sales: 11, omset: 6420000, commission: 642000 },
         all: { clicks: 1184, leads: 87, sales: 52, omset: 31275000, commission: 3127500 },
       },
+      target: { bulan: '2026-10-01', target: 5000000, omset: 3420000, sisa: 1580000, tercapai: false, bonus_type: 'percentage', bonus_value: 2, bonus: 0 },
     },
     charts: {
       month: Array.from({ length: 11 }, (_, i) => ({
@@ -88,20 +91,22 @@ export const FIXTURE_AFFILIATE: Record<string, AffiliateFixture> = {
     ],
     products: PRODUK,
     orders: [
-      { order_number: 'WEB-MUWHOD1CE5FA', created_at: '2026-10-11T09:41:00Z', buyer_name: 'Rizky Pratama', items_value: 655000, status: 'menunggu', commission: 65500 },
-      { order_number: 'WEB-MUQ8X21LKZ0A', created_at: '2026-10-09T03:12:00Z', buyer_name: 'Dewi Lestari', items_value: 830000, status: 'selesai', commission: 83000 },
-      { order_number: 'WEB-MUN4C7TTQ9PE', created_at: '2026-10-07T14:55:00Z', buyer_name: 'Hendra Gunawan', items_value: 175000, status: 'dibatalkan', commission: 17500 },
-      { order_number: 'WEB-MUL0Z9AA31BC', created_at: '2026-10-04T08:20:00Z', buyer_name: 'Siti Nurhaliza', items_value: 1310000, status: 'selesai', commission: 131000 },
+      { order_number: 'WEB-MUWHOD1CE5FA', created_at: '2026-10-11T09:41:00Z', buyer_name: 'Rizky Pratama', items_value: 655000, status: 'menunggu', commission: 65500, returned_value: 0 },
+      { order_number: 'WEB-MUQ8X21LKZ0A', created_at: '2026-10-09T03:12:00Z', buyer_name: 'Dewi Lestari', items_value: 830000, status: 'selesai', commission: 83000, returned_value: 0 },
+      { order_number: 'WEB-MUN4C7TTQ9PE', created_at: '2026-10-07T14:55:00Z', buyer_name: 'Hendra Gunawan', items_value: 175000, status: 'dibatalkan', commission: 17500, returned_value: 0 },
+      { order_number: 'WEB-MUL0Z9AA31BC', created_at: '2026-10-04T08:20:00Z', buyer_name: 'Siti Nurhaliza', items_value: 1310000, status: 'selesai', commission: 131000, returned_value: 175000 },
     ],
     commissions: {
-      totals: { pending: 65500, unpaid: 214000, paid: 2848000 },
+      totals: { pending: 65500, unpaid: 214000, paid: 2848000, deductions: 17500, bonus_unpaid: 0, bonus_running: 0 },
+      bonuses: [{ id: 'b1', month: '2026-09-01', omset: 6420000, target: 5000000, amount: 128400, status: 'added', paid: true, paid_at: '2026-10-06T10:00:00Z' }],
+      deductions: [{ id: 'd1', kind: 'retur', amount: 17500, created_at: '2026-10-10T02:00:00Z', settled: false, order_number: 'WEB-MUL0Z9AA31BC' }],
       rows: [
-        { id: 'k1', created_at: '2026-10-11T09:41:00Z', order_number: 'WEB-MUWHOD1CE5FA', product_name: 'Gear Set Honda Crf150 Red GNNK Racing Product', tier: 1, commission: 65500, status: 'pending', paid: false, paid_at: null },
-        { id: 'k2', created_at: '2026-10-09T03:12:00Z', order_number: 'WEB-MUQ8X21LKZ0A', product_name: 'Gear Set Kawasaki Klx150 Blue GNNK Racing Product', tier: 1, commission: 65500, status: 'added', paid: false, paid_at: null },
-        { id: 'k3', created_at: '2026-10-09T03:12:00Z', order_number: 'WEB-MUQ8X21LKZ0A', product_name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', tier: 1, commission: 17500, status: 'added', paid: false, paid_at: null },
-        { id: 'k4', created_at: '2026-10-08T11:30:00Z', order_number: 'WEB-MUP2D88RRA1Q', product_name: 'Gear Set Honda Crf150 Red GNNK Racing Product', tier: 2, commission: 13100, status: 'added', paid: false, paid_at: null },
-        { id: 'k5', created_at: '2026-10-07T14:55:00Z', order_number: 'WEB-MUN4C7TTQ9PE', product_name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', tier: 1, commission: 17500, status: 'cancelled', paid: false, paid_at: null },
-        { id: 'k6', created_at: '2026-10-04T08:20:00Z', order_number: 'WEB-MUL0Z9AA31BC', product_name: 'Gear Set Honda Crf150 Red GNNK Racing Product', tier: 1, commission: 131000, status: 'added', paid: true, paid_at: '2026-10-06T10:00:00Z' },
+        { id: 'k1', created_at: '2026-10-11T09:41:00Z', order_number: 'WEB-MUWHOD1CE5FA', product_name: 'Gear Set Honda Crf150 Red GNNK Racing Product', tier: 1, commission: 65500, commission_original: 65500, status: 'pending', paid: false, paid_at: null },
+        { id: 'k2', created_at: '2026-10-09T03:12:00Z', order_number: 'WEB-MUQ8X21LKZ0A', product_name: 'Gear Set Kawasaki Klx150 Blue GNNK Racing Product', tier: 1, commission: 65500, commission_original: 65500, status: 'added', paid: false, paid_at: null },
+        { id: 'k3', created_at: '2026-10-09T03:12:00Z', order_number: 'WEB-MUQ8X21LKZ0A', product_name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', tier: 1, commission: 17500, commission_original: 17500, status: 'added', paid: false, paid_at: null },
+        { id: 'k4', created_at: '2026-10-08T11:30:00Z', order_number: 'WEB-MUP2D88RRA1Q', product_name: 'Gear Set Honda Crf150 Red GNNK Racing Product', tier: 2, commission: 13100, commission_original: 13100, status: 'added', paid: false, paid_at: null },
+        { id: 'k5', created_at: '2026-10-07T14:55:00Z', order_number: 'WEB-MUN4C7TTQ9PE', product_name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', tier: 1, commission: 17500, commission_original: 17500, status: 'cancelled', paid: false, paid_at: null },
+        { id: 'k6', created_at: '2026-10-04T08:20:00Z', order_number: 'WEB-MUL0Z9AA31BC', product_name: 'Gear Set Honda Crf150 Red GNNK Racing Product', tier: 1, commission: 131000, commission_original: 131000, status: 'added', paid: true, paid_at: '2026-10-06T10:00:00Z' },
       ],
     },
     network: {
@@ -115,7 +120,7 @@ export const FIXTURE_AFFILIATE: Record<string, AffiliateFixture> = {
     },
     invitations: {
       sent_today: 3,
-      daily_limit: 20,
+      daily_limit: 0,
       rows: [
         { id: 'u1', email: 'rizky.pratama@gmail.com', name: 'Rizky', status: 'registered', sent_at: '2026-09-11T02:00:00Z', opened_at: '2026-09-11T05:00:00Z', expires_at: '2026-09-18T02:00:00Z', can_resend: false },
         { id: 'u2', email: 'teman.bengkel.surabaya@yahoo.co.id', name: null, status: 'opened', sent_at: '2026-10-09T02:00:00Z', opened_at: '2026-10-09T07:30:00Z', expires_at: '2026-10-16T02:00:00Z', can_resend: true },
@@ -127,7 +132,7 @@ export const FIXTURE_AFFILIATE: Record<string, AffiliateFixture> = {
   kosong: {
     me: {
       eligible: true,
-      profile: { code: 'SITI07', name: 'Siti Nurhaliza', bank_info: null, upline_name: null },
+      profile: { code: 'SITI07', name: 'Siti Nurhaliza', bank_info: null, upline_name: null, commission: [{ type: 'percentage', value: 10 }] },
       settings: SETTINGS,
       summary: { today: NOL, month: NOL, all: NOL },
     },
@@ -135,9 +140,9 @@ export const FIXTURE_AFFILIATE: Record<string, AffiliateFixture> = {
     acquisition: [],
     products: PRODUK,
     orders: [],
-    commissions: { totals: { pending: 0, unpaid: 0, paid: 0 }, rows: [] },
+    commissions: { totals: { pending: 0, unpaid: 0, paid: 0, deductions: 0, bonus_unpaid: 0, bonus_running: 0 }, rows: [], bonuses: [], deductions: [] },
     network: { upline_name: null, nodes: [] },
-    invitations: { sent_today: 0, daily_limit: 20, rows: [] },
+    invitations: { sent_today: 0, daily_limit: 0, rows: [] },
   },
 };
 
@@ -149,16 +154,6 @@ FIXTURE_AFFILIATE['program-mati'] = {
   ...FIXTURE_AFFILIATE.kosong,
   me: { eligible: false, reason: 'program_off', message: 'Halaman ini hanya bisa diakses jika anda memiliki fitur affiliasi.' },
 };
-FIXTURE_AFFILIATE['kontak'] = {
-  ...FIXTURE_AFFILIATE.ringkasan,
-  me: { ...FIXTURE_AFFILIATE.ringkasan.me, settings: { ...SETTINGS, show_buyer_contact: true, show_downline_contact: true } },
-  orders: FIXTURE_AFFILIATE.ringkasan.orders.map((o, i) => ({ ...o, buyer_phone: `08123456${String(780 + i)}`, buyer_email: `${o.buyer_name.split(' ')[0].toLowerCase()}@gmail.com` })),
-  network: {
-    ...FIXTURE_AFFILIATE.ringkasan.network,
-    nodes: FIXTURE_AFFILIATE.ringkasan.network.nodes.map((n, i) => ({ ...n, phone: `08571234${String(560 + i)}`, email: `${n.name.split(' ')[0].toLowerCase()}@gmail.com` })),
-  },
-};
-
 // ---------------------------------------------------------------------------
 // Admin
 
@@ -172,10 +167,13 @@ export const FIXTURE_SETTINGS: AffiliateSettings = {
   commission: [{ type: 'percentage', value: 10 }, { type: 'percentage', value: 2 }],
   downline_depth: 2,
   upline_depth: 1,
-  show_downline_contact: false,
-  show_buyer_contact: false,
   invite_days: 7,
-  invite_daily_limit: 20,
+  invite_daily_limit: 0,
+  payout_minimum: 100000,
+  bonus_enabled: true,
+  bonus_target: 5000000,
+  bonus_type: 'percentage',
+  bonus_value: 2,
   platforms: PLATFORM.map((p) => `${p.key};${p.label}`).join('\n'),
   email_new_order: true,
   email_commission: true,
@@ -217,19 +215,24 @@ export const FIXTURE_PAYOUT_SUMMARY: PayoutSummaryRow[] = FIXTURE_OVERVIEW.affil
   pending: a.commission_pending,
   unpaid: a.commission_unpaid,
   paid: a.commission_paid,
+  bonus: i === 0 ? 128400 : 0,
+  bonus_running: i === 1 ? 96000 : 0,
+  deductions: i === 0 ? 17500 : 0,
+  net: a.commission_unpaid + (i === 0 ? 128400 - 17500 : 0),
+  below_minimum: a.commission_unpaid < 100000 && a.commission_unpaid > 0,
 }));
 
 export const FIXTURE_PAYOUT_HISTORY: PayoutHistoryRow[] = [
-  { id: 'py1', affiliate_id: 'a1', affiliate_name: 'Andi Saputra', amount: 1310000, commission_count: 9, paid_at: '2026-10-06T10:00:00Z', note: 'Transfer BCA 06/10', has_proof: true, expense_id: 'e1' },
-  { id: 'py2', affiliate_id: 'a2', affiliate_name: 'Budi Santoso', amount: 655000, commission_count: 5, paid_at: '2026-10-01T03:00:00Z', note: null, has_proof: false, expense_id: null },
+  { id: 'py1', affiliate_id: 'a1', affiliate_name: 'Andi Saputra', amount: 1310000, commission_count: 9, paid_at: '2026-10-06T10:00:00Z', note: 'Transfer BCA 06/10', has_proof: true, expense_id: 'e1', commission_total: 1199100, bonus_total: 128400, deduction_total: 17500 },
+  { id: 'py2', affiliate_id: 'a2', affiliate_name: 'Budi Santoso', amount: 655000, commission_count: 5, paid_at: '2026-10-01T03:00:00Z', note: null, has_proof: false, expense_id: null, commission_total: 655000, bonus_total: 0, deduction_total: 0 },
 ];
 
 export const FIXTURE_MEMBERS: AdminMemberRow[] = [
-  { id: 'a1', name: 'Andi Saputra', email: 'andi.saputra@gmail.com', phone: '081234567801', code: 'ANDI24', access: 'allowed', eligible: true, upline_id: 'a2', upline_name: 'Budi Santoso', downline_count: 2, clicks: 1184, sales: 52, commission_unpaid: 214000, joined_at: '2026-08-02T02:00:00Z' },
-  { id: 'a2', name: 'Budi Santoso', email: 'budi.santoso@gmail.com', phone: '081234567802', code: 'BUDI11', access: 'allowed', eligible: true, upline_id: null, upline_name: null, downline_count: 1, clicks: 802, sales: 33, commission_unpaid: 655000, joined_at: '2026-07-21T02:00:00Z' },
-  { id: 'a3', name: 'Muhammad Rizky Ramadhan Saputra Wijaya', email: 'muhammad.rizky.ramadhan.saputra@yahoo.co.id', phone: '085712345603', code: 'MUHAMM03', access: 'allowed', eligible: true, upline_id: 'a1', upline_name: 'Andi Saputra', downline_count: 0, clicks: 455, sales: 20, commission_unpaid: 386000, joined_at: '2026-09-15T02:00:00Z' },
-  { id: 'a5', name: 'Hendra Gunawan', email: 'hendra.g@gmail.com', phone: null, code: null, access: 'default', eligible: false, upline_id: null, upline_name: null, downline_count: 0, clicks: 0, sales: 0, commission_unpaid: 0, joined_at: '2026-10-01T02:00:00Z' },
-  { id: 'a6', name: 'Joko Widodo', email: 'joko.w@gmail.com', phone: '081298765432', code: 'JOKO19', access: 'blocked', eligible: false, upline_id: null, upline_name: null, downline_count: 0, clicks: 37, sales: 1, commission_unpaid: 0, joined_at: '2026-08-11T02:00:00Z' },
+  { id: 'a1', name: 'Andi Saputra', email: 'andi.saputra@gmail.com', phone: '081234567801', code: 'ANDI24', access: 'allowed', eligible: true, upline_id: 'a2', upline_name: 'Budi Santoso', commission: null, downline_count: 2, clicks: 1184, sales: 52, commission_unpaid: 214000, joined_at: '2026-08-02T02:00:00Z' },
+  { id: 'a2', name: 'Budi Santoso', email: 'budi.santoso@gmail.com', phone: '081234567802', code: 'BUDI11', access: 'allowed', eligible: true, upline_id: null, upline_name: null, commission: [{ type: 'percentage', value: 15 }], downline_count: 1, clicks: 802, sales: 33, commission_unpaid: 655000, joined_at: '2026-07-21T02:00:00Z' },
+  { id: 'a3', name: 'Muhammad Rizky Ramadhan Saputra Wijaya', email: 'muhammad.rizky.ramadhan.saputra@yahoo.co.id', phone: '085712345603', code: 'MUHAMM03', access: 'allowed', eligible: true, upline_id: 'a1', upline_name: 'Andi Saputra', commission: null, downline_count: 0, clicks: 455, sales: 20, commission_unpaid: 386000, joined_at: '2026-09-15T02:00:00Z' },
+  { id: 'a5', name: 'Hendra Gunawan', email: 'hendra.g@gmail.com', phone: null, code: null, access: 'default', eligible: false, upline_id: null, upline_name: null, commission: null, downline_count: 0, clicks: 0, sales: 0, commission_unpaid: 0, joined_at: '2026-10-01T02:00:00Z' },
+  { id: 'a6', name: 'Joko Widodo', email: 'joko.w@gmail.com', phone: '081298765432', code: 'JOKO19', access: 'blocked', eligible: false, upline_id: null, upline_name: null, commission: null, downline_count: 0, clicks: 37, sales: 1, commission_unpaid: 0, joined_at: '2026-08-11T02:00:00Z' },
 ];
 
 /** Fixture aktif dari `?fixture=` (hanya di mode pengembangan). */

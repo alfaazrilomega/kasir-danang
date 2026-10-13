@@ -18,6 +18,10 @@ import {
   tandatangani,
   tierUntukProduk,
   umurCookieDetik,
+  tarifBarang,
+  validasiTarif,
+  hitungBonus,
+  rincianBayar,
 } from '../affiliate/inti.js';
 
 const RAHASIA = 'rahasia-uji';
@@ -32,8 +36,9 @@ describe('pengaturan affiliate', () => {
     expect(s.permanent).toBe(false);
     expect(s.commission).toEqual([{ type: 'percentage', value: 10 }]);
     expect(s.invite_days).toBe(7);
-    expect(s.invite_daily_limit).toBe(20);
-    expect(s.show_buyer_contact).toBe(false);
+    // D-35: tanpa batas harian. D-33: saklar kontak tidak ada lagi.
+    expect(s.invite_daily_limit).toBe(0);
+    expect(s.show_buyer_contact).toBe(undefined);
     expect(daftarPlatform(s.platforms).map((p) => p.key)).toEqual(['fb', 'ins', 'insto', 'what', 'email', 'line', 'tiktok']);
   });
 
@@ -306,5 +311,73 @@ describe('isi undangan tidak boleh membawa tautan', () => {
     for (const teks of ['Gear set CRF150 Rp 955.000, kualitas no.1! Cek ya.', 'Pak Budi, S.Kom.', 'Jl. Merdeka No.5', 'hubungi budi@gmail.com', 'v2.0 sudah rilis', '', null, undefined]) {
       expect(memuatTautan(teks), String(teks)).toBe(false);
     }
+  });
+});
+
+describe('jawaban klien 13 Okt 2026 (spesifikasi 0002)', () => {
+  it('pengaturan baru punya bawaan PRD bagian 14 dan tanpa saklar kontak (D-33, D-34, D-35, D-38)', () => {
+    const s = gabungPengaturan({ show_buyer_contact: true, show_downline_contact: true });
+    expect(s.payout_minimum).toBe(0);
+    expect(s.invite_daily_limit).toBe(0);
+    expect(s.bonus_enabled).toBe(false);
+    expect(s.bonus_target).toBe(5_000_000);
+    expect(s.bonus_type).toBe('percentage');
+    expect(s.bonus_value).toBe(0);
+    expect('show_buyer_contact' in s).toBe(false);
+    expect('show_downline_contact' in s).toBe(false);
+  });
+
+  it('memeriksa batas pengaturan baru', () => {
+    const dasar = { ...PENGATURAN_BAWAAN };
+    expect(normalisasiPengaturan({ ...dasar, invite_daily_limit: 0 }).pengaturan.invite_daily_limit).toBe(0);
+    expect(normalisasiPengaturan({ ...dasar, invite_daily_limit: 201 }).galat).toBe('Batas undangan per hari harus 0 sampai 200.');
+    expect(normalisasiPengaturan({ ...dasar, payout_minimum: -1 }).galat).toBe('Minimal pencairan harus 0 sampai 100.000.000.');
+    expect(normalisasiPengaturan({ ...dasar, payout_minimum: '' }).galat).toBe('Minimal pencairan harus 0 sampai 100.000.000.');
+    expect(normalisasiPengaturan({ ...dasar, bonus_target: 0 }).galat).toBe('Target bonus harus 1 sampai 10.000.000.000.');
+    expect(normalisasiPengaturan({ ...dasar, bonus_type: 'percentage', bonus_value: 101 }).galat).toBe('Persentase bonus harus 0 sampai 100.');
+    expect(normalisasiPengaturan({ ...dasar, bonus_type: 'fixed', bonus_value: 250000 }).pengaturan.bonus_value).toBe(250000);
+    expect(normalisasiPengaturan({ ...dasar, bonus_type: 'lain' }).galat).toBe('Jenis bonus tidak dikenal.');
+  });
+
+  it('tarif per barang: komisi khusus produk, lalu tarif affiliate, lalu bawaan toko (D-31)', () => {
+    const toko = { ...PENGATURAN_BAWAAN, commission: [{ type: 'percentage', value: 10 }] };
+    const lima = [{ type: 'fixed', value: 5000 }];
+    const limaBelas = [{ type: 'percentage', value: 15 }];
+    expect(tarifBarang({ affiliate_commission: lima }, limaBelas, toko)).toEqual(lima);
+    expect(tarifBarang({ affiliate_commission: null }, limaBelas, toko)).toEqual(limaBelas);
+    expect(tarifBarang({ affiliate_commission: [] }, null, toko)).toEqual(toko.commission);
+    // Tarif affiliate yang rusak tidak membuat komisi 0, jatuh ke bawaan toko.
+    expect(tarifBarang({}, [{ type: 'percentage', value: null }], toko)).toEqual(toko.commission);
+  });
+
+  it('validasi tarif affiliate: kosong berarti ikut bawaan, satu tier, batas sama dengan komisi toko', () => {
+    expect(validasiTarif(null)).toEqual({ tier: null, galat: null });
+    expect(validasiTarif([])).toEqual({ tier: null, galat: null });
+    expect(validasiTarif([{ type: 'percentage', value: 15 }])).toEqual({ tier: [{ type: 'percentage', value: 15 }], galat: null });
+    expect(validasiTarif([{ type: 'percentage', value: 120 }]).galat).toBe('Persentase komisi harus 0 sampai 100.');
+    expect(validasiTarif([{ type: 'percentage', value: '' }]).galat).toBe('Tipe dan besar komisi wajib diisi.');
+    expect(validasiTarif([{ type: 'percentage', value: 5 }, { type: 'percentage', value: 1 }]).galat).toBe('Tarif affiliate hanya satu tier.');
+  });
+
+  it('bonus target: tidak ada sebelum target, persen dibulatkan ke bawah, atau rupiah tetap (D-38)', () => {
+    const aktif = { ...PENGATURAN_BAWAAN, bonus_enabled: true, bonus_target: 5_000_000, bonus_type: 'percentage', bonus_value: 2 };
+    expect(hitungBonus(4_999_999, aktif)).toBe(0);
+    expect(hitungBonus(5_200_000, aktif)).toBe(104_000);
+    expect(hitungBonus(5_000_001, { ...aktif, bonus_value: 1.5 })).toBe(75_000);
+    expect(hitungBonus(5_000_000, { ...aktif, bonus_type: 'fixed', bonus_value: 250_000 })).toBe(250_000);
+    expect(hitungBonus(9_000_000, { ...aktif, bonus_enabled: false })).toBe(0);
+    expect(hitungBonus(9_000_000, { ...aktif, bonus_value: 0 })).toBe(0);
+  });
+
+  it('rincian bayar: komisi + bonus - potongan, ditolak bila habis atau di bawah minimal (D-34, D-40)', () => {
+    expect(rincianBayar({ komisi: 50_000, bonus: 0, potongan: 10_000, minimal: 0 })).toEqual({ bersih: 40_000, galat: null, kurangMinimal: false });
+    expect(rincianBayar({ komisi: 5_000, bonus: 0, potongan: 10_000, minimal: 0 }).galat).toBe(
+      'Saldo komisi masih tertutup potongan Rp 10.000. Potongan dipotong dari pembayaran berikutnya.',
+    );
+    expect(rincianBayar({ komisi: 0, bonus: 0, potongan: 0, minimal: 0 }).galat).toBe('Tidak ada komisi Belum dibayar untuk affiliate ini pada rentang tanggal ini.');
+    const kurang = rincianBayar({ komisi: 60_000, bonus: 0, potongan: 0, minimal: 100_000 });
+    expect(kurang).toEqual({ bersih: 60_000, galat: 'Komisi belum mencapai minimal pencairan Rp 100.000.', kurangMinimal: true });
+    expect(rincianBayar({ komisi: 60_000, bonus: 0, potongan: 0, minimal: 100_000, abaikanMinimal: true }).galat).toBe(null);
+    expect(rincianBayar({ komisi: 0, bonus: 104_000, potongan: 4_000, minimal: 0 }).bersih).toBe(100_000);
   });
 });

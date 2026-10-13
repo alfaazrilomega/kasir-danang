@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emailKomisiDibayar, emailKomisiMasuk, emailPesananBaru, emailUndangan, judulProduk } from '../affiliate/pekerja.js';
+import { emailKomisiDibayar, emailKomisiMasuk, emailPesananBaru, emailUndangan, emailUndanganAdmin, judulProduk } from '../affiliate/pekerja.js';
 
 const toko = 'GNNK Racing';
 const affiliate = { name: 'Andi' };
@@ -83,5 +83,26 @@ describe('email affiliate memakai judul Sejoli', () => {
     expect(e.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(e.html).toContain('&quot;Budi&quot;&amp;');
     expect(e.html).toContain('&lt;b&gt;Gear&lt;/b&gt;');
+  });
+});
+
+describe('email jawaban klien (spesifikasi 0002)', () => {
+  it('komisi dibayar menyebut rincian bila ada bonus atau potongan (D-40)', () => {
+    const polos = emailKomisiDibayar({ toko, affiliate, payout: { amount: 75500, commission_count: 3, paid_at: '2026-10-11T05:00:00Z', note: null, commission_total: 75500, bonus_total: 0, deduction_total: 0 }, tautan: 'https://x' });
+    expect(polos.text).not.toContain('Rincian');
+    const rinci = emailKomisiDibayar({ toko, affiliate, payout: { amount: 186000, commission_count: 2, paid_at: '2026-10-11T05:00:00Z', note: null, commission_total: 191000, bonus_total: 104000, deduction_total: 109000 }, tautan: 'https://x' });
+    expect(rinci.text).toContain('Rincian: komisi Rp 191.000 + bonus target Rp 104.000 - potongan retur dan pembatalan Rp 109.000');
+    expect(rinci.html).toContain('potongan retur dan pembatalan Rp 109.000');
+  });
+
+  it('undangan khusus admin menyebut tarif dan meminta mendaftar dengan email yang sama (D-32)', () => {
+    const e = emailUndanganAdmin({ toko, nama: 'Budi', pesan: null, tautan: 'https://toko/aff/undangan/abc', hari: 7, tarif: [{ type: 'percentage', value: 15 }] });
+    expect(e.subject).toBe('GNNK Racing mengundang kamu menjadi affiliate');
+    expect(e.text).toContain('Komisi kamu: 15% dari nilai barang.');
+    expect(e.text).toContain('Daftar sebagai affiliate: https://toko/aff/undangan/abc');
+    expect(e.text).toContain('Daftar dengan alamat email ini');
+    const tetap = emailUndanganAdmin({ toko, nama: null, pesan: '<b>hai</b>', tautan: 'https://t', hari: 7, tarif: [{ type: 'fixed', value: 5000 }] });
+    expect(tetap.text).toContain('Komisi kamu: Rp 5.000 per barang.');
+    expect(tetap.html).toContain('&lt;b&gt;hai&lt;/b&gt;');
   });
 });

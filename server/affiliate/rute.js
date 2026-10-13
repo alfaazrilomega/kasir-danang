@@ -10,10 +10,13 @@ import {
   normalisasiPengaturan,
   perbaruiCookie,
   rapikanAkuisisi,
+  rincianBayar,
   sidikToken,
   tandatangani,
+  tarifBarang,
   tokenBaru,
   umurCookieDetik,
+  validasiTarif,
 } from './inti.js';
 import {
   ZONA,
@@ -24,12 +27,16 @@ import {
   grafikAffiliate,
   memberDariUser,
   muatPengaturan,
+  OMSET,
   pastikanKode,
+  RETUR_PESANAN,
   ringkasanAffiliate,
+  segarkanBonus,
   sqlKunciKelompok,
   sudahMembeli,
+  targetAffiliate,
 } from './layanan.js';
-import { emailUndangan } from './pekerja.js';
+import { emailUndangan, emailUndanganAdmin } from './pekerja.js';
 
 const POLA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const POLA_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -177,7 +184,7 @@ export function pasangRuteAffiliate(app, deps) {
     if (!POLA_UUID.test(storeId)) throw galat(400, 'store_id tidak valid.');
     if (!token || token.length > 200) throw galat(404, PESAN.undanganTidakAda);
     const r = await pool.query(
-      `select id, affiliate_id, email, status, expires_at from public.affiliate_invitations
+      `select id, affiliate_id, email, status, expires_at, dari_admin from public.affiliate_invitations
         where store_id = $1 and token_hash = $2`,
       [storeId, sidikToken(token)],
     );
@@ -189,6 +196,18 @@ export function pasangRuteAffiliate(app, deps) {
       return;
     }
     if (new Date(u.expires_at).getTime() < Date.now()) throw galat(410, PESAN.undanganLewat);
+    // Undangan khusus admin (D-32): tanpa affiliate pengirim, jadi tanpa cookie dan
+    // tanpa klik. Pendaftar dikenali dari email yang sudah terisi di formulir.
+    if (u.dari_admin) {
+      await pool.query(
+        `update public.affiliate_invitations
+            set opened_at = coalesce(opened_at, now()), status = case when status = 'sent' then 'opened' else status end
+          where id = $1`,
+        [u.id],
+      );
+      res.json({ data: { redirect: daftar } });
+      return;
+    }
     const pengaturan = await muatPengaturan(pool, storeId);
     if (!pengaturan.enabled) {
       res.json({ data: { redirect: daftar } });
@@ -234,20 +253,28 @@ export function pasangRuteAffiliate(app, deps) {
     }
     const code = await pastikanKode(pool, storeId, member);
     const upline = member.referred_by ? await ambilMember(pool, storeId, member.referred_by) : null;
+    await segarkanBonus(pool, storeId);
     res.json({
       data: {
         eligible: true,
-        profile: { code, name: member.name, bank_info: member.bank_info ?? null, upline_name: upline?.name ?? null },
+        profile: {
+          code,
+          name: member.name,
+          bank_info: member.bank_info ?? null,
+          upline_name: upline?.name ?? null,
+          // Tarif yang berlaku untuk produk tanpa komisi khusus (D-31).
+          commission: tarifBarang(null, member.affiliate_commission, pengaturan),
+        },
         settings: {
           cookie_days: pengaturan.cookie_days,
           platforms: daftarPlatform(pengaturan.platforms),
           invite_days: pengaturan.invite_days,
           invite_daily_limit: pengaturan.invite_daily_limit,
-          show_buyer_contact: pengaturan.show_buyer_contact,
-          show_downline_contact: pengaturan.show_downline_contact,
           downline_depth: pengaturan.downline_depth,
+          payout_minimum: pengaturan.payout_minimum,
         },
         summary: await ringkasanAffiliate(pool, storeId, member.id),
+        target: await targetAffiliate(pool, storeId, member.id, pengaturan),
       },
     });
   }));
@@ -285,12 +312,13 @@ export function pasangRuteAffiliate(app, deps) {
   }));
 
   app.get('/api/customer/affiliate/orders', requireCustomer, asyncHandler(async (req, res) => {
-    const { member, storeId, pengaturan } = await affiliateBerhak(req);
+    const { member, storeId } = await affiliateBerhak(req);
     const params = [storeId, member.id];
     const tanggal = sqlRentang('o.created_at', rentang(req.query), params);
     const r = await pool.query(
       `select o.order_number, o.created_at, coalesce(nullif(o.customer_name, ''), c.name, 'Pembeli') as buyer_name,
-              o.customer_phone, c.email as buyer_email, (o.subtotal - o.discount)::float8 as items_value, o.order_status,
+              (o.subtotal - o.discount)::float8 as items_value, o.order_status,
+              coalesce((select sum(r.refund_amount) from public.order_returns r where r.order_id = o.id), 0)::float8 as returned_value,
               coalesce((select sum(k.commission) from public.affiliate_commissions k where k.order_id = o.id and k.affiliate_id = $2), 0)::float8 as commission
          from public.orders o
          left join public.customers c on c.id = o.customer_id
@@ -305,8 +333,8 @@ export function pasangRuteAffiliate(app, deps) {
         order_number: o.order_number,
         created_at: o.created_at,
         buyer_name: o.buyer_name,
-        ...(pengaturan.show_buyer_contact ? { buyer_phone: o.customer_phone ?? null, buyer_email: o.buyer_email ?? null } : {}),
         items_value: o.items_value,
+        returned_value: o.returned_value,
         status: status(o.order_status),
         commission: o.commission,
       })),
@@ -318,17 +346,27 @@ export function pasangRuteAffiliate(app, deps) {
     // Rentang tanggal hanya menyaring daftar. Total tetap menghitung semua komisi.
     const params = [storeId, member.id];
     const tanggal = sqlRentang('k.created_at', rentang(req.query), params);
-    const [total, baris] = await Promise.all([
+    await segarkanBonus(pool, storeId);
+    const [total, baris, bonus, potongan] = await Promise.all([
       pool.query(
         `select coalesce(sum(commission) filter (where status = 'pending'), 0)::float8 as pending,
                 coalesce(sum(commission) filter (where status = 'added' and not paid), 0)::float8 as unpaid,
-                coalesce(sum(commission) filter (where status = 'added' and paid), 0)::float8 as paid
+                -- Uang yang benar-benar ditransfer: komisi + bonus - potongan (D-40).
+                (select coalesce(sum(amount), 0) from public.affiliate_payouts
+                  where store_id = $1 and affiliate_id = $2)::float8 as paid,
+                (select coalesce(sum(amount), 0) from public.affiliate_potongan
+                  where store_id = $1 and affiliate_id = $2 and payout_id is null)::float8 as deductions,
+                (select coalesce(sum(amount), 0) from public.affiliate_bonuses
+                  where store_id = $1 and affiliate_id = $2 and status = 'added' and not paid)::float8 as bonus_unpaid,
+                (select coalesce(sum(amount), 0) from public.affiliate_bonuses
+                  where store_id = $1 and affiliate_id = $2 and status = 'berjalan')::float8 as bonus_running
            from public.affiliate_commissions where store_id = $1 and affiliate_id = $2`,
         [storeId, member.id],
       ),
       pool.query(
         `select k.id, k.created_at, o.order_number, coalesce(i.name, 'Produk') as product_name, k.tier,
-                k.commission::float8 as commission, k.status, k.paid, k.paid_at
+                k.commission::float8 as commission, coalesce(k.commission_awal, k.commission)::float8 as commission_original,
+                k.status, k.paid, k.paid_at
            from public.affiliate_commissions k
            join public.orders o on o.id = k.order_id
            left join public.order_items i on i.id = k.order_item_id
@@ -337,8 +375,24 @@ export function pasangRuteAffiliate(app, deps) {
           limit 500`,
         params,
       ),
+      pool.query(
+        `select id, to_char(bulan, 'YYYY-MM-DD') as month, omset::float8 as omset, target::float8 as target, amount::float8 as amount,
+                status, paid, paid_at
+           from public.affiliate_bonuses where store_id = $1 and affiliate_id = $2
+          order by bulan desc limit 24`,
+        [storeId, member.id],
+      ),
+      pool.query(
+        `select p.id, p.jenis as kind, p.amount::float8 as amount, p.created_at, (p.payout_id is not null) as settled, o.order_number
+           from public.affiliate_potongan p
+           join public.affiliate_commissions k on k.id = p.commission_id
+           join public.orders o on o.id = k.order_id
+          where p.store_id = $1 and p.affiliate_id = $2
+          order by p.created_at desc limit 100`,
+        [storeId, member.id],
+      ),
     ]);
-    res.json({ data: { totals: total.rows[0], rows: baris.rows } });
+    res.json({ data: { totals: total.rows[0], rows: baris.rows, bonuses: bonus.rows, deductions: potongan.rows } });
   }));
 
   app.get('/api/customer/affiliate/network', requireCustomer, asyncHandler(async (req, res) => {
@@ -369,7 +423,6 @@ export function pasangRuteAffiliate(app, deps) {
           joined_at: n.joined_at,
           downline_count: n.downline_count,
           depth: n.depth,
-          ...(pengaturan.show_downline_contact ? { email: n.email ?? null, phone: n.phone ?? null } : {}),
         })),
       },
     });
@@ -462,7 +515,7 @@ export function pasangRuteAffiliate(app, deps) {
         [storeId, member.id, email],
       );
       if (ganda.rowCount) throw galat(409, 'Email ini sudah kamu undang dalam 24 jam terakhir.');
-      if ((await hitungKirimHariIni(storeId, member.id, db)) >= pengaturan.invite_daily_limit) {
+      if (pengaturan.invite_daily_limit > 0 && (await hitungKirimHariIni(storeId, member.id, db)) >= pengaturan.invite_daily_limit) {
         throw galat(429, `Batas undangan hari ini sudah tercapai (${pengaturan.invite_daily_limit} undangan). Coba lagi besok.`);
       }
       const ins = await db.query(
@@ -507,7 +560,7 @@ export function pasangRuteAffiliate(app, deps) {
       if (lama.status !== 'failed' && Date.now() - new Date(lama.sent_at).getTime() < 24 * 3600_000) {
         throw galat(409, 'Undangan baru bisa dikirim ulang 24 jam setelah pengiriman terakhir.');
       }
-      if ((await hitungKirimHariIni(storeId, member.id, db)) >= pengaturan.invite_daily_limit) {
+      if (pengaturan.invite_daily_limit > 0 && (await hitungKirimHariIni(storeId, member.id, db)) >= pengaturan.invite_daily_limit) {
         throw galat(429, `Batas undangan hari ini sudah tercapai (${pengaturan.invite_daily_limit} undangan). Coba lagi besok.`);
       }
       const up = await db.query(
@@ -582,7 +635,7 @@ export function pasangRuteAffiliate(app, deps) {
     const po = [storeId];
     const pesananRentang = sqlRentang('o.created_at', r, po);
     const pc = [storeId];
-    const komisiRentang = sqlRentang('created_at', r, pc);
+    const komisiRentang = sqlRentang('k.created_at', r, pc);
 
     const [klik, pesanan, komisi, berhak, top] = await Promise.all([
       pool.query(`select affiliate_id, count(*)::int as n from public.affiliate_clicks where store_id = $1${klikRentang} group by 1`, pk),
@@ -590,16 +643,24 @@ export function pasangRuteAffiliate(app, deps) {
         `select o.affiliate_id,
                 count(*) filter (where o.order_status <> 'canceled')::int as leads,
                 count(*) filter (where o.order_status = 'done')::int as sales,
-                coalesce(sum(o.subtotal - o.discount) filter (where o.order_status = 'done'), 0)::float8 as omset
-           from public.orders o where o.store_id = $1 and o.affiliate_id is not null${pesananRentang} group by 1`,
+                coalesce(sum(${OMSET}) filter (where o.order_status = 'done'), 0)::float8 as omset
+           from public.orders o
+           ${RETUR_PESANAN}
+          where o.store_id = $1 and o.affiliate_id is not null${pesananRentang} group by 1`,
         po,
       ),
       pool.query(
-        `select affiliate_id,
-                coalesce(sum(commission) filter (where status = 'pending'), 0)::float8 as pending,
-                coalesce(sum(commission) filter (where status = 'added' and not paid), 0)::float8 as unpaid,
-                coalesce(sum(commission) filter (where status = 'added' and paid), 0)::float8 as paid
-           from public.affiliate_commissions where store_id = $1${komisiRentang} group by 1`,
+        `select k.affiliate_id,
+                coalesce(sum(k.commission) filter (where k.status = 'pending'), 0)::float8 as pending,
+                coalesce(sum(k.commission) filter (where k.status = 'added' and not k.paid), 0)::float8 as unpaid,
+                -- Sudah dibayar dikurangi potongan yang sudah dipotong dari pembayaran berikutnya.
+                coalesce(sum(k.commission - pt.terpakai) filter (where k.paid), 0)::float8 as paid
+           from public.affiliate_commissions k
+           left join lateral (
+                select coalesce(sum(p.amount), 0) as terpakai from public.affiliate_potongan p
+                 where p.commission_id = k.id and p.payout_id is not null
+              ) pt on true
+          where k.store_id = $1${komisiRentang} group by 1`,
         pc,
       ),
       pool.query(
@@ -659,7 +720,8 @@ export function pasangRuteAffiliate(app, deps) {
 
   const PILIH_KOMISI_ADMIN = `
     select k.id, k.created_at, k.order_id, o.order_number, o.order_status, coalesce(i.name, 'Produk') as product_name,
-           k.affiliate_id, a.name as affiliate_name, k.tier, k.commission::float8 as commission, k.status, k.paid, k.paid_at,
+           k.affiliate_id, a.name as affiliate_name, k.tier, k.commission::float8 as commission,
+           coalesce(k.commission_awal, k.commission)::float8 as commission_original, k.status, k.paid, k.paid_at,
            k.base_amount::float8 as base_amount, k.rate_type, k.rate_value::float8 as rate_value
       from public.affiliate_commissions k
       join public.orders o on o.id = k.order_id
@@ -715,22 +777,33 @@ export function pasangRuteAffiliate(app, deps) {
     });
   }));
 
-  /** Tandai komisi dibayar per affiliate di dalam transaksi `client`; mengembalikan pembayaran yang dibuat. */
-  async function bayarKomisi(client, req, { storeId, affiliateId, ids, note, proofImage, catatPengeluaran }) {
+  /**
+   * Tandai komisi dibayar per affiliate di dalam transaksi `client`; mengembalikan
+   * pembayaran yang dibuat. Dengan `rincian` (Bayar biasa, D-40) bonus Belum
+   * dibayar ikut dibayar dan potongan yang belum terpakai mengurangi jumlahnya;
+   * konfirmasi massal tidak memakai keduanya.
+   */
+  async function bayarKomisi(client, req, { storeId, affiliateId, ids, note, proofImage, catatPengeluaran, rincian = null }) {
     const terkunci = await client.query(
       `select id, commission from public.affiliate_commissions
         where store_id = $1 and affiliate_id = $2 and id = any($3::uuid[]) and status = 'added' and not paid
         for update`,
       [storeId, affiliateId, ids],
     );
-    if (!terkunci.rowCount) return null;
-    const jumlah = terkunci.rows.reduce((s, x) => s + Number(x.commission), 0);
+    const bonusIds = rincian?.bonusIds ?? [];
+    const potonganIds = rincian?.potonganIds ?? [];
+    if (!terkunci.rowCount && !bonusIds.length) return null;
+    const komisiTotal = terkunci.rows.reduce((s, x) => s + Number(x.commission), 0);
+    const jumlah = rincian ? rincian.bersih : komisiTotal;
     const aff = await ambilMember(client, storeId, affiliateId);
     const p = await client.query(
-      `insert into public.affiliate_payouts (store_id, affiliate_id, amount, commission_count, paid_by, note, proof_image)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning id, amount::float8 as amount, commission_count, paid_at, note, (proof_image is not null) as has_proof`,
-      [storeId, affiliateId, jumlah, terkunci.rowCount, idAktor(req.user), note || null, proofImage || null],
+      `insert into public.affiliate_payouts
+         (store_id, affiliate_id, amount, commission_count, paid_by, note, proof_image, commission_total, bonus_total, deduction_total)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       returning id, amount::float8 as amount, commission_count, paid_at, note, (proof_image is not null) as has_proof,
+                 commission_total::float8 as commission_total, bonus_total::float8 as bonus_total, deduction_total::float8 as deduction_total`,
+      [storeId, affiliateId, jumlah, terkunci.rowCount, idAktor(req.user), note || null, proofImage || null,
+       komisiTotal, rincian?.bonus ?? 0, rincian?.potongan ?? 0],
     );
     const payout = p.rows[0];
     await client.query(
@@ -738,6 +811,15 @@ export function pasangRuteAffiliate(app, deps) {
         where id = any($1::uuid[])`,
       [terkunci.rows.map((x) => x.id), payout.id],
     );
+    if (bonusIds.length) {
+      await client.query(
+        'update public.affiliate_bonuses set paid = true, paid_at = now(), payout_id = $2, updated_at = now() where id = any($1::uuid[])',
+        [bonusIds, payout.id],
+      );
+    }
+    if (potonganIds.length) {
+      await client.query('update public.affiliate_potongan set payout_id = $2 where id = any($1::uuid[])', [potonganIds, payout.id]);
+    }
     let expenseId = null;
     if (catatPengeluaran) {
       const e = await client.query(
@@ -808,11 +890,17 @@ export function pasangRuteAffiliate(app, deps) {
           if (!kini) continue;
           const sisa = Math.round((kini.amount - v.s) * 100) / 100;
           // Pembayaran yang habis dihapus, bukan dinolkan: kolom amount wajib lebih dari nol.
+          // Bonus dan potongan yang ikut di dalamnya kembali menunggu (AC-84).
           if (sisa <= 0 || kini.commission_count - v.n <= 0) {
+            await client.query('update public.affiliate_bonuses set paid = false, paid_at = null, payout_id = null, updated_at = now() where payout_id = $1', [payoutId]);
+            await client.query('update public.affiliate_potongan set payout_id = null where payout_id = $1', [payoutId]);
             await client.query('delete from public.affiliate_payouts where id = $1', [payoutId]);
             if (kini.expense_id) await client.query('delete from public.expenses where id = $1 and store_id = $2', [kini.expense_id, storeId]);
           } else {
-            await client.query('update public.affiliate_payouts set amount = $2, commission_count = commission_count - $3 where id = $1', [payoutId, sisa, v.n]);
+            await client.query(
+              'update public.affiliate_payouts set amount = $2, commission_count = commission_count - $3, commission_total = commission_total - $4 where id = $1',
+              [payoutId, sisa, v.n, v.s],
+            );
             if (kini.expense_id) await client.query('update public.expenses set amount = $2 where id = $1 and store_id = $3', [kini.expense_id, sisa, storeId]);
           }
         }
@@ -828,30 +916,105 @@ export function pasangRuteAffiliate(app, deps) {
     res.json({ data: { updated } });
   }));
 
+  /** Bulan pertama dan terakhir dari rentang tanggal, untuk menyaring bonus. */
+  function sqlRentangBulan(kolom, r, params) {
+    const bagian = [];
+    if (r.from) {
+      params.push(r.from);
+      bagian.push(`${kolom} >= date_trunc('month', $${params.length}::date)`);
+    }
+    if (r.to) {
+      params.push(r.to);
+      bagian.push(`${kolom} <= $${params.length}::date`);
+    }
+    return bagian.length ? ` and ${bagian.join(' and ')}` : '';
+  }
+
+  /** Yang bisa dibayar ke satu affiliate: komisi, bonus, potongan, dan bersihnya (D-40). */
+  async function isiBayar(db, storeId, affiliateId, r, { kunci = false } = {}) {
+    const pk = [storeId, affiliateId];
+    const fk = sqlRentang('created_at', r, pk);
+    const pb = [storeId, affiliateId];
+    const fb = sqlRentangBulan('bulan', r, pb);
+    const kunciSql = kunci ? ' for update' : '';
+    // Berurutan: satu koneksi transaksi tidak boleh menjalankan dua query sekaligus.
+    const komisi = await db.query(`select id, commission::float8 as commission from public.affiliate_commissions
+               where store_id = $1 and affiliate_id = $2 and status = 'added' and not paid${fk}${kunciSql}`, pk);
+    const bonus = await db.query(`select id, amount::float8 as amount from public.affiliate_bonuses
+               where store_id = $1 and affiliate_id = $2 and status = 'added' and not paid${fb}${kunciSql}`, pb);
+    const potongan = await db.query(`select id, amount::float8 as amount from public.affiliate_potongan
+               where store_id = $1 and affiliate_id = $2 and payout_id is null${kunciSql}`, [storeId, affiliateId]);
+    const jumlah = (rows, k) => Math.round(rows.reduce((s, x) => s + Number(x[k]), 0) * 100) / 100;
+    return {
+      komisiIds: komisi.rows.map((x) => x.id),
+      bonusIds: bonus.rows.map((x) => x.id),
+      potonganIds: potongan.rows.map((x) => x.id),
+      komisi: jumlah(komisi.rows, 'commission'),
+      bonus: jumlah(bonus.rows, 'amount'),
+      potongan: jumlah(potongan.rows, 'amount'),
+    };
+  }
+
   app.get('/api/admin/affiliate/payouts/summary', ...admin, asyncHandler(async (req, res) => {
     const storeId = tokoAdmin(req);
+    await segarkanBonus(pool, storeId);
+    const pengaturan = await muatPengaturan(pool, storeId);
+    const r = rentang(req.query);
     const params = [storeId];
-    const filter = sqlRentang('k.created_at', rentang(req.query), params);
-    const r = await pool.query(
-      `select a.id as affiliate_id, a.name, a.email, a.phone, a.bank_info,
-              coalesce(sum(k.commission) filter (where k.status = 'pending'), 0)::float8 as pending,
-              coalesce(sum(k.commission) filter (where k.status = 'added' and not k.paid), 0)::float8 as unpaid,
-              coalesce(sum(k.commission) filter (where k.status = 'added' and k.paid), 0)::float8 as paid
-         from public.affiliate_commissions k join public.customers a on a.id = k.affiliate_id
-        where k.store_id = $1${filter}
-        group by a.id
-        order by unpaid desc, paid desc
+    const filter = sqlRentang('k.created_at', r, params);
+    const fBonus = sqlRentangBulan('b.bulan', r, params);
+    const q = await pool.query(
+      `with k as (
+         select k.affiliate_id,
+                coalesce(sum(k.commission) filter (where k.status = 'pending'), 0) as pending,
+                coalesce(sum(k.commission) filter (where k.status = 'added' and not k.paid), 0) as unpaid,
+                coalesce(sum(k.commission - pt.terpakai) filter (where k.paid), 0) as paid
+           from public.affiliate_commissions k
+           left join lateral (
+                select coalesce(sum(p.amount), 0) as terpakai from public.affiliate_potongan p
+                 where p.commission_id = k.id and p.payout_id is not null
+              ) pt on true
+          where k.store_id = $1${filter} group by 1
+       ), b as (
+         select b.affiliate_id,
+                coalesce(sum(b.amount) filter (where b.status = 'added' and not b.paid), 0) as bonus,
+                coalesce(sum(b.amount) filter (where b.paid), 0) as bonus_paid,
+                coalesce(sum(b.amount) filter (where b.status = 'berjalan'), 0) as bonus_running
+           from public.affiliate_bonuses b where b.store_id = $1${fBonus} group by 1
+       ), p as (
+         select affiliate_id, coalesce(sum(amount), 0) as deductions
+           from public.affiliate_potongan where store_id = $1 and payout_id is null group by 1
+       ), semua as (select affiliate_id from k union select affiliate_id from b union select affiliate_id from p)
+       select a.id as affiliate_id, a.name, a.email, a.phone, a.bank_info,
+              coalesce(k.pending, 0)::float8 as pending, coalesce(k.unpaid, 0)::float8 as unpaid,
+              (coalesce(k.paid, 0) + coalesce(b.bonus_paid, 0))::float8 as paid,
+              coalesce(b.bonus, 0)::float8 as bonus, coalesce(b.bonus_running, 0)::float8 as bonus_running,
+              coalesce(p.deductions, 0)::float8 as deductions
+         from semua s
+         join public.customers a on a.id = s.affiliate_id
+         left join k on k.affiliate_id = s.affiliate_id
+         left join b on b.affiliate_id = s.affiliate_id
+         left join p on p.affiliate_id = s.affiliate_id
+        order by coalesce(k.unpaid, 0) + coalesce(b.bonus, 0) - coalesce(p.deductions, 0) desc, coalesce(k.paid, 0) desc
         limit 500`,
       params,
     );
-    res.json({ data: r.rows });
+    const minimal = pengaturan.payout_minimum;
+    res.json({
+      data: q.rows.map((x) => {
+        const net = Math.round((x.unpaid + x.bonus - x.deductions) * 100) / 100;
+        return { ...x, net, below_minimum: minimal > 0 && net > 0 && net < minimal };
+      }),
+      payout_minimum: minimal,
+    });
   }));
 
   app.get('/api/admin/affiliate/payouts', ...admin, asyncHandler(async (req, res) => {
     const storeId = tokoAdmin(req);
     const r = await pool.query(
       `select p.id, p.affiliate_id, a.name as affiliate_name, p.amount::float8 as amount, p.commission_count, p.paid_at, p.note,
-              (p.proof_image is not null) as has_proof, p.expense_id
+              (p.proof_image is not null) as has_proof, p.expense_id, p.commission_total::float8 as commission_total,
+              p.bonus_total::float8 as bonus_total, p.deduction_total::float8 as deduction_total
          from public.affiliate_payouts p join public.customers a on a.id = p.affiliate_id
         where p.store_id = $1 order by p.paid_at desc limit 100`,
       [storeId],
@@ -878,26 +1041,31 @@ export function pasangRuteAffiliate(app, deps) {
       throw galat(400, 'Bukti transfer harus gambar JPG, PNG, atau WebP.');
     }
     const r = rentang(req.body ?? {});
+    await segarkanBonus(pool, storeId, { paksa: true });
+    const pengaturan = await muatPengaturan(pool, storeId);
     const client = await pool.connect();
     try {
       await client.query('begin');
-      const params = [storeId, affiliateId];
-      const filter = sqlRentang('created_at', r, params);
-      const calon = await client.query(
-        `select id from public.affiliate_commissions
-          where store_id = $1 and affiliate_id = $2 and status = 'added' and not paid${filter}`,
-        params,
-      );
-      const payout = calon.rowCount
-        ? await bayarKomisi(client, req, {
-            storeId,
-            affiliateId,
-            ids: calon.rows.map((x) => x.id),
-            note,
-            proofImage: bukti,
-            catatPengeluaran: req.body?.record_expense !== false,
-          })
-        : null;
+      // Satu pembayaran per affiliate pada satu waktu: komisi, bonus, dan potongan dikunci bersama.
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [`affiliate-bayar:${affiliateId}`]);
+      const isi = await isiBayar(client, storeId, affiliateId, r, { kunci: true });
+      const hasil = rincianBayar({
+        komisi: isi.komisi,
+        bonus: isi.bonus,
+        potongan: isi.potongan,
+        minimal: pengaturan.payout_minimum,
+        abaikanMinimal: req.body?.abaikan_minimal === true,
+      });
+      if (hasil.galat) throw galat(409, hasil.galat);
+      const payout = await bayarKomisi(client, req, {
+        storeId,
+        affiliateId,
+        ids: isi.komisiIds,
+        note,
+        proofImage: bukti,
+        catatPengeluaran: req.body?.record_expense !== false,
+        rincian: { bersih: hasil.bersih, bonus: isi.bonus, potongan: isi.potongan, bonusIds: isi.bonusIds, potonganIds: isi.potonganIds },
+      });
       if (!payout) throw galat(409, 'Tidak ada komisi Belum dibayar untuk affiliate ini pada rentang tanggal ini.');
       await client.query('commit');
       res.json({ data: payout });
@@ -930,6 +1098,7 @@ export function pasangRuteAffiliate(app, deps) {
       `select c.id, c.name, c.email, c.phone, c.affiliate_code as code, c.affiliate_access as access,
               ($3::boolean and (c.affiliate_access = 'allowed' or (c.affiliate_access = 'default' and $2::boolean))) as eligible,
               c.referred_by as upline_id, u.name as upline_name, coalesce(c.referred_at, c.created_at) as joined_at,
+              c.affiliate_commission as commission,
               (select count(*) from public.customers d where d.store_id = c.store_id and d.referred_by = c.id)::int as downline_count,
               (select count(*) from public.affiliate_clicks k where k.store_id = c.store_id and k.affiliate_id = c.id)::int as clicks,
               (select count(*) from public.orders o where o.store_id = c.store_id and o.affiliate_id = c.id and o.order_status = 'done')::int as sales,
@@ -963,6 +1132,11 @@ export function pasangRuteAffiliate(app, deps) {
       if (kode === 'UNDANGAN') throw galat(400, 'Kode UNDANGAN tidak bisa dipakai. Pilih kode lain.');
       ubah.affiliate_code = kode;
     }
+    if (req.body?.commission !== undefined) {
+      const t = validasiTarif(req.body.commission);
+      if (t.galat) throw galat(400, t.galat);
+      ubah.affiliate_commission = t.tier;
+    }
     let uplineBaru;
     if (req.body?.referred_by !== undefined) {
       uplineBaru = req.body.referred_by ? String(req.body.referred_by) : null;
@@ -985,6 +1159,9 @@ export function pasangRuteAffiliate(app, deps) {
     try {
       await client.query('begin');
       if (ubah.affiliate_access) await client.query('update public.customers set affiliate_access = $2 where id = $1', [id, ubah.affiliate_access]);
+      if ('affiliate_commission' in ubah) {
+        await client.query('update public.customers set affiliate_commission = $2::jsonb where id = $1', [id, ubah.affiliate_commission ? JSON.stringify(ubah.affiliate_commission) : null]);
+      }
       if (ubah.affiliate_code && ubah.affiliate_code !== member.affiliate_code) {
         await client.query('update public.customers set affiliate_code = $2 where id = $1', [id, ubah.affiliate_code]);
       }
@@ -1006,6 +1183,134 @@ export function pasangRuteAffiliate(app, deps) {
       client.release();
     }
     res.json({ data: { id } });
+  }));
+
+  // Undangan khusus admin (D-32, FR-51) -----------------------------------
+
+  function barisUndanganAdmin(u) {
+    return { ...barisUndangan(u), commission: u.commission ?? null, registered_name: u.registered_name ?? null };
+  }
+
+  async function kirimEmailUndanganAdmin({ storeId, email, nama, pesan, token, hari, tarif }) {
+    if (alamatUji(email)) return;
+    const toko = (await pool.query('select name from public.stores where id = $1', [storeId])).rows[0]?.name || 'GNNK Racing';
+    await kirimEmail({ to: email, ...emailUndanganAdmin({ toko, nama, pesan, tautan: `${asalToko}/aff/undangan/${token}`, hari, tarif }) });
+  }
+
+  app.get('/api/admin/affiliate/invitations', ...admin, asyncHandler(async (req, res) => {
+    const storeId = tokoAdmin(req);
+    const r = await pool.query(
+      `select u.id, u.email, u.name, u.status, u.sent_at, u.opened_at, u.expires_at, u.commission, c.name as registered_name
+         from public.affiliate_invitations u
+         left join public.customers c on c.id = u.registered_customer_id
+        where u.store_id = $1 and u.dari_admin
+        order by u.sent_at desc limit 200`,
+      [storeId],
+    );
+    res.json({ data: r.rows.map(barisUndanganAdmin) });
+  }));
+
+  app.post('/api/admin/affiliate/invitations', ...admin, asyncHandler(async (req, res) => {
+    const storeId = tokoAdmin(req);
+    const pengaturan = await muatPengaturan(pool, storeId);
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const nama = String(req.body?.name ?? '').trim().slice(0, 80) || null;
+    const pesan = String(req.body?.message ?? '').trim().slice(0, 300) || null;
+    if (!POLA_EMAIL.test(email) || email.length > 200) throw galat(400, 'Email tidak valid.');
+    if (memuatTautan(nama) || memuatTautan(pesan)) throw galat(400, 'Nama dan pesan undangan tidak boleh memuat tautan.');
+    const t = validasiTarif(req.body?.commission ?? null);
+    if (t.galat) throw galat(400, t.galat);
+    const token = tokenBaru();
+    const client = await pool.connect();
+    let baris;
+    try {
+      await client.query('begin');
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [`affiliate-undang-admin:${storeId}`]);
+      const anggota = await client.query(
+        'select 1 from public.customers where store_id = $1 and lower(email) = $2 and user_id is not null limit 1',
+        [storeId, email],
+      );
+      if (anggota.rowCount) throw galat(409, 'Email ini sudah terdaftar sebagai member. Ubah aksesnya di daftar Affiliate.');
+      const ganda = await client.query(
+        `select 1 from public.affiliate_invitations
+          where store_id = $1 and dari_admin and lower(email) = $2 and sent_at > now() - interval '24 hours' limit 1`,
+        [storeId, email],
+      );
+      if (ganda.rowCount) throw galat(409, 'Email ini sudah diundang dalam 24 jam terakhir.');
+      const ins = await client.query(
+        `insert into public.affiliate_invitations (store_id, affiliate_id, dari_admin, email, name, message, token_hash, expires_at, commission)
+         values ($1, null, true, $2, $3, $4, $5, now() + make_interval(days => $6), $7::jsonb)
+         returning id, email, name, status, sent_at, opened_at, expires_at, commission`,
+        [storeId, email, nama, pesan, sidikToken(token), pengaturan.invite_days, t.tier ? JSON.stringify(t.tier) : null],
+      );
+      baris = ins.rows[0];
+      await writeAdminAudit(client, req.user, 'affiliate.invite', 'invitation', baris.id, { email, commission: t.tier });
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    try {
+      await kirimEmailUndanganAdmin({ storeId, email, nama, pesan, token, hari: pengaturan.invite_days, tarif: t.tier });
+    } catch (error) {
+      await pool.query(`update public.affiliate_invitations set status = 'failed', last_error = $2 where id = $1`, [baris.id, String(error.message).slice(0, 300)]);
+      throw galat(502, 'Undangan gagal dikirim. Coba kirim ulang beberapa saat lagi.');
+    }
+    res.json({ data: barisUndanganAdmin(baris) });
+  }));
+
+  app.post('/api/admin/affiliate/invitations/:id/resend', ...admin, asyncHandler(async (req, res) => {
+    const storeId = tokoAdmin(req);
+    const id = String(req.params.id);
+    if (!POLA_UUID.test(id)) throw galat(404, 'Undangan tidak ditemukan.');
+    const pengaturan = await muatPengaturan(pool, storeId);
+    const token = tokenBaru();
+    const client = await pool.connect();
+    let lama;
+    let baru;
+    try {
+      await client.query('begin');
+      const r = await client.query(
+        `select id, email, name, message, status, sent_at, commission from public.affiliate_invitations
+          where id = $1 and store_id = $2 and dari_admin for update`,
+        [id, storeId],
+      );
+      lama = r.rows[0];
+      if (!lama) throw galat(404, 'Undangan tidak ditemukan.');
+      if (lama.status === 'registered') throw galat(409, 'Penerima sudah mendaftar.');
+      const anggota = await client.query(
+        'select 1 from public.customers where store_id = $1 and lower(email) = lower($2) and user_id is not null limit 1',
+        [storeId, lama.email],
+      );
+      if (anggota.rowCount) throw galat(409, 'Email ini sudah terdaftar sebagai member. Ubah aksesnya di daftar Affiliate.');
+      if (lama.status !== 'failed' && Date.now() - new Date(lama.sent_at).getTime() < 24 * 3600_000) {
+        throw galat(409, 'Undangan baru bisa dikirim ulang 24 jam setelah pengiriman terakhir.');
+      }
+      const up = await client.query(
+        `update public.affiliate_invitations
+            set token_hash = $2, sent_at = now(), expires_at = now() + make_interval(days => $3),
+                status = 'sent', resend_count = resend_count + 1, last_error = null
+          where id = $1
+          returning id, email, name, status, sent_at, opened_at, expires_at, commission`,
+        [id, sidikToken(token), pengaturan.invite_days],
+      );
+      baru = up.rows[0];
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    try {
+      await kirimEmailUndanganAdmin({ storeId, email: lama.email, nama: lama.name, pesan: lama.message, token, hari: pengaturan.invite_days, tarif: lama.commission });
+    } catch (error) {
+      await pool.query(`update public.affiliate_invitations set status = 'failed', last_error = $2 where id = $1`, [id, String(error.message).slice(0, 300)]);
+      throw galat(502, 'Undangan gagal dikirim. Coba kirim ulang beberapa saat lagi.');
+    }
+    res.json({ data: barisUndanganAdmin(baru) });
   }));
 
   app.get('/api/admin/affiliate/members/:id/network', ...admin, asyncHandler(async (req, res) => {

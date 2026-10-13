@@ -9,7 +9,7 @@ import pg from 'pg';
 import notificationsHandler from '../api/notifications.js';
 import { describePgError, isConnectionError } from './pgErrors.js';
 import { pasangRuteAffiliate } from './affiliate/rute.js';
-import { catatAtribusiPesanan, catatReferralDaftar } from './affiliate/layanan.js';
+import { catatAtribusiPesanan, catatReferralDaftar, segarkanBonus } from './affiliate/layanan.js';
 import { prosesOutbox } from './affiliate/pekerja.js';
 
 loadEnvFile('.env');
@@ -2734,6 +2734,26 @@ if (!DI_VERCEL) {
       antreanJalan = false;
     }
   }, jedaAntrean).unref();
+
+  // Bonus target bulanan (D-38, FR-58): dihitung ulang tiap menit untuk toko
+  // yang bonusnya aktif atau masih punya bonus berjalan.
+  const jedaBonus = Number(process.env.AFFILIATE_BONUS_INTERVAL_MS || 60000);
+  let bonusJalan = false;
+  setInterval(async () => {
+    if (bonusJalan) return;
+    bonusJalan = true;
+    try {
+      const toko = await pool.query(
+        `select id from public.stores where affiliate_settings->>'bonus_enabled' = 'true'
+          union select distinct store_id from public.affiliate_bonuses where not paid`,
+      );
+      for (const { id } of toko.rows) await segarkanBonus(pool, id, { paksa: true });
+    } catch (error) {
+      if (!isConnectionError(error)) console.error('[affiliate] bonus target gagal:', error.message);
+    } finally {
+      bonusJalan = false;
+    }
+  }, jedaBonus).unref();
 }
 
 // Dipakai oleh api/[...path].js sebagai handler serverless.

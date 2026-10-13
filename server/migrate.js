@@ -58,7 +58,7 @@ const REQUIRED_COLUMNS = {
     'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
     'is_active', 'points', 'created_at', 'address', 'user_id', 'privacy_accepted_at',
     'address_province', 'address_city',
-    'affiliate_code', 'affiliate_access', 'referred_by', 'referred_at', 'referral_source', 'bank_info',
+    'affiliate_code', 'affiliate_access', 'referred_by', 'referred_at', 'referral_source', 'bank_info', 'affiliate_commission',
   ],
   promos: ['id', 'store_id', 'code', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'created_at'],
   flash_sales: ['id', 'store_id', 'name', 'starts_at', 'ends_at', 'is_active', 'created_at'],
@@ -148,15 +148,22 @@ const REQUIRED_COLUMNS = {
   affiliate_payouts: [
     'id', 'store_id', 'affiliate_id', 'amount', 'commission_count', 'paid_at', 'paid_by',
     'note', 'proof_image', 'expense_id', 'created_at',
+    'commission_total', 'bonus_total', 'deduction_total',
   ],
   affiliate_commissions: [
     'id', 'store_id', 'order_id', 'order_item_id', 'product_id', 'affiliate_id', 'tier',
     'base_amount', 'rate_type', 'rate_value', 'commission', 'status', 'paid', 'paid_at',
-    'payout_id', 'created_at', 'updated_at',
+    'payout_id', 'created_at', 'updated_at', 'commission_awal',
+  ],
+  affiliate_potongan: ['id', 'store_id', 'affiliate_id', 'commission_id', 'jenis', 'amount', 'payout_id', 'created_at'],
+  affiliate_bonuses: [
+    'id', 'store_id', 'affiliate_id', 'bulan', 'omset', 'target', 'rate_type', 'rate_value', 'amount',
+    'status', 'paid', 'paid_at', 'payout_id', 'created_at', 'updated_at',
   ],
   affiliate_invitations: [
     'id', 'store_id', 'affiliate_id', 'email', 'name', 'message', 'token_hash', 'status',
     'sent_at', 'opened_at', 'expires_at', 'registered_customer_id', 'resend_count', 'last_error', 'created_at',
+    'dari_admin', 'commission',
   ],
   affiliate_outbox: ['id', 'store_id', 'kind', 'ref_id', 'status', 'attempts', 'next_attempt_at', 'sent_at', 'last_error', 'created_at'],
   product_channel_mappings: [

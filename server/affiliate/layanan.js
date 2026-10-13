@@ -8,10 +8,11 @@ import {
   bangunRantai,
   cookieBerlaku,
   gabungPengaturan,
+  hitungBonus,
   hitungKomisi,
   kodeAcak,
   pilihCalon,
-  tierUntukProduk,
+  tarifBarang,
 } from './inti.js';
 
 export const ZONA = 'Asia/Jakarta';
@@ -44,7 +45,7 @@ export async function muatPengaturan(db, storeId) {
 export async function ambilMember(db, storeId, customerId) {
   const r = await db.query(
     `select id, store_id, user_id, name, email, phone, affiliate_code, affiliate_access, referred_by, bank_info,
-            created_at, referred_at
+            created_at, referred_at, affiliate_commission
        from public.customers where id = $1 and store_id = $2`,
     [customerId, storeId],
   );
@@ -54,7 +55,7 @@ export async function ambilMember(db, storeId, customerId) {
 export async function memberDariUser(db, storeId, userId) {
   const r = await db.query(
     `select id, store_id, user_id, name, email, phone, affiliate_code, affiliate_access, referred_by, bank_info,
-            created_at, referred_at
+            created_at, referred_at, affiliate_commission
        from public.customers where user_id = $1 and store_id = $2 limit 1`,
     [userId, storeId],
   );
@@ -171,6 +172,7 @@ export async function catatAtribusiPesanan(db, { storeId, orderId, pembeliId, it
   if (!calon.length) return null;
 
   let terpilih = null;
+  let affTerpilih = null;
   let barang = [];
   for (const c of calon) {
     const aff = await ambilMember(db, storeId, c.affiliateId);
@@ -178,6 +180,7 @@ export async function catatAtribusiPesanan(db, { storeId, orderId, pembeliId, it
     const boleh = await barangBerhak(db, storeId, aff.id, items, produkById);
     if (!boleh.length) continue;
     terpilih = c;
+    affTerpilih = aff;
     barang = boleh;
     break;
   }
@@ -196,7 +199,8 @@ export async function catatAtribusiPesanan(db, { storeId, orderId, pembeliId, it
     [orderId, terpilih.affiliateId, terpilih.source, terpilih.acquisition.source || null, terpilih.acquisition.media || null],
   );
 
-  const tierPerItem = (it) => tierUntukProduk(produkById.get(it.product_id), pengaturan);
+  // D-31: komisi khusus produk, lalu tarif affiliate yang membawa pesanan, lalu bawaan toko.
+  const tierPerItem = (it) => tarifBarang(produkById.get(it.product_id), affTerpilih?.affiliate_commission, pengaturan);
   const maksTier = Math.max(...barang.map((it) => tierPerItem(it).length));
   const leluhur = await petaLeluhur(db, storeId, terpilih.affiliateId);
   const rantai = bangunRantai({
@@ -213,8 +217,8 @@ export async function catatAtribusiPesanan(db, { storeId, orderId, pembeliId, it
   for (const k of komisi) {
     await db.query(
       `insert into public.affiliate_commissions
-         (store_id, order_id, order_item_id, product_id, affiliate_id, tier, base_amount, rate_type, rate_value, commission)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (store_id, order_id, order_item_id, product_id, affiliate_id, tier, base_amount, rate_type, rate_value, commission, commission_awal)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
        on conflict (order_item_id, tier) do nothing`,
       [storeId, orderId, k.order_item_id, k.product_id, k.affiliate_id, k.tier, k.base_amount, k.rate_type, k.rate_value, k.commission],
     );
@@ -230,6 +234,7 @@ export async function catatAtribusiPesanan(db, { storeId, orderId, pembeliId, it
  * berlaku tertua untuk email yang sama. Dipanggil di dalam savepoint.
  */
 export async function catatReferralDaftar(db, { storeId, customerId, email, cookieHeader, rahasia }) {
+  await terapkanUndanganAdmin(db, { storeId, customerId, email });
   const pengaturan = await muatPengaturan(db, storeId);
   if (!pengaturan.enabled) return null;
   const cookie = cookieSah(cookieHeader, rahasia, pengaturan);
@@ -240,6 +245,7 @@ export async function catatReferralDaftar(db, { storeId, customerId, email, cook
     const u = await db.query(
       `select id, affiliate_id from public.affiliate_invitations
         where store_id = $1 and lower(email) = lower($2) and status in ('sent', 'opened') and expires_at > now()
+          and not dari_admin
         order by sent_at asc limit 1`,
       [storeId, email],
     );
@@ -267,10 +273,46 @@ export async function catatReferralDaftar(db, { storeId, customerId, email, cook
   return r.rowCount ? { affiliateId, sumber } : null;
 }
 
+/**
+ * Undangan khusus dari admin (D-32, FR-52): pendaftar dengan email yang diundang
+ * admin, selama undangannya berlaku, langsung Diizinkan dengan tarif dari
+ * undangan. Berlaku juga saat program mati, supaya undangan yang sudah dikirim
+ * tidak hangus.
+ */
+export async function terapkanUndanganAdmin(db, { storeId, customerId, email }) {
+  if (!email) return null;
+  const u = await db.query(
+    `select id, commission from public.affiliate_invitations
+      where store_id = $1 and dari_admin and lower(email) = lower($2) and status in ('sent', 'opened') and expires_at > now()
+      order by sent_at desc limit 1`,
+    [storeId, email],
+  );
+  if (!u.rowCount) return null;
+  const inv = u.rows[0];
+  await db.query(
+    `update public.customers
+        set affiliate_access = 'allowed',
+            affiliate_commission = coalesce($3::jsonb, affiliate_commission)
+      where id = $1 and store_id = $2`,
+    [customerId, storeId, inv.commission ? JSON.stringify(inv.commission) : null],
+  );
+  await db.query(
+    `update public.affiliate_invitations set status = 'registered', registered_customer_id = $2
+      where id = $1 and store_id = $3`,
+    [inv.id, customerId, storeId],
+  );
+  return { invitationId: inv.id };
+}
+
 // ---------------------------------------------------------------------------
 // Angka
 
 const HARI_INI = `(now() at time zone '${ZONA}')::date`;
+
+/** Retur per pesanan, untuk omset bersih (D-39). Memakai $1 = store_id dan alias `o` untuk pesanan. */
+export const RETUR_PESANAN = `left join (select order_id, sum(refund_amount) as retur from public.order_returns where store_id = $1 group by order_id) rt on rt.order_id = o.id`;
+/** Omset satu pesanan: nilai barang dikurangi retur (D-39). */
+export const OMSET = `(o.subtotal - o.discount - coalesce(rt.retur, 0))`;
 const AWAL_BULAN = `(date_trunc('month', now() at time zone '${ZONA}') at time zone '${ZONA}')`;
 
 /** Klik, Lead, Sales, Omset, Komisi untuk hari ini, bulan ini, sepanjang waktu (D-10). */
@@ -284,23 +326,29 @@ export async function ringkasanAffiliate(db, storeId, affiliateId) {
       [storeId, affiliateId],
     ),
     db.query(
-      `select count(*) filter (where order_status <> 'canceled' and (created_at at time zone '${ZONA}')::date = ${HARI_INI})::int as lead_hari,
-              count(*) filter (where order_status <> 'canceled' and created_at >= ${AWAL_BULAN})::int as lead_bulan,
-              count(*) filter (where order_status <> 'canceled')::int as lead_semua,
-              count(*) filter (where order_status = 'done' and (created_at at time zone '${ZONA}')::date = ${HARI_INI})::int as sales_hari,
-              count(*) filter (where order_status = 'done' and created_at >= ${AWAL_BULAN})::int as sales_bulan,
-              count(*) filter (where order_status = 'done')::int as sales_semua,
-              coalesce(sum(subtotal - discount) filter (where order_status = 'done' and (created_at at time zone '${ZONA}')::date = ${HARI_INI}), 0)::float8 as omset_hari,
-              coalesce(sum(subtotal - discount) filter (where order_status = 'done' and created_at >= ${AWAL_BULAN}), 0)::float8 as omset_bulan,
-              coalesce(sum(subtotal - discount) filter (where order_status = 'done'), 0)::float8 as omset_semua
-         from public.orders where store_id = $1 and affiliate_id = $2`,
+      `select count(*) filter (where o.order_status <> 'canceled' and (o.created_at at time zone '${ZONA}')::date = ${HARI_INI})::int as lead_hari,
+              count(*) filter (where o.order_status <> 'canceled' and o.created_at >= ${AWAL_BULAN})::int as lead_bulan,
+              count(*) filter (where o.order_status <> 'canceled')::int as lead_semua,
+              count(*) filter (where o.order_status = 'done' and (o.created_at at time zone '${ZONA}')::date = ${HARI_INI})::int as sales_hari,
+              count(*) filter (where o.order_status = 'done' and o.created_at >= ${AWAL_BULAN})::int as sales_bulan,
+              count(*) filter (where o.order_status = 'done')::int as sales_semua,
+              coalesce(sum(${OMSET}) filter (where o.order_status = 'done' and (o.created_at at time zone '${ZONA}')::date = ${HARI_INI}), 0)::float8 as omset_hari,
+              coalesce(sum(${OMSET}) filter (where o.order_status = 'done' and o.created_at >= ${AWAL_BULAN}), 0)::float8 as omset_bulan,
+              coalesce(sum(${OMSET}) filter (where o.order_status = 'done'), 0)::float8 as omset_semua
+         from public.orders o
+         ${RETUR_PESANAN}
+        where o.store_id = $1 and o.affiliate_id = $2`,
       [storeId, affiliateId],
     ),
     db.query(
-      `select coalesce(sum(commission) filter (where (created_at at time zone '${ZONA}')::date = ${HARI_INI}), 0)::float8 as hari,
-              coalesce(sum(commission) filter (where created_at >= ${AWAL_BULAN}), 0)::float8 as bulan,
-              coalesce(sum(commission), 0)::float8 as semua
-         from public.affiliate_commissions where store_id = $1 and affiliate_id = $2 and status = 'added'`,
+      `select coalesce(sum(k.commission - pt.potong) filter (where (k.created_at at time zone '${ZONA}')::date = ${HARI_INI}), 0)::float8 as hari,
+              coalesce(sum(k.commission - pt.potong) filter (where k.created_at >= ${AWAL_BULAN}), 0)::float8 as bulan,
+              coalesce(sum(k.commission - pt.potong), 0)::float8 as semua
+         from public.affiliate_commissions k
+         left join lateral (
+           select coalesce(sum(p.amount), 0) as potong from public.affiliate_potongan p where p.commission_id = k.id
+         ) pt on true
+        where k.store_id = $1 and k.affiliate_id = $2 and k.status = 'added'`,
       [storeId, affiliateId],
     ),
   ]);
@@ -316,9 +364,10 @@ export async function grafikAffiliate(db, storeId, affiliateId) {
     `select to_char(d, 'YYYY-MM-DD') as key, coalesce(x.sales, 0)::int as sales, coalesce(x.omset, 0)::float8 as omset
        from generate_series(date_trunc('month', now() at time zone '${ZONA}')::date, ${HARI_INI}, interval '1 day') d
        left join (
-         select (created_at at time zone '${ZONA}')::date as hari, count(*) as sales, sum(subtotal - discount) as omset
-           from public.orders
-          where store_id = $1 and affiliate_id = $2 and order_status = 'done' and created_at >= ${AWAL_BULAN}
+         select (o.created_at at time zone '${ZONA}')::date as hari, count(*) as sales, sum(${OMSET}) as omset
+           from public.orders o
+           ${RETUR_PESANAN}
+          where o.store_id = $1 and o.affiliate_id = $2 and o.order_status = 'done' and o.created_at >= ${AWAL_BULAN}
           group by 1
        ) x on x.hari = d::date
       order by d`,
@@ -328,10 +377,11 @@ export async function grafikAffiliate(db, storeId, affiliateId) {
     `select to_char(d, 'YYYY-MM') as key, coalesce(x.sales, 0)::int as sales, coalesce(x.omset, 0)::float8 as omset
        from generate_series(date_trunc('year', now() at time zone '${ZONA}'), date_trunc('month', now() at time zone '${ZONA}'), interval '1 month') d
        left join (
-         select date_trunc('month', created_at at time zone '${ZONA}') as bln, count(*) as sales, sum(subtotal - discount) as omset
-           from public.orders
-          where store_id = $1 and affiliate_id = $2 and order_status = 'done'
-            and created_at >= (date_trunc('year', now() at time zone '${ZONA}') at time zone '${ZONA}')
+         select date_trunc('month', o.created_at at time zone '${ZONA}') as bln, count(*) as sales, sum(${OMSET}) as omset
+           from public.orders o
+           ${RETUR_PESANAN}
+          where o.store_id = $1 and o.affiliate_id = $2 and o.order_status = 'done'
+            and o.created_at >= (date_trunc('year', now() at time zone '${ZONA}') at time zone '${ZONA}')
           group by 1
        ) x on x.bln = d
       order by d`,
@@ -347,11 +397,13 @@ export async function akuisisiAffiliate(db, storeId, affiliateId, platforms) {
        select source, media, count(*)::int as views
          from public.affiliate_clicks where store_id = $1 and affiliate_id = $2 group by 1, 2
      ), o as (
-       select coalesce(acquisition_source, '') as source, coalesce(acquisition_media, '') as media,
-              count(*) filter (where order_status <> 'canceled')::int as leads,
-              count(*) filter (where order_status = 'done')::int as sales,
-              coalesce(sum(subtotal - discount) filter (where order_status = 'done'), 0)::float8 as value
-         from public.orders where store_id = $1 and affiliate_id = $2 group by 1, 2
+       select coalesce(o.acquisition_source, '') as source, coalesce(o.acquisition_media, '') as media,
+              count(*) filter (where o.order_status <> 'canceled')::int as leads,
+              count(*) filter (where o.order_status = 'done')::int as sales,
+              coalesce(sum(${OMSET}) filter (where o.order_status = 'done'), 0)::float8 as value
+         from public.orders o
+         ${RETUR_PESANAN}
+        where o.store_id = $1 and o.affiliate_id = $2 group by 1, 2
      )
      select coalesce(k.source, o.source) as source, coalesce(k.media, o.media) as media,
             coalesce(k.views, 0) as views, coalesce(o.leads, 0) as leads, coalesce(o.sales, 0) as sales, coalesce(o.value, 0) as value
@@ -363,3 +415,93 @@ export async function akuisisiAffiliate(db, storeId, affiliateId, platforms) {
   const label = new Map(platforms.map((p) => [p.key, p.label]));
   return r.rows.map((x) => ({ ...x, label: x.source ? label.get(x.source) ?? x.source : 'Langsung' }));
 }
+
+// ---------------------------------------------------------------------------
+// Bonus target bulanan (D-38)
+
+const segarTerakhir = new Map();
+
+/** Omset bersih per affiliate untuk pesanan Selesai yang dibuat di bulan `bulan` (YYYY-MM-01, WIB). */
+async function omsetBulanan(db, storeId, bulan, affiliateId = null) {
+  const r = await db.query(
+    `select o.affiliate_id, coalesce(sum(${OMSET}), 0)::float8 as omset
+       from public.orders o
+       ${RETUR_PESANAN}
+      where o.store_id = $1 and o.affiliate_id is not null and o.order_status = 'done'
+        and (o.created_at at time zone '${ZONA}') >= $2::date
+        and (o.created_at at time zone '${ZONA}') < ($2::date + interval '1 month')
+        and ($3::uuid is null or o.affiliate_id = $3::uuid)
+      group by 1`,
+    [storeId, bulan, affiliateId],
+  );
+  return new Map(r.rows.map((x) => [x.affiliate_id, Number(x.omset)]));
+}
+
+/** Hari pertama bulan ini dan bulan lalu (WIB), sebagai teks YYYY-MM-DD. */
+async function duaBulan(db) {
+  const r = await db.query(
+    `select to_char(date_trunc('month', now() at time zone '${ZONA}'), 'YYYY-MM-DD') as ini,
+            to_char(date_trunc('month', now() at time zone '${ZONA}') - interval '1 month', 'YYYY-MM-DD') as lalu`,
+  );
+  return r.rows[0];
+}
+
+/**
+ * Hitung ulang baris bonus bulan ini dan bulan lalu (FR-58). Baris yang sudah
+ * dibayar tidak disentuh. Dibatasi sekali per 5 detik per toko kecuali `paksa`.
+ */
+export async function segarkanBonus(db, storeId, { paksa = false } = {}) {
+  const kini = Date.now();
+  if (!paksa && kini - (segarTerakhir.get(storeId) ?? 0) < 5000) return;
+  segarTerakhir.set(storeId, kini);
+  const pengaturan = await muatPengaturan(db, storeId);
+  const { ini, lalu } = await duaBulan(db);
+  for (const bulan of [lalu, ini]) {
+    const omset = await omsetBulanan(db, storeId, bulan);
+    const ids = [...omset.keys()];
+    const anggota = ids.length
+      ? await db.query('select id, user_id, affiliate_access from public.customers where store_id = $1 and id = any($2::uuid[])', [storeId, ids])
+      : { rows: [] };
+    const berhak = new Set(anggota.rows.filter((m) => m.user_id && aksesBerhak(pengaturan, m.affiliate_access)).map((m) => m.id));
+    const dapat = [];
+    for (const [affiliateId, nilai] of omset) {
+      const jumlah = berhak.has(affiliateId) ? hitungBonus(nilai, pengaturan) : 0;
+      if (jumlah > 0) dapat.push({ affiliateId, nilai, jumlah });
+    }
+    for (const d of dapat) {
+      await db.query(
+        `insert into public.affiliate_bonuses (store_id, affiliate_id, bulan, omset, target, rate_type, rate_value, amount, status)
+         values ($1, $2, $3::date, $4, $5, $6, $7, $8, $9)
+         on conflict (store_id, affiliate_id, bulan) do update
+           set omset = excluded.omset, target = excluded.target, rate_type = excluded.rate_type,
+               rate_value = excluded.rate_value, amount = excluded.amount, status = excluded.status, updated_at = now()
+         where not public.affiliate_bonuses.paid`,
+        [storeId, d.affiliateId, bulan, d.nilai, pengaturan.bonus_target, pengaturan.bonus_type, pengaturan.bonus_value, d.jumlah, bulan === ini ? 'berjalan' : 'added'],
+      );
+    }
+    await db.query(
+      `delete from public.affiliate_bonuses
+        where store_id = $1 and bulan = $2::date and not paid and not (affiliate_id = any($3::uuid[]))`,
+      [storeId, bulan, dapat.map((d) => d.affiliateId)],
+    );
+  }
+}
+
+/** Kartu target untuk ringkasan affiliate (FR-60). */
+export async function targetAffiliate(db, storeId, affiliateId, pengaturan) {
+  if (!pengaturan.bonus_enabled || !(Number(pengaturan.bonus_value) > 0)) return null;
+  const { ini } = await duaBulan(db);
+  const omset = (await omsetBulanan(db, storeId, ini, affiliateId)).get(affiliateId) ?? 0;
+  const target = Number(pengaturan.bonus_target);
+  return {
+    bulan: ini,
+    target,
+    omset,
+    sisa: Math.max(0, target - omset),
+    tercapai: omset >= target,
+    bonus_type: pengaturan.bonus_type,
+    bonus_value: Number(pengaturan.bonus_value),
+    bonus: hitungBonus(omset, pengaturan),
+  };
+}
+
