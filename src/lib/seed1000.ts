@@ -112,18 +112,18 @@ export async function generate1000Data(
   const store: Store = {
     id: targetStoreId,
     name: 'TokoKu',
-    address: 'Jl. Malioboro No. 128, Yogyakarta',
+    address: 'Jl. Raya Industri No. 45, Sidoarjo, Jawa Timur',
     currency: 'IDR',
-    tax_rate: 10,
+    tax_rate: 0,
     low_stock_threshold: 10,
     points_per_amount: 0.01,
-    receipt_header: 'TOKO KASIR NUSANTARA\nTelp: 0812-3456-7890',
-    receipt_footer: 'Terima kasih atas kunjungan Anda!\nBarang yang dibeli dapat ditukar max 3 hari.',
-    industry: 'fnb',
+    receipt_header: 'GNNK RACING\nSparepart & Gear Set Motor\nTelp: 0812-3456-7890',
+    receipt_footer: 'Terima kasih sudah berbelanja.\nKlaim garansi maksimal 3 hari setelah barang diterima.',
+    industry: 'online',
     features: {
-      useOrderType: true,
-      useTable: true,
-      useSizes: true,
+      useOrderType: false,
+      useTable: false,
+      useSizes: false,
       defaultTrackStock: true,
     },
     created_at: new Date(now.getTime() - 60 * 86400000).toISOString(),
@@ -141,14 +141,14 @@ export async function generate1000Data(
 
   // 3. CATEGORIES
   const categoryDefs = [
-    { name: 'Kopi & Minuman Espresso', icon: 'coffee' },
-    { name: 'Non-Kopi & Teh Artisan', icon: 'cup-soda' },
-    { name: 'Makanan Utama & Rice Bowl', icon: 'utensils' },
-    { name: 'Snack & Makanan Ringan', icon: 'cookie' },
-    { name: 'Pastry & Bakery Oven', icon: 'cake' },
-    { name: 'Merchandise & Tumbler', icon: 'shopping-bag' },
-    { name: 'Bahan Baku & Biji Kopi Roastery', icon: 'boxes' },
-    { name: 'Apparel & Kaos Barista', icon: 'tag' },
+    { name: 'Gear Set Lengkap', icon: 'boxes' },
+    { name: 'Gear Belakang', icon: 'circle-dot' },
+    { name: 'Gear Depan', icon: 'circle' },
+    { name: 'Rantai / Chain', icon: 'link' },
+    { name: 'Baut & Kelengkapan', icon: 'wrench' },
+    { name: 'Oli & Pelumas Rantai', icon: 'droplet' },
+    { name: 'Bahan Baku & Material', icon: 'package' },
+    { name: 'Merchandise & Apparel', icon: 'tag' },
   ];
 
   const categories: Category[] = categoryDefs.map((c, idx) => ({
@@ -160,66 +160,80 @@ export async function generate1000Data(
   }));
 
   // 4. PRODUCTS
+  //
+  // Enam produk pertama BUKAN karangan: SKU, nama, harga jual, dan beratnya
+  // disalin apa adanya dari berkas ekspor milik client
+  // (tiktok-2026-09-03-11_32.xlsx dan shopee-20260804_20260903.xlsx).
+  //
+  // Harga MODAL tidak ada di berkas mana pun — ekspor marketplace tidak pernah
+  // memuat modal penjual — jadi angka cost di bawah masih perkiraan dan wajib
+  // dikoreksi client sebelum laporan laba rugi dipakai untuk mengambil
+  // keputusan. Stok juga tidak ada di ekspor penjualan, jadi masih contoh.
   const rawProducts = [
-    { cat: 'cat-1', name: 'Espresso Single Origin Gayo', sku: 'KAS-KOP-001', bar: '899100100101', price: 18000, cost: 6000, stock: 150 },
-    { cat: 'cat-1', name: 'Double Shot Americano', sku: 'KAS-KOP-002', bar: '899100100102', price: 22000, cost: 7500, stock: 120 },
-    { cat: 'cat-1', name: 'Caffe Latte Creamy', sku: 'KAS-KOP-003', bar: '899100100103', price: 28000, cost: 11000, stock: 200 },
-    { cat: 'cat-1', name: 'Cappuccino Foam Art', sku: 'KAS-KOP-004', bar: '899100100104', price: 28000, cost: 11000, stock: 95 },
-    { cat: 'cat-1', name: 'Caramel Macchiato Ice', sku: 'KAS-KOP-005', bar: '899100100105', price: 34000, cost: 14000, stock: 180 },
-    { cat: 'cat-1', name: 'Spanish Latte Dolce', sku: 'KAS-KOP-006', bar: '899100100106', price: 32000, cost: 13000, stock: 220 },
-    { cat: 'cat-1', name: 'Vanilla Sweet Cream Cold Brew', sku: 'KAS-KOP-007', bar: '899100100107', price: 35000, cost: 15000, stock: 80 },
-    { cat: 'cat-1', name: 'Kopi Susu Gula Aren Tubruk', sku: 'KAS-KOP-008', bar: '899100100108', price: 20000, cost: 8000, stock: 350 },
-    { cat: 'cat-1', name: 'Mocha Frappe Choco Melt', sku: 'KAS-KOP-009', bar: '899100100109', price: 36000, cost: 16000, stock: 65 },
-    { cat: 'cat-1', name: 'Affogato Gelato Vanilla', sku: 'KAS-KOP-010', bar: '899100100110', price: 25000, cost: 10000, stock: 45 },
+    // ================= DATA ASLI CLIENT =================
+    { cat: 'cat-1', name: 'Gear Set Yamaha WR155 Type 428 Black GNNK Racing', sku: 'G-SETWR-428-14-52-B', bar: '899200100101', price: 500000, cost: 285000, stock: 24, gram: 2000 },
+    { cat: 'cat-1', name: 'Gear Set Honda CRF150 TYPE 520 Red Alloy Baja GNNK Racing Product', sku: 'SETCRF-13-44AB-R', bar: '899200100102', price: 1100000, cost: 640000, stock: 12, gram: 3000 },
+    { cat: 'cat-1', name: 'Gear Set Yamaha Jupiter Z Mx Old GNNK Racing Product', sku: 'G-415/13-36-Ornge+R', bar: '899200100103', price: 425000, cost: 245000, stock: 30, gram: 1000 },
+    { cat: 'cat-1', name: 'Gear Set Yamaha MX King Type 415 Black GNNK Racing', sku: 'GB-MX-KING-40-BLACK', bar: '899200100104', price: 195000, cost: 112000, stock: 38, gram: 1000 },
+    { cat: 'cat-2', name: 'Gear Belakang Yamaha Fiz R  Rx King GNNK Racing Product', sku: 'Gb-415-41F-Black', bar: '899200200101', price: 195000, cost: 108000, stock: 45, gram: 300 },
+    { cat: 'cat-2', name: 'Gear Belakang Honda CRF150 TYPE 520 Red GNNK Racing Product', sku: 'GB-CRF-520-42 Red', bar: '899200200102', price: 350000, cost: 198000, stock: 26, gram: 1000 },
 
-    { cat: 'cat-2', name: 'Matcha Latte Uji Kyoto', sku: 'KAS-TEH-011', bar: '899100200111', price: 30000, cost: 12000, stock: 140 },
-    { cat: 'cat-2', name: 'Signature Belgian Chocolate', sku: 'KAS-CHO-012', bar: '899100200112', price: 28000, cost: 11000, stock: 110 },
-    { cat: 'cat-2', name: 'Earl Grey Milk Tea with Boba', sku: 'KAS-TEH-013', bar: '899100200113', price: 26000, cost: 9500, stock: 160 },
-    { cat: 'cat-2', name: 'Lychee Iced Tea Sparkling', sku: 'KAS-TEH-014', bar: '899100200114', price: 24000, cost: 8000, stock: 190 },
-    { cat: 'cat-2', name: 'Peach Jasmine Tea', sku: 'KAS-TEH-015', bar: '899100200115', price: 24000, cost: 8000, stock: 130 },
-    { cat: 'cat-2', name: 'Taro Velvet Latte', sku: 'KAS-BEV-016', bar: '899100200116', price: 27000, cost: 10000, stock: 90 },
-    { cat: 'cat-2', name: 'Lemon Herb Butterfly Pea', sku: 'KAS-TEH-017', bar: '899100200117', price: 22000, cost: 7000, stock: 85 },
-    { cat: 'cat-2', name: 'Mineral Water Oasis 600ml', sku: 'KAS-AIR-018', bar: '899100200118', price: 8000, cost: 3000, stock: 300 },
+    // ============ CONTOH, MENGIKUTI POLA SKU CLIENT ============
+    { cat: 'cat-1', name: 'Gear Set Yamaha Vixion Type 428 Gold GNNK Racing', sku: 'G-SETVIX-428-14-45-G', bar: '899200100105', price: 465000, cost: 268000, stock: 22, gram: 1800 },
+    { cat: 'cat-1', name: 'Gear Set Yamaha R15 V3 Type 428 Black GNNK Racing', sku: 'G-SETR15-428-14-47-B', bar: '899200100106', price: 520000, cost: 300000, stock: 18, gram: 1900 },
+    { cat: 'cat-1', name: 'Gear Set Honda Sonic 150 Type 420 Red GNNK Racing', sku: 'G-SETSON-420-14-43-R', bar: '899200100107', price: 385000, cost: 222000, stock: 27, gram: 1500 },
+    { cat: 'cat-1', name: 'Gear Set Honda CB150R Type 428 Silver GNNK Racing', sku: 'G-SETCB-428-15-45-S', bar: '899200100108', price: 445000, cost: 256000, stock: 20, gram: 1800 },
+    { cat: 'cat-1', name: 'Gear Set Suzuki Satria FU150 Type 428 Gold GNNK Racing', sku: 'G-SETFU-428-14-43-G', bar: '899200100109', price: 410000, cost: 236000, stock: 25, gram: 1700 },
+    { cat: 'cat-1', name: 'Gear Set Kawasaki KLX150 Type 428 Black GNNK Racing', sku: 'G-SETKLX-428-14-48-B', bar: '899200100110', price: 495000, cost: 285000, stock: 16, gram: 2100 },
+    { cat: 'cat-1', name: 'Gear Set Yamaha Aerox 155 Type 415 Black GNNK Racing', sku: 'G-SETAER-415-13-38-B', bar: '899200100111', price: 355000, cost: 205000, stock: 21, gram: 1200 },
+    { cat: 'cat-1', name: 'Gear Set Honda Supra X 125 Type 428 Silver GNNK Racing', sku: 'G-SETSUP-428-14-35-S', bar: '899200100112', price: 265000, cost: 152000, stock: 34, gram: 1100 },
+    { cat: 'cat-1', name: 'Gear Set Yamaha Jupiter MX 135 Type 428 Red GNNK Racing', sku: 'G-SETMX-428-14-43-R', bar: '899200100113', price: 335000, cost: 193000, stock: 29, gram: 1300 },
+    { cat: 'cat-1', name: 'Gear Set Honda Verza 150 Type 428 Black GNNK Racing', sku: 'G-SETVER-428-15-43-B', bar: '899200100114', price: 375000, cost: 216000, stock: 23, gram: 1600 },
+    { cat: 'cat-1', name: 'Gear Set Yamaha Byson Type 428 Gold GNNK Racing', sku: 'G-SETBYS-428-14-42-G', bar: '899200100115', price: 425000, cost: 245000, stock: 17, gram: 1700 },
+    { cat: 'cat-1', name: 'Gear Set Kawasaki Ninja 250 Type 520 Red Alloy GNNK Racing', sku: 'G-SETNIN-520-14-43-R', bar: '899200100116', price: 985000, cost: 570000, stock: 9, gram: 2800 },
 
-    { cat: 'cat-3', name: 'Rice Bowl Beef Teriyaki Special', sku: 'KAS-FNB-021', bar: '899100300121', price: 42000, cost: 22000, stock: 75 },
-    { cat: 'cat-3', name: 'Chicken Katsu Curry Donburi', sku: 'KAS-FNB-022', bar: '899100300122', price: 38000, cost: 19000, stock: 85 },
-    { cat: 'cat-3', name: 'Nasi Goreng Kampung Kemangi', sku: 'KAS-FNB-023', bar: '899100300123', price: 32000, cost: 14000, stock: 110 },
-    { cat: 'cat-3', name: 'Spaghetti Carbonara Smoked Beef', sku: 'KAS-FNB-024', bar: '899100300124', price: 40000, cost: 20000, stock: 60 },
-    { cat: 'cat-3', name: 'Spaghetti Aglio Olio Tuna Pedas', sku: 'KAS-FNB-025', bar: '899100300125', price: 38000, cost: 18000, stock: 70 },
-    { cat: 'cat-3', name: 'Nasi Dori Sambal Matah Bali', sku: 'KAS-FNB-026', bar: '899100300126', price: 36000, cost: 17000, stock: 65 },
-    { cat: 'cat-3', name: 'Ayam Geprek Mozzarella Sambal Bawang', sku: 'KAS-FNB-027', bar: '899100300127', price: 30000, cost: 13000, stock: 140 },
+    { cat: 'cat-2', name: 'Gear Belakang Yamaha Vixion Type 428 Ring 45 Gold', sku: 'GB-428-45-VIX-GOLD', bar: '899200200103', price: 165000, cost: 92000, stock: 52, gram: 600 },
+    { cat: 'cat-2', name: 'Gear Belakang Honda Beat Type 415 Ring 38 Black', sku: 'GB-415-38-BEAT-BLACK', bar: '899200200104', price: 125000, cost: 68000, stock: 61, gram: 450 },
+    { cat: 'cat-2', name: 'Gear Belakang Yamaha Mio Type 415 Ring 39 Silver', sku: 'GB-415-39-MIO-SILVER', bar: '899200200105', price: 130000, cost: 71000, stock: 48, gram: 450 },
+    { cat: 'cat-2', name: 'Gear Belakang Suzuki Satria FU Type 428 Ring 43 Gold', sku: 'GB-428-43-FU-GOLD', bar: '899200200106', price: 175000, cost: 98000, stock: 37, gram: 650 },
+    { cat: 'cat-2', name: 'Gear Belakang Kawasaki KLX150 Type 428 Ring 48 Black', sku: 'GB-428-48-KLX-BLACK', bar: '899200200107', price: 195000, cost: 110000, stock: 29, gram: 800 },
+    { cat: 'cat-2', name: 'Gear Belakang Honda CB150R Type 428 Ring 45 Red', sku: 'GB-428-45-CB-RED', bar: '899200200108', price: 180000, cost: 101000, stock: 33, gram: 700 },
+    { cat: 'cat-2', name: 'Gear Belakang Yamaha R15 Type 428 Ring 47 Black Alloy', sku: 'GB-428-47-R15-BLACK', bar: '899200200109', price: 225000, cost: 128000, stock: 24, gram: 750 },
+    { cat: 'cat-2', name: 'Gear Belakang Yamaha Aerox Type 415 Ring 38 Gold', sku: 'GB-415-38-AER-GOLD', bar: '899200200110', price: 140000, cost: 77000, stock: 41, gram: 500 },
 
-    { cat: 'cat-4', name: 'French Fries Crispy Truffle', sku: 'KAS-SNK-031', bar: '899100400131', price: 25000, cost: 9000, stock: 160 },
-    { cat: 'cat-4', name: 'Platter Gurih (Nugget, Sosis, Fries)', sku: 'KAS-SNK-032', bar: '899100400132', price: 38000, cost: 17000, stock: 90 },
-    { cat: 'cat-4', name: 'Cireng Krispi Bumbu Rujak', sku: 'KAS-SNK-033', bar: '899100400133', price: 18000, cost: 6000, stock: 120 },
-    { cat: 'cat-4', name: 'Pisang Goreng Wijen Madu', sku: 'KAS-SNK-034', bar: '899100400134', price: 20000, cost: 7000, stock: 80 },
-    { cat: 'cat-4', name: 'Tahu Cabe Garam Crispy', sku: 'KAS-SNK-035', bar: '899100400135', price: 18000, cost: 5500, stock: 110 },
-    { cat: 'cat-4', name: 'Chicken Wings Spicy Honey BBQ', sku: 'KAS-SNK-036', bar: '899100400136', price: 34000, cost: 16000, stock: 75 },
+    { cat: 'cat-3', name: 'Gear Depan Yamaha Vixion Type 428 Mata 14', sku: 'GD-428-14-VIX', bar: '899200300101', price: 65000, cost: 33000, stock: 88, gram: 200 },
+    { cat: 'cat-3', name: 'Gear Depan Honda CRF150 Type 520 Mata 13', sku: 'GD-520-13-CRF', bar: '899200300102', price: 95000, cost: 49000, stock: 54, gram: 300 },
+    { cat: 'cat-3', name: 'Gear Depan Yamaha Jupiter Z Type 415 Mata 13', sku: 'GD-415-13-JUPZ', bar: '899200300103', price: 55000, cost: 27000, stock: 96, gram: 180 },
+    { cat: 'cat-3', name: 'Gear Depan Honda Supra Type 428 Mata 14', sku: 'GD-428-14-SUPRA', bar: '899200300104', price: 60000, cost: 30000, stock: 74, gram: 200 },
+    { cat: 'cat-3', name: 'Gear Depan Suzuki Satria FU Type 428 Mata 14', sku: 'GD-428-14-FU', bar: '899200300105', price: 68000, cost: 35000, stock: 63, gram: 220 },
+    { cat: 'cat-3', name: 'Gear Depan Kawasaki KLX150 Type 428 Mata 14', sku: 'GD-428-14-KLX', bar: '899200300106', price: 72000, cost: 37000, stock: 47, gram: 240 },
 
-    { cat: 'cat-5', name: 'Butter Croissant Premium French', sku: 'KAS-PAS-041', bar: '899100500141', price: 22000, cost: 10000, stock: 50 },
-    { cat: 'cat-5', name: 'Almond Croissant Toast', sku: 'KAS-PAS-042', bar: '899100500142', price: 28000, cost: 13000, stock: 40 },
-    { cat: 'cat-5', name: 'Pain Au Chocolat Melted', sku: 'KAS-PAS-043', bar: '899100500143', price: 25000, cost: 12000, stock: 45 },
-    { cat: 'cat-5', name: 'Cinnamon Roll Cream Cheese', sku: 'KAS-PAS-044', bar: '899100500144', price: 24000, cost: 11000, stock: 35 },
-    { cat: 'cat-5', name: 'Fudgy Brownie Slice Sea Salt', sku: 'KAS-PAS-045', bar: '899100500145', price: 18000, cost: 8000, stock: 60 },
-    { cat: 'cat-5', name: 'Basque Burnt Cheesecake Slice', sku: 'KAS-PAS-046', bar: '899100500146', price: 32000, cost: 15000, stock: 30 },
+    { cat: 'cat-4', name: 'Rantai Motor Type 428 x 120 Sambungan Gold', sku: 'RT-428-120-GOLD', bar: '899200400101', price: 185000, cost: 104000, stock: 56, gram: 900 },
+    { cat: 'cat-4', name: 'Rantai Motor Type 428 x 132 Sambungan Black', sku: 'RT-428-132-BLACK', bar: '899200400102', price: 205000, cost: 115000, stock: 44, gram: 1000 },
+    { cat: 'cat-4', name: 'Rantai Motor Type 415 x 116 Standar Silver', sku: 'RT-415-116-SILVER', bar: '899200400103', price: 135000, cost: 74000, stock: 68, gram: 700 },
+    { cat: 'cat-4', name: 'Rantai Motor Type 520 x 112 O-Ring Heavy Duty', sku: 'RT-520-112-ORING', bar: '899200400104', price: 425000, cost: 245000, stock: 19, gram: 1600 },
+    { cat: 'cat-4', name: 'Rantai Motor Type 420 x 124 Sambungan Gold', sku: 'RT-420-124-GOLD', bar: '899200400105', price: 155000, cost: 86000, stock: 51, gram: 800 },
 
-    { cat: 'cat-6', name: 'Tumbler Stainless Vacuum 500ml', sku: 'KAS-MRC-051', bar: '899100600151', price: 125000, cost: 65000, stock: 45 },
-    { cat: 'cat-6', name: 'Ceramic Coffee Mug 350ml Matte', sku: 'KAS-MRC-052', bar: '899100600152', price: 55000, cost: 25000, stock: 60 },
-    { cat: 'cat-6', name: 'Canvas Tote Bag Barista Edition', sku: 'KAS-MRC-053', bar: '899100600153', price: 45000, cost: 18000, stock: 75 },
-    { cat: 'cat-6', name: 'V60 Drip Filter Paper 100pcs', sku: 'KAS-MRC-054', bar: '899100600154', price: 40000, cost: 22000, stock: 80 },
+    { cat: 'cat-5', name: 'Baut Gear Belakang Set 6 Pcs Stainless', sku: 'BT-GB-SET6-SS', bar: '899200500101', price: 45000, cost: 21000, stock: 120, gram: 150 },
+    { cat: 'cat-5', name: 'Mur Nut Gear Set 6 Pcs High Tensile', sku: 'BT-NUT-SET6-HT', bar: '899200500102', price: 38000, cost: 17000, stock: 140, gram: 120 },
+    { cat: 'cat-5', name: 'Sambungan Rantai / Master Link 428', sku: 'BT-LINK-428', bar: '899200500103', price: 18000, cost: 7000, stock: 210, gram: 40 },
+    { cat: 'cat-5', name: 'Sambungan Rantai / Master Link 520', sku: 'BT-LINK-520', bar: '899200500104', price: 25000, cost: 10000, stock: 165, gram: 60 },
+    { cat: 'cat-5', name: 'Karet Peredam Tromol Set 4 Pcs', sku: 'BT-KRT-TROMOL-4', bar: '899200500105', price: 55000, cost: 26000, stock: 92, gram: 200 },
 
-    { cat: 'cat-7', name: 'Roasted Beans Arabica Gayo 250g', sku: 'KAS-RAW-061', bar: '899100700161', price: 85000, cost: 45000, stock: 90 },
-    { cat: 'cat-7', name: 'Roasted Beans Arabica Flores 250g', sku: 'KAS-RAW-062', bar: '899100700162', price: 90000, cost: 48000, stock: 70 },
-    { cat: 'cat-7', name: 'House Blend Espresso 1000g / 1kg', sku: 'KAS-RAW-063', bar: '899100700163', price: 210000, cost: 120000, stock: 50 },
-    { cat: 'cat-7', name: 'Syrup Caramel Premium 750ml', sku: 'KAS-RAW-064', bar: '899100700164', price: 110000, cost: 68000, stock: 40 },
-    { cat: 'cat-7', name: 'Syrup Vanilla Natural 750ml', sku: 'KAS-RAW-065', bar: '899100700165', price: 110000, cost: 68000, stock: 35 },
-    { cat: 'cat-7', name: 'Matcha Powder Grade A 500g', sku: 'KAS-RAW-066', bar: '899100700166', price: 175000, cost: 105000, stock: 30 },
+    { cat: 'cat-6', name: 'Chain Lube Semprot 400ml Racing', sku: 'OL-LUBE-400', bar: '899200600101', price: 65000, cost: 34000, stock: 78, gram: 450 },
+    { cat: 'cat-6', name: 'Chain Cleaner Semprot 500ml', sku: 'OL-CLEAN-500', bar: '899200600102', price: 58000, cost: 30000, stock: 66, gram: 550 },
+    { cat: 'cat-6', name: 'Paket Perawatan Rantai (Lube + Cleaner + Sikat)', sku: 'OL-PAKET-RAWAT', bar: '899200600103', price: 145000, cost: 78000, stock: 40, gram: 1100 },
 
-    { cat: 'cat-8', name: 'T-Shirt Barista Typography Black (M)', sku: 'KAS-APR-071', bar: '899100800171', price: 115000, cost: 55000, stock: 40 },
-    { cat: 'cat-8', name: 'T-Shirt Barista Typography Black (L)', sku: 'KAS-APR-072', bar: '899100800172', price: 115000, cost: 55000, stock: 45 },
-    { cat: 'cat-8', name: 'T-Shirt Barista Typography Black (XL)', sku: 'KAS-APR-073', bar: '899100800173', price: 120000, cost: 58000, stock: 30 },
-    { cat: 'cat-8', name: 'Barista Apron Denim with Leather Strap', sku: 'KAS-APR-074', bar: '899100800174', price: 165000, cost: 85000, stock: 25 },
-    { cat: 'cat-8', name: 'Snapback Hat Coffee Culture', sku: 'KAS-APR-075', bar: '899100800175', price: 75000, cost: 35000, stock: 35 },
+    { cat: 'cat-7', name: 'Baja Karbon S45C Batangan 1 Meter', sku: 'RAW-S45C-1M', bar: '899200700101', price: 320000, cost: 210000, stock: 35, gram: 4000 },
+    { cat: 'cat-7', name: 'Aluminium Alloy 7075 Billet Plate', sku: 'RAW-AL7075-PLT', bar: '899200700102', price: 850000, cost: 570000, stock: 14, gram: 5000 },
+    { cat: 'cat-7', name: 'Cat Powder Coating Black Doff 5kg', sku: 'RAW-PC-BLACK-5', bar: '899200700103', price: 425000, cost: 275000, stock: 22, gram: 5000 },
+    { cat: 'cat-7', name: 'Cat Powder Coating Gold Metalik 5kg', sku: 'RAW-PC-GOLD-5', bar: '899200700104', price: 480000, cost: 310000, stock: 17, gram: 5000 },
+
+    { cat: 'cat-8', name: 'Kaos GNNK Racing Official Black (M)', sku: 'MRC-KAOS-BLK-M', bar: '899200800101', price: 125000, cost: 58000, stock: 45, gram: 250 },
+    { cat: 'cat-8', name: 'Kaos GNNK Racing Official Black (L)', sku: 'MRC-KAOS-BLK-L', bar: '899200800102', price: 125000, cost: 58000, stock: 48, gram: 260 },
+    { cat: 'cat-8', name: 'Kaos GNNK Racing Official Black (XL)', sku: 'MRC-KAOS-BLK-XL', bar: '899200800103', price: 135000, cost: 62000, stock: 32, gram: 280 },
+    { cat: 'cat-8', name: 'Topi Trucker GNNK Racing', sku: 'MRC-TOPI-TRK', bar: '899200800104', price: 95000, cost: 42000, stock: 38, gram: 150 },
+    { cat: 'cat-8', name: 'Stiker Set GNNK Racing Die-Cut', sku: 'MRC-STIKER-SET', bar: '899200800105', price: 35000, cost: 12000, stock: 150, gram: 50 },
   ];
 
   const products: Product[] = rawProducts.map((p, idx) => ({
@@ -237,25 +251,22 @@ export async function generate1000Data(
     min_stock: 10,
     track_stock: true,
     is_active: true,
-    sizes: p.cat === 'cat-1' || p.cat === 'cat-2'
-      ? [
-          { label: 'Regular', price_modifier: 0 },
-          { label: 'Large', price_modifier: 5000 },
-        ]
-      : [],
+    weight_gram: p.gram,
+    // Sparepart tidak punya varian ukuran seperti minuman.
+    sizes: [],
   }));
 
   // 5. SUPPLIERS (IDR & USD with Kurs)
   const supplierDefs = [
-    { name: 'PT Kopi Sangrai Nusantara', cur: 'IDR', rate: 1, term: 14, dp: 20, contact: 'Pak Hendro', phone: '08123456701' },
-    { name: 'CV Biji Kopi Gayo Mandiri', cur: 'IDR', rate: 1, term: 30, dp: 30, contact: 'Ibu Rahayu', phone: '08123456702' },
-    { name: 'Seattle Coffee Green Beans Inc.', cur: 'USD', rate: 16250, term: 30, dp: 50, contact: 'Mr. David Miller', phone: '+12065551234' },
-    { name: 'Tokyo Uji Matcha Co., Ltd.', cur: 'USD', rate: 16200, term: 14, dp: 40, contact: 'Kenji Sato', phone: '+8135559876' },
-    { name: 'PT Diamond Dairy & Syrups Indonesia', cur: 'IDR', rate: 1, term: 7, dp: 0, contact: 'Pak Budi Gunawan', phone: '08123456705' },
+    { name: 'PT Baja Presisi Nusantara', cur: 'IDR', rate: 1, term: 30, dp: 30, contact: 'Pak Hendro', phone: '08123456701' },
+    { name: 'CV Logam Jaya Sidoarjo', cur: 'IDR', rate: 1, term: 14, dp: 20, contact: 'Ibu Rahayu', phone: '08123456702' },
+    { name: 'Zhejiang Chain Manufacturing Co., Ltd.', cur: 'USD', rate: 16250, term: 45, dp: 50, contact: 'Chen Wei', phone: '+86755888899' },
+    { name: 'Osaka Sprocket Industries Ltd.', cur: 'USD', rate: 16200, term: 30, dp: 40, contact: 'Kenji Sato', phone: '+8135559876' },
+    { name: 'PT Powder Coating Warna Prima', cur: 'IDR', rate: 1, term: 14, dp: 0, contact: 'Pak Budi Gunawan', phone: '08123456705' },
     { name: 'CV Kemasan Nusantara Grafika', cur: 'IDR', rate: 1, term: 14, dp: 50, contact: 'Ibu Ratna', phone: '08123456706' },
-    { name: 'Shenzhen Barista Hardware Ltd.', cur: 'USD', rate: 16300, term: 45, dp: 30, contact: 'Chen Wei', phone: '+86755888899' },
-    { name: 'PT Prima Pangan Segar Utama', cur: 'IDR', rate: 1, term: 7, dp: 0, contact: 'Pak Joko', phone: '08123456708' },
-    { name: 'CV Bakery Flours & Butter Mas', cur: 'IDR', rate: 1, term: 14, dp: 20, contact: 'Pak Tono', phone: '08123456709' },
+    { name: 'Guangzhou Alloy Billet Supply', cur: 'USD', rate: 16300, term: 45, dp: 30, contact: 'Li Ming', phone: '+86205551234' },
+    { name: 'PT Baut Mur Teknik Utama', cur: 'IDR', rate: 1, term: 7, dp: 0, contact: 'Pak Joko', phone: '08123456708' },
+    { name: 'CV Pelumas Rantai Mandiri', cur: 'IDR', rate: 1, term: 14, dp: 20, contact: 'Pak Tono', phone: '08123456709' },
     { name: 'Bandung Apparel Garment Studio', cur: 'IDR', rate: 1, term: 30, dp: 50, contact: 'Kang Asep', phone: '08123456710' },
   ];
 
