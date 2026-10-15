@@ -23,8 +23,11 @@ window.KASIR_CONFIG = {
   try {
     var jalur = location.pathname;
     var sejak2 = jalur.indexOf('/aff/') === 0 || jalur === '/toko/affiliate' || jalur === '/affiliate';
-    if (!sejak2) return;
-    if (Number(document.documentElement.getAttribute('data-cangkang')) >= 2) return;
+    // Alamat produk dari nama (permintaan 20), sejak data-cangkang="3".
+    var sejak3 = jalur.indexOf('/toko/produk/') === 0;
+    var butuh = sejak3 ? 3 : sejak2 ? 2 : 0;
+    if (!butuh) return;
+    if (Number(document.documentElement.getAttribute('data-cangkang')) >= butuh) return;
     if (!('serviceWorker' in navigator)) return;
     var KUNCI = 'kasir.cangkang.dimuat-ulang';
     var tujuan = location.href;

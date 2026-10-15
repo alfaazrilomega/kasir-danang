@@ -364,7 +364,9 @@ const TEKS = {
     const klikSebelumMati = psql(`select count(*) from public.affiliate_clicks where affiliate_id = '${A1.id}'`);
     const mati = await A.klik(toko, kodeA, { productId: P1.id });
     record('Program mati: membuka link tidak mencatat klik (AC-1)', psql(`select count(*) from public.affiliate_clicks where affiliate_id = '${A1.id}'`) === klikSebelumMati, klikSebelumMati);
-    record('Program mati: link tetap membawa ke produk tanpa cookie (AC-1)', mati.status === 200 && mati.data?.redirect === `/toko/produk?id=${P1.id}` && !mati.cookie, mati.setCookie);
+    const [slugP1, varianP1] = psql(`select slug || '|' || coalesce(sku, id::text) from public.products where id = '${P1.id}'`).split('|');
+    const tujuanP1 = `/toko/produk/${encodeURIComponent(slugP1)}?varian=${encodeURIComponent(varianP1)}`;
+    record('Program mati: link tetap membawa ke produk tanpa cookie (AC-1)', mati.status === 200 && mati.data?.redirect === tujuanP1 && !mati.cookie, `${mati.data?.redirect} ${mati.setCookie || ''}`);
     const o17 = await A.pesan(toko, C2, [{ product_id: P1.id, qty: 1 }], { cookie: k1.cookie });
     record('Program mati: cookie lama tidak menghasilkan affiliate', afiliasiPesanan(o17.id).startsWith('-|'), afiliasiPesanan(o17.id));
     await A.konfirmasi(admin, o11.id);

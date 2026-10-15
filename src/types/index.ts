@@ -136,6 +136,8 @@ export interface Product {
   affiliate_enabled?: boolean;
   affiliate_if_bought?: boolean;
   affiliate_commission?: { type: 'percentage' | 'fixed'; value: number }[] | null;
+  /** Alamat halaman produk di toko, sama untuk semua varian sekelompok (migrasi 054). */
+  slug?: string | null;
 }
 
 export interface Customer {

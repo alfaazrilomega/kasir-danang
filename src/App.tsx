@@ -120,7 +120,8 @@ export default function App() {
         <Route path="/affiliate" element={<ProtectedRoute><AdminLayout><AffiliateAdmin /></AdminLayout></ProtectedRoute>} />
         <Route path="/customer" element={<ProtectedRoute><AppShell><CustomerPortal /></AppShell></ProtectedRoute>} />
         <Route path="/toko" element={<PublicCatalog />} />
-        <Route path="/toko/produk" element={<PublicProductDetail />} />
+        {/* /toko/produk/{slug} (permintaan 20) dan alamat lama /toko/produk?id= */}
+        <Route path="/toko/produk/*" element={<PublicProductDetail />} />
         <Route path="/toko/keranjang" element={<PublicCart />} />
         <Route path="/toko/checkout" element={<PublicCheckout />} />
         <Route path="/toko/selesai" element={<PublicOrderDone />} />

@@ -27,6 +27,7 @@ import { Bintang } from '@/components/public/Bintang';
 import { Link, useLocation } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
+  alamatProduk,
   fetchPublicCatalog,
   fetchPublicFlashSale,
   flashUntukKelompok,
@@ -511,7 +512,7 @@ function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: 
 
   return (
     <Link
-      to={`/toko/produk?id=${item.product_id}`}
+      to={alamatProduk({ id: item.product_id, slug: item.slug }, item.product_id)}
       data-kartu-produk=""
       className="flex h-full flex-col overflow-hidden bg-white hover:shadow-[0_2px_12px_rgba(0,0,0,0.16)] dark:bg-ink-900"
     >
@@ -741,7 +742,7 @@ function SlideProduk({ k, nomor, currency }: { k: KelompokProduk; nomor: number;
   const judul = p.name.replace(/\s*GNNK Racing( Product)?\s*$/i, '').trim() || p.name;
   const coret = Number(p.compare_at_price ?? 0);
   const diskon = coret > k.hargaMin && k.hargaMin > 0 ? Math.round((1 - k.hargaMin / coret) * 100) : 0;
-  const tautan = `/toko/produk?id=${p.id}`;
+  const tautan = alamatProduk(p);
   // Rating dengan ulasan sedikit ("4,8 (4 ulasan)") justru mengurangi kepercayaan.
   const tampilRating = k.ratingCount >= 10;
   const bentukMiring = '[clip-path:polygon(14%_0,100%_0,100%_100%,0_100%)]';
@@ -1329,7 +1330,7 @@ function BarisDaftar({
   const harga = flash ? flash.hargaFlash : k.hargaMin;
   return (
     <Link
-      to={`/toko/produk?id=${p.id}`}
+      to={alamatProduk(p)}
       data-kartu-produk=""
       className="flex gap-4 bg-white py-4 transition-shadow duration-300 hover:shadow-[0_2px_12px_rgba(0,0,0,0.12)] dark:bg-ink-900"
     >

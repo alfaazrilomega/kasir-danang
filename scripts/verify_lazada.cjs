@@ -150,8 +150,10 @@ const svg = (warna) =>
     await t.screenshot({ path: path.join(SHOT_DIR, 'lz2_pdp_desktop.png'), fullPage: true });
 
     await t.locator('button[aria-pressed]').filter({ hasText: '13T' }).first().click();
-    await t.waitForURL((u) => u.searchParams.get('id') === V13, { timeout: 10000 }).catch(() => {});
-    record('Klik ukuran 13T membuka variasinya', new URL(t.url()).searchParams.get('id') === V13);
+    // Sejak permintaan 20 varian dipilih lewat ?varian={SKU} di alamat slug.
+    const skuV13 = first(`select sku from public.products where id='${V13}';`);
+    await t.waitForURL((u) => u.searchParams.get('varian') === skuV13, { timeout: 10000 }).catch(() => {});
+    record('Klik ukuran 13T membuka variasinya', new URL(t.url()).pathname.startsWith('/toko/produk/') && new URL(t.url()).searchParams.get('varian') === skuV13, t.url());
 
     // ---------- HP ----------
     await t.setViewportSize({ width: 412, height: 915 });

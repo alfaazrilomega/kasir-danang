@@ -11,6 +11,7 @@ import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl } from '@/lib/imageUpload';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import {
+  alamatProduk,
   fetchPublicCatalog,
   kelompokkanVarian,
   lokasiToko,
@@ -425,7 +426,7 @@ export function PublicAccount() {
                           {r.image_url ? <img src={r.image_url} alt="" className="h-full w-full object-contain" /> : null}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <Link to={`/toko/produk?id=${r.product_id}`} className="line-clamp-2 text-sm hover:text-brand-600">
+                          <Link to={alamatProduk({ id: r.product_id, slug: catalog?.products.find((k) => k.id === r.product_id)?.slug }, r.product_id)} className="line-clamp-2 text-sm hover:text-brand-600">
                             {r.name}
                           </Link>
                           <div className="mt-0.5 text-xs text-ink-500">

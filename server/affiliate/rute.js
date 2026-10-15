@@ -144,7 +144,15 @@ export function pasangRuteAffiliate(app, deps) {
     const productId = req.body?.product_id ? String(req.body.product_id) : null;
     if (!POLA_UUID.test(storeId)) throw galat(400, 'store_id tidak valid.');
     const pengaturan = await muatPengaturan(pool, storeId);
-    const tujuanProduk = productId && POLA_UUID.test(productId) ? `/toko/produk?id=${productId}` : '/toko';
+    // Link /aff/KODE/{id produk} tetap memakai id; pengunjung diantar ke alamat
+    // slug produk itu dengan varian yang sama (permintaan 20).
+    let tujuanProduk = '/toko';
+    if (productId && POLA_UUID.test(productId)) {
+      const p = (await pool.query('select slug, sku from public.products where id = $1 and store_id = $2', [productId, storeId])).rows[0];
+      tujuanProduk = p?.slug
+        ? `/toko/produk/${encodeURIComponent(p.slug)}?varian=${encodeURIComponent(p.sku || productId)}`
+        : `/toko/produk?id=${productId}`;
+    }
     if (!pengaturan.enabled) {
       res.json({ data: { redirect: tujuanProduk } });
       return;

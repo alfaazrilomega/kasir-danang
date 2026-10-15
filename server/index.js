@@ -98,7 +98,7 @@ const TABLES = {
       'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
       'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
       'highlights', 'license_type', 'license_code', 'video_url',
-      'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission',
+      'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission', 'slug',
     ],
     tenantColumn: 'store_id',
   },
@@ -1741,8 +1741,26 @@ function hitungStokSetDariBaris(baris) {
 // bernama sama), isi paket, ulasan, tanya jawab, dan info toko.
 app.get('/api/public/product', asyncHandler(async (req, res) => {
   const storeId = String(req.query.store_id ?? '');
-  const id = String(req.query.id ?? '');
-  if (!isUuidLike(storeId) || !isUuidLike(id)) throw new HttpError(400, 'Parameter tidak valid.');
+  // Permintaan 20: halaman produk dibuka lewat slug (/toko/produk/{slug}) dengan
+  // ?varian={SKU atau id}. Tanpa varian dipilih wakil kelompok seperti kartu
+  // katalog: yang masih ada stoknya, lalu yang termurah. Alamat lama ?id= tetap
+  // dilayani supaya link yang sudah tersebar tidak putus.
+  const slug = String(req.query.slug ?? '').trim().toLowerCase();
+  const varian = String(req.query.varian ?? '').trim();
+  let id = String(req.query.id ?? '');
+  if (!isUuidLike(storeId) || (!slug && !isUuidLike(id)) || slug.length > 200) throw new HttpError(400, 'Parameter tidak valid.');
+  if (slug) {
+    const pilih = await pool.query(
+      `select id from public.products
+        where store_id = $1 and slug = $2 and is_active = true
+        order by (case when $3 <> '' and (id::text = $3 or lower(sku) = lower($3)) then 0 else 1 end),
+                 (track_stock and stock_qty <= 0), base_price, created_at, id
+        limit 1`,
+      [storeId, slug, varian],
+    );
+    if (!pilih.rowCount) throw new HttpError(404, 'Produk tidak ditemukan atau sudah tidak dijual.');
+    id = pilih.rows[0].id;
+  }
 
   const storeRes = await pool.query(
     // chat_enabled ikut di-select: halaman detail produk punya dua tombol chat
@@ -1758,7 +1776,7 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
     `select id, name, description, image_url, images, base_price, compare_at_price, category_id,
             track_stock, stock_qty, sku, brand, variant_name, parent_sku, weight_gram, length_cm, width_cm, height_cm,
             spec, variant_label, warranty_type, warranty_period, box_contents, highlights,
-            license_type, license_code, video_url
+            license_type, license_code, video_url, slug
        from public.products
       where id = $1 and store_id = $2 and is_active = true`,
     [id, storeId],
@@ -1772,13 +1790,13 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
   // keduanya tampil sebagai satu produk berisi varian campur.
   const variantRes = product.parent_sku
     ? await pool.query(
-        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url, slug
            from public.products
           where store_id = $1 and is_active = true and parent_sku = $2`,
         [storeId, product.parent_sku],
       )
     : await pool.query(
-        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url, slug
            from public.products
           where store_id = $1 and is_active = true and parent_sku is null
             and lower(btrim(name)) = lower(btrim($2))`,
@@ -2379,7 +2397,7 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
   const productsRes = await pool.query(
     `select p.id, p.name, p.description, p.image_url, p.base_price, p.category_id,
             p.track_stock, p.stock_qty, p.weight_gram, p.length_cm, p.width_cm, p.height_cm,
-            p.brand, p.variant_name, p.parent_sku, p.compare_at_price,
+            p.brand, p.variant_name, p.parent_sku, p.compare_at_price, p.slug,
             coalesce(s.sold, 0)::int as sold_qty,
             coalesce(rv.avg_rating, 0)::float as rating_avg,
             coalesce(rv.jumlah, 0)::int as rating_count
@@ -2472,7 +2490,7 @@ app.get('/api/public/flash-sale', asyncHandler(async (req, res) => {
 
   const itemsRes = await pool.query(
     `select fsi.product_id, fsi.flash_price, fsi.quota_qty, fsi.sold_qty,
-            p.name, p.image_url, p.base_price, p.stock_qty
+            p.name, p.image_url, p.base_price, p.stock_qty, p.slug
        from public.flash_sale_items fsi
        join public.products p on p.id = fsi.product_id
       where fsi.flash_sale_id = $1 and p.is_active = true

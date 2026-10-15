@@ -120,8 +120,11 @@ const ubin = (teks, label) => (new RegExp(label + '\\s*\\n\\s*([^\\n]+)').exec(t
     const tamu = await tamuCtx.newPage();
     trackApi(tamu);
     await tamu.goto(linkParam, { waitUntil: 'networkidle' });
-    await tamu.waitForURL((u) => u.pathname === '/toko/produk' && u.searchParams.get('id') === P1.id, { timeout: 15000 }).catch(() => {});
-    record('Link affiliate membawa pengunjung ke halaman produknya (AC-13)', tamu.url() === `${BASE_URL}/toko/produk?id=${P1.id}`, tamu.url());
+    // Sejak permintaan 20 halaman produk beralamat /toko/produk/{slug}?varian={SKU}.
+    const [slugP1, varianP1] = psql(`select slug || '|' || coalesce(sku, id::text) from public.products where id = '${P1.id}'`).split('|');
+    await tamu.waitForURL((u) => u.pathname === `/toko/produk/${slugP1}` && u.searchParams.get('varian') === varianP1, { timeout: 15000 }).catch(() => {});
+    const tibaDi = new URL(tamu.url());
+    record('Link affiliate membawa pengunjung ke halaman produknya (AC-13)', tibaDi.pathname === `/toko/produk/${slugP1}` && tibaDi.searchParams.get('varian') === varianP1, tamu.url());
     const kue = (await tamuCtx.cookies()).find((c) => c.name === 'gnnk_aff');
     const hariKue = kue ? (kue.expires - Date.now() / 1000) / 86400 : 0;
     record('Cookie affiliate terpasang: HttpOnly, SameSite Lax, umur 30 hari (AC-6, AC-13)', !!kue && kue.httpOnly && kue.sameSite === 'Lax' && hariKue > 29.9 && hariKue < 30.1, kue ? `httpOnly=${kue.httpOnly} sameSite=${kue.sameSite} ${hariKue.toFixed(2)} hari` : 'tidak ada');

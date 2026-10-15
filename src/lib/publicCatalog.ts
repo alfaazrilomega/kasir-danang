@@ -28,6 +28,24 @@ export interface PublicCatalogProduct {
   compare_at_price?: number;
   rating_avg?: number;
   rating_count?: number;
+  /** Alamat halaman produk, sama untuk semua varian sekelompok (permintaan 20). */
+  slug?: string | null;
+}
+
+/**
+ * Alamat halaman produk: /toko/produk/{slug}, dengan ?varian= bila yang dituju
+ * satu varian tertentu. Tanpa slug (data yang belum memuatnya, misalnya isi
+ * keranjang atau riwayat pesanan) jatuh ke alamat lama ?id=, yang dialihkan
+ * halaman produk ke alamat slug.
+ */
+/** Sama dengan public.slug_dari_teks di migrasi 054: "Gear Set / RX King" -> "gear-set-rx-king". */
+export function slugDariTeks(teks: string): string {
+  return teks.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'produk';
+}
+
+export function alamatProduk(p: { id: string; slug?: string | null }, varian?: string | null): string {
+  if (!p.slug) return `/toko/produk?id=${encodeURIComponent(p.id)}`;
+  return `/toko/produk/${encodeURIComponent(p.slug)}${varian ? `?varian=${encodeURIComponent(varian)}` : ''}`;
 }
 
 export interface PublicCatalogCategory {
@@ -213,6 +231,7 @@ export interface PublicVariant {
   track_stock: boolean;
   stock_qty: number;
   image_url: string | null;
+  slug?: string | null;
 }
 
 export interface PublicReview {
@@ -261,6 +280,7 @@ export interface PublicProductDetailData {
     license_type: string | null;
     license_code: string | null;
     video_url: string | null;
+    slug: string | null;
   };
   variants: PublicVariant[];
   /** Isi paket untuk produk set. */
@@ -268,11 +288,17 @@ export interface PublicProductDetailData {
   reviews: PublicReview[];
 }
 
-export async function fetchPublicProduct(storeId: string, id: string): Promise<PublicProductDetailData> {
+/** Produk dibuka lewat id (alamat lama) atau slug + varian (alamat baru). */
+export async function fetchPublicProduct(
+  storeId: string,
+  sasaran: { id: string } | { slug: string; varian?: string | null },
+): Promise<PublicProductDetailData> {
   const { apiBaseUrl } = loadConfig();
-  const response = await fetch(
-    `${apiBaseUrl}/api/public/product?store_id=${encodeURIComponent(storeId)}&id=${encodeURIComponent(id)}`,
-  );
+  const kunci =
+    'slug' in sasaran
+      ? `slug=${encodeURIComponent(sasaran.slug)}${sasaran.varian ? `&varian=${encodeURIComponent(sasaran.varian)}` : ''}`
+      : `id=${encodeURIComponent(sasaran.id)}`;
+  const response = await fetch(`${apiBaseUrl}/api/public/product?store_id=${encodeURIComponent(storeId)}&${kunci}`);
   const text = await response.text();
   const payload = text ? (JSON.parse(text) as { data?: PublicProductDetailData; error?: string }) : null;
   if (!response.ok || !payload?.data) throw new Error(payload?.error || 'Gagal memuat produk.');
@@ -311,6 +337,7 @@ export interface PublicFlashSaleItem {
   image_url: string | null;
   base_price: number;
   stock_qty: number;
+  slug?: string | null;
 }
 
 export interface PublicFlashSaleData {

@@ -6,6 +6,7 @@ import { cn, formatMoney } from '@/lib/format';
 import { Link, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import {
+  alamatProduk,
   fetchPublicCatalog,
   fetchPublicFlashSale,
   hargaBerlaku,
@@ -167,7 +168,8 @@ export function PublicCart() {
 
             {lines.map((line) => {
               const fav = favorit.includes(line.product_id);
-              const tautan = `/toko/produk?id=${line.product_id}`;
+              // Isi keranjang tidak menyimpan slug: diambil dari katalog, varian tetap yang di keranjang.
+              const tautan = alamatProduk({ id: line.product_id, slug: katalog.find((k) => k.id === line.product_id)?.slug }, line.product_id);
               return (
                 <div key={line.product_id} className="flex items-start gap-3 border-b border-ink-100 px-4 py-4 last:border-b-0 dark:border-ink-800">
                   <input
@@ -264,7 +266,7 @@ export function PublicCart() {
                   key={p.id}
                   className="flex flex-col overflow-hidden rounded-lg border border-ink-100 dark:border-ink-800"
                 >
-                  <Link to={`/toko/produk?id=${p.id}`} className="block aspect-square bg-ink-50 dark:bg-ink-800">
+                  <Link to={alamatProduk(p)} className="block aspect-square bg-ink-50 dark:bg-ink-800">
                     {p.image_url ? (
                       <img src={p.image_url} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
                     ) : null}

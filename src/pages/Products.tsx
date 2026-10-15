@@ -47,7 +47,7 @@ import {
 } from '@/components/products/ProductSetSection';
 import { findSkuConflict, normalizeSku } from '@/lib/skuLookup';
 import { urutNamaSku } from '@/lib/sortProducts';
-import { kunciKelompok } from '@/lib/publicCatalog';
+import { kunciKelompok, slugDariTeks } from '@/lib/publicCatalog';
 import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
@@ -100,6 +100,8 @@ interface FormState {
   brand: string;
   variant_name: string;
   parent_sku: string;
+  /** Alamat halaman produk di toko (permintaan 20). Kosong = dibuat otomatis. */
+  slug: string;
   compare_at_price: number;
   images: string[];
   spec: { label: string; value: string }[];
@@ -146,6 +148,7 @@ const emptyForm: FormState = {
   brand: '',
   variant_name: '',
   parent_sku: '',
+  slug: '',
   compare_at_price: 0,
   images: [],
   spec: [],
@@ -400,6 +403,7 @@ export function Products() {
       brand: p.brand ?? '',
       variant_name: p.variant_name ?? '',
       parent_sku: p.parent_sku ?? '',
+      slug: p.slug ?? '',
       compare_at_price: Number(p.compare_at_price ?? 0),
       images: p.images ?? [],
       spec: p.spec ?? [],
@@ -466,6 +470,7 @@ export function Products() {
       brand: p.brand ?? '',
       variant_name: '',
       parent_sku: p.parent_sku ?? '',
+      slug: '',
       compare_at_price: Number(p.compare_at_price ?? 0),
       images: p.images ?? [],
       spec: p.spec ?? [],
@@ -645,6 +650,18 @@ export function Products() {
       skuTerpakai.add(norm);
     }
 
+    // Alamat toko dirapikan seperti di database. Bentrok dengan kelompok lain
+    // dicek di sini karena /api/query menelan galat pemicu database.
+    const slugBaru = form.slug.trim() ? slugDariTeks(form.slug.trim()) : '';
+    if (slugBaru) {
+      const kunciIni = kunciKelompok({ name: form.name, parent_sku: form.parent_sku });
+      const bentrok = products.find((p) => p.id !== form.id && p.slug === slugBaru && kunciKelompok(p) !== kunciIni);
+      if (bentrok) {
+        toast.error(`Alamat produk "${slugBaru}" sudah dipakai produk "${bentrok.name}".`);
+        return;
+      }
+    }
+
     const otherMappings = channelMappings.filter((m) => m.product_id !== form.id);
     const draftError = validateChannelDrafts(form.channelMappings, otherMappings);
     if (draftError) {
@@ -700,6 +717,9 @@ export function Products() {
       affiliate_enabled: form.affiliate_enabled,
       affiliate_if_bought: form.affiliate_if_bought,
       affiliate_commission: form.affiliate_commission.length ? form.affiliate_commission : null,
+      // Tanpa slug kiriman, alamat lama tetap (tidak ikut berganti saat nama diganti)
+      // dan produk baru mendapat alamat dari pemicu database.
+      ...(slugBaru ? { slug: slugBaru } : {}),
     };
     try {
       // writeThrough: kalau offline, perubahan masuk antrean dan dikirim saat
@@ -2406,6 +2426,10 @@ function SeksiPenamaanVariasi({
         .sort(urutNamaSku)
     : [];
 
+  // Alamat yang akan dipakai: isian admin, alamat kelompoknya, atau dari nama.
+  const slugKelompok = anggotaKelompok.find((p) => p.slug)?.slug ?? null;
+  const alamatTampil = form.slug.trim() ? slugDariTeks(form.slug.trim()) : slugKelompok ?? slugDariTeks(namaDasar);
+
   function tambahBarisSku() {
     setForm({
       ...form,
@@ -2463,6 +2487,16 @@ function SeksiPenamaanVariasi({
           value={form.variant_label}
           onChange={(e) => setForm({ ...form, variant_label: e.target.value })}
           hint="Judul pilihan variasi di halaman toko online."
+        />
+        <Input
+          name="slug"
+          label="Alamat produk di toko"
+          value={form.slug}
+          onChange={(e) => setForm({ ...form, slug: e.target.value })}
+          placeholder={slugKelompok ?? (namaDasar ? slugDariTeks(namaDasar) : 'dibuat dari nama produk')}
+          hint={`/toko/produk/${alamatTampil}. ${
+            form.id ? 'Berlaku untuk semua varian; alamat lama tidak bisa dibuka lagi setelah diganti.' : 'Kosongkan untuk dibuat otomatis.'
+          }`}
         />
       </div>
       <dl className="space-y-1.5 rounded-lg bg-ink-50 px-3 py-2 dark:bg-ink-900">

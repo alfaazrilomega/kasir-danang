@@ -40,7 +40,7 @@ const REQUIRED_COLUMNS = {
     'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
     'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
     'highlights', 'license_type', 'license_code', 'video_url',
-    'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission',
+    'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission', 'slug',
   ],
   product_reviews: [
     'id', 'store_id', 'product_id', 'order_id', 'customer_id', 'reviewer_name', 'rating',

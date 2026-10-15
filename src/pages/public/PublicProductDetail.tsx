@@ -28,6 +28,7 @@ import { KartuProduk } from '@/components/public/KartuProduk';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
+  alamatProduk,
   fetchPublicCatalog,
   fetchPublicFlashSale,
   fetchPublicProduct,
@@ -127,10 +128,18 @@ function bacaHelpful(): string[] {
  */
 export function PublicProductDetail() {
   const navigate = useNavigate();
-  const { search } = useLocation();
-  const productId = new URLSearchParams(search).get('id') ?? '';
+  const { pathname, search } = useLocation();
+  // Permintaan 20: /toko/produk/{slug}?varian={SKU atau id}. Alamat lama
+  // /toko/produk?id= tetap dibuka, lalu diganti ke alamat slug.
+  const awalanSlug = '/toko/produk/';
+  const slugUrl = pathname.startsWith(awalanSlug) ? decodeURIComponent(pathname.slice(awalanSlug.length).split('/')[0] ?? '') : '';
+  const kueri = new URLSearchParams(search);
+  const idUrl = slugUrl ? '' : kueri.get('id') ?? '';
+  const varianUrl = slugUrl ? kueri.get('varian') ?? '' : '';
+  const dialihkan = useRef('');
 
   const [data, setData] = useState<PublicProductDetailData | null>(null);
+  const productId = data?.product.id ?? idUrl;
   const [catalog, setCatalog] = useState<PublicCatalogData | null>(null);
   const [flash, setFlash] = useState<PublicFlashSaleData>(FLASH_KOSONG);
   const [loading, setLoading] = useState(true);
@@ -178,6 +187,12 @@ export function PublicProductDetail() {
   const toggleFavorit = useWishlist((s) => s.toggle);
 
   useEffect(() => {
+    // Alamat baru hasil pengalihan dari ?id=: produknya sudah termuat.
+    if (slugUrl && dialihkan.current === `${slugUrl}|${varianUrl}`) {
+      dialihkan.current = '';
+      setLoading(false);
+      return;
+    }
     let alive = true;
     setLoading(true);
     setGaleri(0);
@@ -187,14 +202,27 @@ export function PublicProductDetail() {
     setLembar(null);
     setDeskripsiTerbentang(false);
     window.scrollTo({ top: 0 });
-    fetchPublicProduct(PUBLIC_STORE_ID, productId)
-      .then((d) => alive && setData(d))
+    fetchPublicProduct(PUBLIC_STORE_ID, slugUrl ? { slug: slugUrl, varian: varianUrl } : { id: idUrl })
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        if (!slugUrl && d.product.slug) {
+          // Parameter lain (utm iklan, dll.) ikut dibawa ke alamat baru.
+          const sisa = new URLSearchParams(search);
+          sisa.delete('id');
+          const varian = d.product.sku || d.product.id;
+          sisa.set('varian', varian);
+          dialihkan.current = `${d.product.slug}|${varian}`;
+          navigate(`${awalanSlug}${encodeURIComponent(d.product.slug)}?${sisa.toString()}`, { replace: true });
+        }
+      })
       .catch(() => alive && setData(null))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [productId]);
+    // `search` sengaja tidak jadi pemicu: hanya dibaca saat alamat lama dialihkan.
+  }, [slugUrl, varianUrl, idUrl]);
 
   useEffect(() => {
     fetchPublicCatalog(PUBLIC_STORE_ID).then(setCatalog).catch(() => {});
@@ -556,7 +584,8 @@ export function PublicProductDetail() {
     await tandaiHelpful(r.id).catch(() => {});
   }
 
-  const tautanMasuk = `/toko/masuk?next=${encodeURIComponent(`/toko/produk?id=${product.id}`)}`;
+  const alamatIni = alamatProduk(product, product.sku || product.id);
+  const tautanMasuk = `/toko/masuk?next=${encodeURIComponent(alamatIni)}`;
 
   // ---------- potongan yang dipakai desktop & HP ----------
   const pilihVariasi = variasi.length > 1 && (
@@ -568,7 +597,7 @@ export function PublicProductDetail() {
           <button
             key={v.id}
             type="button"
-            onClick={() => !aktif && navigate(`/toko/produk?id=${v.id}`)}
+            onClick={() => !aktif && navigate(alamatProduk({ id: v.id, slug: v.slug ?? product.slug }, v.sku || v.id))}
             className={cn(
               'rounded-md border px-3 py-1.5 text-sm transition',
               aktif
@@ -629,7 +658,7 @@ export function PublicProductDetail() {
         <span className="min-w-0 flex-1">
           {me?.address || (token ? 'Alamat belum diisi di akun.' : 'Masuk untuk memakai alamat pengirimanmu.')}
         </span>
-        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 -my-[11px] py-[11px] text-xs font-semibold text-brand-600">
+        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', alamatIni)} className="shrink-0 -my-[11px] py-[11px] text-xs font-semibold text-brand-600">
           UBAH
         </Link>
       </div>

@@ -132,6 +132,10 @@ function bersihkan(S) {
     // ---------- Riwayat keluar-masuk per SKU ----------
     await page.goto(BASE + '/products', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 1500 });
+    // Varian sekelompok tampil sebagai satu baris induk; baris SKU-nya muncul
+    // setelah dicari, seperti cara admin mencari satu SKU.
+    await page.getByPlaceholder('Cari nama / SKU / barcode').fill('Gd-415-12-FIZ');
+    await page.waitForTimeout(900);
     const baris = page.locator('tbody tr').filter({ hasText: 'Gd-415-12-FIZ' }).first();
     await baris.locator('button[title="Riwayat keluar-masuk"]').click();
     await page.waitForURL((u) => u.pathname.includes('/stock-mutation'), { timeout: 10000 }).catch(() => {});
@@ -144,6 +148,8 @@ function bersihkan(S) {
     // ---------- Label barcode ----------
     await page.goto(BASE + '/products', { waitUntil: 'networkidle' });
     await waitForApiIdle(page, { idleMs: 2500, minWaitMs: 1500 });
+    await page.getByPlaceholder('Cari nama / SKU / barcode').fill('Gd-415-12-FIZ');
+    await page.waitForTimeout(900);
     await page.locator('tbody tr').filter({ hasText: 'Gd-415-12-FIZ' }).first()
       .locator('button[title="Cetak label barcode"]').click();
     await page.waitForTimeout(800);
