@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, Facebook, Flame, Instagram, MessageCircle, Search, ShoppingCart, Star, Store, UserRound, Youtube } from 'lucide-react';
+import { ChevronDown, Facebook, Flame, Instagram, MessageCircle, Moon, Search, ShoppingCart, Star, Store, Sun, UserRound, Youtube } from 'lucide-react';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import { cn } from '@/lib/format';
@@ -9,6 +9,7 @@ import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { ModalMasuk } from '@/components/public/ModalMasuk';
 import { idPixelDariToko, lacakHalaman, pasangPixel } from '@/lib/pixelToko';
+import { useUI } from '@/stores/ui';
 
 /** Nomor toko menjadi tautan WhatsApp (0812… → 62812…). */
 export function tautanWhatsApp(nomor: string | null | undefined, pesan?: string): string | null {
@@ -156,6 +157,9 @@ export function PublicShell({
   const tabAkun = new URLSearchParams(search).get('tab') ?? 'pesanan';
   const aktifLacak = diAkun && tabAkun === 'pesanan';
   const aktifAkun = diAkun && tabAkun !== 'pesanan';
+  const themeToko = useUI((s) => s.themeToko);
+  const setThemeToko = useUI((s) => s.setThemeToko);
+  const gelap = themeToko === 'dark';
   const logo = (ukuran: string, ikon: number) => (
     <span className={cn('grid shrink-0 place-items-center overflow-hidden rounded-lg bg-brand-600 text-white', ukuran)}>
       {store?.logo_url ? <img src={store.logo_url} alt="" className="h-full w-full object-cover" /> : <Store size={ikon} />}
@@ -257,10 +261,23 @@ export function PublicShell({
           >
             <UserRound size={22} />
           </Link>
+          {/* Hanya di layar lebar: di HP baris ini sudah penuh (kolom cari tinggal
+              119 px di 393 px), jadi pilihan tema HP ada di footer. */}
+          <button
+            type="button"
+            data-tombol-tema-toko
+            onClick={() => setThemeToko(gelap ? 'light' : 'dark')}
+            aria-label={gelap ? 'Ganti ke tampilan terang' : 'Ganti ke tampilan gelap'}
+            title={gelap ? 'Tampilan terang' : 'Tampilan gelap'}
+            className="relative hidden h-10 w-10 shrink-0 place-items-center text-ink-700 transition-[color,transform] duration-200 ease-out hover:text-brand-600 active:scale-[0.97] lg:ml-[34px] lg:grid dark:text-ink-200"
+          >
+            <Moon size={22} strokeWidth={1.8} className={cn('absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none', gelap ? 'scale-75 opacity-0' : 'scale-100 opacity-100')} />
+            <Sun size={22} strokeWidth={1.8} className={cn('absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none', gelap ? 'scale-100 opacity-100' : 'scale-75 opacity-0')} />
+          </button>
           <Link
             to="/toko/keranjang"
             aria-label="Keranjang"
-            className="relative grid h-10 w-10 shrink-0 place-items-center text-ink-800 transition-colors duration-300 hover:text-brand-600 lg:ml-[34px] dark:text-ink-100"
+            className="relative grid h-10 w-10 shrink-0 place-items-center text-ink-800 transition-colors duration-300 hover:text-brand-600 lg:ml-3 dark:text-ink-100"
           >
             <ShoppingCart size={26} strokeWidth={1.8} />
             {cartCount > 0 && (
@@ -435,7 +452,7 @@ export function PublicShell({
           </div>
         </div>
         <div className="bg-white py-6 dark:bg-ink-950">
-          <div className={cn(LEBAR, 'grid gap-8 sm:grid-cols-2 lg:grid-cols-[297px_1fr]')}>
+          <div className={cn(LEBAR, 'grid gap-8 sm:grid-cols-2 lg:grid-cols-[297px_297px_1fr]')}>
             <div>
               <h3 className="mb-2 text-sm text-ink-800 dark:text-ink-100">Metode Pembayaran</h3>
               <div className="flex gap-2">
@@ -449,6 +466,32 @@ export function PublicShell({
             <div>
               <h3 className="mb-2 text-sm text-ink-800 dark:text-ink-100">Jasa Pengiriman</h3>
               <p className="text-ink-600 dark:text-ink-300">Pengiriman reguler ke alamatmu. Ongkir dikonfirmasi toko sebelum pembayaran.</p>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm text-ink-800 dark:text-ink-100">Tampilan</h3>
+              <div role="group" aria-label="Tampilan toko" data-pilih-tema-toko className="inline-flex rounded-full bg-ink-100 p-1 dark:bg-ink-800">
+                {(
+                  [
+                    ['light', 'Terang', Sun],
+                    ['dark', 'Gelap', Moon],
+                  ] as const
+                ).map(([nilai, label, Ikon]) => (
+                  <button
+                    key={nilai}
+                    type="button"
+                    aria-pressed={themeToko === nilai}
+                    onClick={() => setThemeToko(nilai)}
+                    className={cn(
+                      'flex h-[44px] items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold transition-[color,background-color,transform] duration-200 ease-out active:scale-[0.97]',
+                      themeToko === nilai
+                        ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-700 dark:text-white'
+                        : 'text-ink-600 hover:text-ink-900 dark:text-ink-300 dark:hover:text-white',
+                    )}
+                  >
+                    <Ikon size={14} /> {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div className={cn(LEBAR, 'mt-8 flex items-center justify-between text-ink-600 dark:text-ink-300')}>

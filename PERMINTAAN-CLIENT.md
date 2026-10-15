@@ -206,6 +206,20 @@ berikut indeksnya.
 
 ---
 
+## Gelombang 11 — Tema toko dan alamat produk (pesan client lewat user, 15 Okt)
+
+| # | Permintaan (kutipan) | Letak di aplikasi |
+|---|---|---|
+| 19 | "untuk tampilan web bagian depan ada mode opsi black + white si khusus user / calon pembeli" | Tombol tema di header toko online (`/toko`), HP dan desktop |
+| 20 | "mas saya baru ngeh penamaan produk url nya bisa by nama produk yg dibuat tidak by kode otomatis seperti ini" (contoh `store.gnnkracing.id/toko/produk?id=2bf44730-816a-4f25-9a6b-d5475330e80c`) | Alamat halaman produk `/toko/produk/{nama-produk}`, kolom alamat di formulir produk |
+
+**Keputusan user 15 Okt 2026:**
+- Butir 19: toko selalu mulai terang, pembeli bisa mengganti ke gelap lewat tombol di header, pilihan diingat di browser pembeli. Tema toko terpisah dari tema konsol admin (sebelumnya mode gelap admin ikut membuat toko gelap di browser yang sama).
+- Butir 20: alamat `/toko/produk/nama-produk`, satu alamat per kelompok varian, varian terpilih ditandai `?varian=SKU`. Alamat dibuat sekali dari nama saat produk dibuat dan tidak berubah sendiri ketika nama diganti; admin bisa mengubahnya manual. Link lama `/toko/produk?id=...` (iklan, WhatsApp, affiliate) tetap berfungsi dan dialihkan ke alamat baru.
+- Pekerjaan baru di luar cakupan sebelumnya.
+
+---
+
 ## Masih menunggu client
 
 | Hal | Yang ditunggu |

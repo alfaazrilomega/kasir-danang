@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from '@/lib/router';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from '@/lib/router';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { AdminLayout } from '@/components/layout/AdminLayout';
@@ -41,14 +41,25 @@ import { applyTheme, useUI } from '@/stores/ui';
 import { applyAccent } from '@/lib/accents';
 import { bindOnlineSync, flushPending } from '@/lib/sync';
 
+/**
+ * Toko online memakai tema pembeli, halaman lain memakai tema konsol admin.
+ * Tanpa pemisahan ini mode gelap admin ikut membuat toko gelap di browser yang
+ * sama, sementara pembeli tidak bisa memilih sendiri (permintaan 19).
+ */
+function TemaHalaman() {
+  const { pathname } = useLocation();
+  const theme = useUI((s) => s.theme);
+  const themeToko = useUI((s) => s.themeToko);
+  const toko = pathname === '/toko' || pathname.startsWith('/toko/') || pathname.startsWith('/aff/');
+  useEffect(() => {
+    applyTheme(toko ? themeToko : theme);
+  }, [toko, theme, themeToko]);
+  return null;
+}
+
 export default function App() {
   const init = useAuth((s) => s.init);
-  const theme = useUI((s) => s.theme);
   const accent = useUI((s) => s.accent);
-
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
 
   useEffect(() => {
     applyAccent(accent);
@@ -84,6 +95,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <TemaHalaman />
       <Toaster position="top-right" richColors closeButton />
       <PinLockGate>
       <Routes>

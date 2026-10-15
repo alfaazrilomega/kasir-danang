@@ -135,7 +135,13 @@ const PERIKSA = () => {
           .map((x) => x.rasio + ':1 "' + x.teks + '" ' + x.fg + ' di ' + x.bg + ' [' + x.kelas + ']')
           .join(' ; '));
     };
-    for (const rute of [...RUTE_ADMIN, ...RUTE_TOKO]) await ukurRute(rute);
+    for (const rute of RUTE_ADMIN) await ukurRute(rute);
+    // Tema toko terpisah dari tema admin (permintaan 19): pembeli menyalakan
+    // mode gelap sendiri lewat pilihan Tampilan di footer.
+    await page.goto(BASE_URL + '/toko', { waitUntil: 'networkidle' });
+    await page.locator('[data-pilih-tema-toko]').getByRole('button', { name: /Gelap/ }).click();
+    await page.waitForTimeout(400);
+    for (const rute of RUTE_TOKO) await ukurRute(rute);
 
     // Affiliate berisi data: satu pesanan selesai, satu undangan, satu downline.
     const toko = A.idToko();

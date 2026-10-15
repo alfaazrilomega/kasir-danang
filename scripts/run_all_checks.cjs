@@ -37,6 +37,7 @@ const SUITES = [
   'verify_affiliate_seams2',
   'verify_affiliate_klien',
   'verify_affiliate_program_mati',
+  'verify_tema_toko',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

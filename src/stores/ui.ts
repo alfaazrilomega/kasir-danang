@@ -9,6 +9,9 @@ interface UIState {
   theme: 'light' | 'dark';
   toggleTheme: () => void;
   setTheme: (t: 'light' | 'dark') => void;
+  /** Tema toko online untuk pembeli, terpisah dari tema konsol admin (permintaan 19). */
+  themeToko: 'light' | 'dark';
+  setThemeToko: (t: 'light' | 'dark') => void;
   accent: string;
   setAccent: (a: string) => void;
   cartCollapsed: boolean;
@@ -29,6 +32,8 @@ export const useUI = create<UIState>()(
       theme: 'light',
       toggleTheme: () => set({ theme: get().theme === 'light' ? 'dark' : 'light' }),
       setTheme: (t) => set({ theme: t }),
+      themeToko: 'light',
+      setThemeToko: (t) => set({ themeToko: t }),
       accent: DEFAULT_ACCENT,
       setAccent: (a) => set({ accent: a }),
       cartCollapsed: false,
