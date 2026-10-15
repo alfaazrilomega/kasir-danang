@@ -567,6 +567,12 @@ app.use(
   }),
 );
 
+/**
+ * Akun demo hanya hidup bila ALLOW_DEMO_ACCOUNTS=true (pengembangan tanpa
+ * database). Di produksi akun ini pernah memberi sesi admin toko asli lewat
+ * kredensial yang tercetak di halaman /login (celah 15 Okt 2026).
+ */
+const DEMO_DIIZINKAN = process.env.ALLOW_DEMO_ACCOUNTS === 'true';
 const DEMO_ACCOUNTS = {
   'admin@example.com': { id: 'usr-admin-001', role: 'admin', name: 'Admin Kasir', password: 'change-me-strong-password' },
   'gudang@example.com': { id: 'usr-warehouse-001', role: 'warehouse', name: 'Staff Gudang', password: 'gudang12345' },
@@ -709,7 +715,7 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
     return res.json({ user, session: createSession(user) });
   }
 
-  const demo = DEMO_ACCOUNTS[email];
+  const demo = DEMO_DIIZINKAN ? DEMO_ACCOUNTS[email] : undefined;
   if (demo) {
     if (demo.password !== password) throw new HttpError(401, 'Email atau password salah.');
     // Kalau database hidup, pakai toko yang benar-benar ada supaya store_id
@@ -3617,7 +3623,7 @@ async function requireUser(req, _res, next) {
     // Cocokkan HANYA lewat id demo. Sebelumnya email juga dipakai, sehingga
     // token milik akun asli (sub = UUID) dengan email yang sama ikut dianggap
     // demo dan store_id-nya tertimpa 'store-default-001'.
-    const demo = Object.values(DEMO_ACCOUNTS).find((d) => d.id === payload.sub);
+    const demo = DEMO_DIIZINKAN ? Object.values(DEMO_ACCOUNTS).find((d) => d.id === payload.sub) : undefined;
     if (demo) {
       const demoStoreId = await resolveDemoStoreId();
       req.user = {
@@ -3634,6 +3640,8 @@ async function requireUser(req, _res, next) {
       req.authExp = payload.exp;
       return next();
     }
+    // Token akun demo (sub 'usr-...') yang terlanjur terbit ditolak, bukan jatuh ke cadangan admin di bawah.
+    if (!DEMO_DIIZINKAN && !isUuidLike(payload.sub)) throw new HttpError(401, 'Sesi tidak valid. Silakan masuk lagi.');
 
     try {
       const result = await pool.query(
@@ -3657,6 +3665,8 @@ async function requireUser(req, _res, next) {
       next();
     } catch (dbErr) {
       if (dbErr instanceof HttpError) throw dbErr;
+      // Database tidak terjangkau: gagal tertutup, jangan menganggap pemegang token sebagai admin.
+      if (!DEMO_DIIZINKAN) throw new HttpError(503, 'Server sedang sibuk. Coba lagi sebentar.');
       req.user = { id: payload.sub, email: payload.email || 'admin@example.com', store_id: 'store-default-001', role: 'admin' };
       req.authToken = token;
       req.authExp = payload.exp;

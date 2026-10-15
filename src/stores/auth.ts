@@ -218,57 +218,13 @@ export const useAuth = create<AuthState>((set, get) => ({
         await get().refreshProfile();
         return {};
       }
+      // Ditolak server: tampilkan alasannya. Dulu jalur ini masuk sebagai admin
+      // lokal berisi data demo (atau data toko dari cache perangkat) untuk email
+      // dan sandi apa pun, sehingga /login tampak bisa dibobol (15 Okt 2026).
+      return { error: error?.message || 'Email atau password salah.' };
     } catch {
-      // fallback to offline local accounts
+      return { error: 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.' };
     }
-
-    // Demo / Offline fallback accounts for all 4 roles
-    const normalized = email.trim().toLowerCase();
-    const demoRoles: Record<string, { role: 'admin' | 'warehouse' | 'cashier' | 'customer'; name: string; id: string }> = {
-      'admin@example.com': { role: 'admin', name: 'Admin Kasir', id: 'usr-admin-001' },
-      'gudang@example.com': { role: 'warehouse', name: 'Staff Gudang', id: 'usr-warehouse-001' },
-      'kasir@example.com': { role: 'cashier', name: 'Kasir Toko', id: 'usr-cashier-001' },
-      'customer@example.com': { role: 'customer', name: 'Pelanggan Toko', id: 'usr-customer-001' },
-    };
-
-    const demo = demoRoles[normalized] ?? {
-      role: 'admin' as const,
-      name: normalized.split('@')[0] || 'User Kasir',
-      id: 'usr-' + (normalized.split('@')[0] || 'admin'),
-    };
-
-    let store: Store | undefined = await db.stores.toCollection().first();
-    if (!store) {
-      const newStore: Store = {
-        id: 'store-default-001',
-        name: 'TokoKu',
-        currency: 'IDR',
-        tax_rate: 10,
-        points_per_amount: 0.01,
-        low_stock_threshold: 10,
-        created_at: new Date().toISOString(),
-      };
-      await db.stores.put(newStore);
-      store = newStore;
-    }
-
-    const prodCount = await db.products.count();
-    if (prodCount < 20) {
-      const { generate1000Data } = await import('@/lib/seed1000');
-      await generate1000Data(store.id, demo.id);
-      store = (await db.stores.toCollection().first()) ?? store;
-    }
-
-    const profile: Profile = {
-      id: demo.id,
-      store_id: store.id,
-      full_name: demo.name,
-      email: normalized,
-      role: demo.role,
-    };
-
-    set({ userId: demo.id, sessionStoreId: store.id, profile, store });
-    return {};
   },
 
   async signOut() {
