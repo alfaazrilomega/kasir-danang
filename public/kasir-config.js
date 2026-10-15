@@ -4,6 +4,25 @@ window.KASIR_CONFIG = {
   apiBaseUrl: '',
 };
 
+// Halaman masuk staf (/pintu-...) harus datang dari server, bukan dari cache
+// service worker: hanya server yang memasang cookie gerbang dan penanda
+// window.KASIR_PINTU_ADMIN (disisipkan sebelum berkas ini dimuat). Kalau
+// penandanya tidak ada, service worker dilepas lalu halaman dimuat ulang sekali.
+(function () {
+  try {
+    if (location.pathname.indexOf('/pintu-') !== 0 || window.KASIR_PINTU_ADMIN) return;
+    if (!('serviceWorker' in navigator)) return;
+    var KUNCI = 'kasir.pintu.dimuat-ulang';
+    if (sessionStorage.getItem(KUNCI) === location.href) return;
+    sessionStorage.setItem(KUNCI, location.href);
+    navigator.serviceWorker.getRegistrations().then(function (daftar) {
+      return Promise.all(daftar.map(function (r) { return r.unregister(); }));
+    }).then(function () { location.reload(); }, function () { location.reload(); });
+  } catch (e) {
+    // biarkan
+  }
+})();
+
 // Penyelamat cangkang lama.
 //
 // Service worker menyajikan index.html dari cache, jadi pengunjung yang pernah

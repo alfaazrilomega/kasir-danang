@@ -573,6 +573,65 @@ app.use(
  * kredensial yang tercetak di halaman /login (celah 15 Okt 2026).
  */
 const DEMO_DIIZINKAN = process.env.ALLOW_DEMO_ACCOUNTS === 'true';
+
+// Pintu masuk staf (15 Okt 2026). ADMIN_LOGIN_PATH berisi alamat rahasia
+// /pintu-<minimal 24 huruf/angka acak>. Membuka alamat itu memberi cookie
+// bertanda tangan HMAC; tanpa cookie itu /api/auth/signin berlagak tidak ada,
+// sehingga API masuk tidak bisa ditebak-tebak dari luar. Kosong = gerbang mati
+// (pengembangan lokal, uji).
+const PINTU_ADMIN = String(process.env.ADMIN_LOGIN_PATH ?? '').trim();
+const PINTU_AKTIF = /^\/pintu-[A-Za-z0-9]{24,}$/.test(PINTU_ADMIN);
+if (PINTU_ADMIN && !PINTU_AKTIF) console.error('ADMIN_LOGIN_PATH harus /pintu- diikuti minimal 24 huruf/angka; gerbang dimatikan.');
+const KUE_PINTU = 'kasir_pintu';
+const UMUR_PINTU_DETIK = 12 * 60 * 60;
+
+function tandaPintu(exp) {
+  return crypto.createHmac('sha256', authSecret).update(`pintu:${exp}`).digest('hex');
+}
+
+function kuePintuSah(req) {
+  const mentah = String(req.headers.cookie ?? '').split(/;\s*/).find((c) => c.startsWith(`${KUE_PINTU}=`));
+  if (!mentah) return false;
+  const [exp, tanda] = decodeURIComponent(mentah.slice(KUE_PINTU.length + 1)).split('.');
+  if (!/^\d+$/.test(exp ?? '') || Number(exp) < Date.now() / 1000) return false;
+  return safeEqual(tandaPintu(exp), tanda ?? '');
+}
+
+// Batas percobaan masuk staf: 5 gagal per email dan 20 gagal per IP dalam
+// 15 menit (OWASP: penghitung melekat ke akun, bukan hanya ke IP).
+const GAGAL_MASUK = new Map();
+const JENDELA_MASUK_MS = 15 * 60 * 1000;
+const BATAS_MASUK = { email: 5, ip: 20 };
+
+function kunciMasuk(req, email) {
+  return [[`email:${email}`, BATAS_MASUK.email], [`ip:${publicOrderClientIp(req)}`, BATAS_MASUK.ip]];
+}
+
+function cekBatasMasuk(req, email) {
+  const kini = Date.now();
+  for (const [kunci, batas] of kunciMasuk(req, email)) {
+    const e = GAGAL_MASUK.get(kunci);
+    if (!e) continue;
+    if (kini - e.awal > JENDELA_MASUK_MS) {
+      GAGAL_MASUK.delete(kunci);
+      continue;
+    }
+    if (e.jumlah >= batas) {
+      const menit = Math.max(1, Math.ceil((e.awal + JENDELA_MASUK_MS - kini) / 60000));
+      throw new HttpError(429, `Terlalu banyak percobaan masuk. Coba lagi dalam ${menit} menit.`);
+    }
+  }
+}
+
+function catatGagalMasuk(req, email) {
+  const kini = Date.now();
+  if (GAGAL_MASUK.size > 10000) GAGAL_MASUK.clear();
+  for (const [kunci] of kunciMasuk(req, email)) {
+    const e = GAGAL_MASUK.get(kunci);
+    if (!e || kini - e.awal > JENDELA_MASUK_MS) GAGAL_MASUK.set(kunci, { awal: kini, jumlah: 1 });
+    else e.jumlah += 1;
+  }
+}
 const DEMO_ACCOUNTS = {
   'admin@example.com': { id: 'usr-admin-001', role: 'admin', name: 'Admin Kasir', password: 'change-me-strong-password' },
   'gudang@example.com': { id: 'usr-warehouse-001', role: 'warehouse', name: 'Staff Gudang', password: 'gudang12345' },
@@ -674,10 +733,13 @@ app.post('/api/auth/signup', asyncHandler(async (req, res) => {
   }
 }));
 
-app.post('/api/auth/signin', asyncHandler(async (req, res) => {
+app.post('/api/auth/signin', asyncHandler(async (req, res, next) => {
+  // Tanpa cookie dari halaman masuk rahasia, alamat API ini berlagak tidak ada.
+  if (PINTU_AKTIF && !kuePintuSah(req)) return next();
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? '');
   if (!email || !password) throw new HttpError(400, 'Email dan password wajib diisi.');
+  cekBatasMasuk(req, email);
 
   // Akun asli di database diperiksa LEBIH DULU. DEMO_ACCOUNTS hanya cadangan
   // saat database belum tersedia. Kalau demo dicek duluan, akun hasil
@@ -704,6 +766,7 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
 
   if (dbUser) {
     if (!(await verifyPassword(password, dbUser.password_hash))) {
+      catatGagalMasuk(req, email);
       throw new HttpError(401, 'Email atau password salah.');
     }
     const user = {
@@ -717,7 +780,10 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
 
   const demo = DEMO_DIIZINKAN ? DEMO_ACCOUNTS[email] : undefined;
   if (demo) {
-    if (demo.password !== password) throw new HttpError(401, 'Email atau password salah.');
+    if (demo.password !== password) {
+      catatGagalMasuk(req, email);
+      throw new HttpError(401, 'Email atau password salah.');
+    }
     // Kalau database hidup, pakai toko yang benar-benar ada supaya store_id
     // tetap UUID valid; 'store-default-001' hanya untuk mode offline murni.
     const user = {
@@ -730,6 +796,10 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
     return res.json({ user, session: createSession(user) });
   }
 
+  // Akun tidak ada: scrypt tetap dijalankan supaya lama jawabannya sama dengan
+  // sandi salah dan tidak membocorkan email mana yang terdaftar.
+  await scrypt(password, 'samaran-waktu-masuk', 64);
+  catatGagalMasuk(req, email);
   throw new HttpError(401, 'Email atau password salah.');
 }));
 
@@ -2729,6 +2799,24 @@ if (fs.existsSync(path.join(distPath, 'index.html'))) {
       }
     },
   }));
+  if (PINTU_AKTIF) {
+    // Halaman masuk staf: cookie gerbang + penanda untuk aplikasi, tidak pernah
+    // di-cache dan tidak diindeks mesin pencari.
+    app.get(PINTU_ADMIN, (_req, res) => {
+      const exp = Math.floor(Date.now() / 1000) + UMUR_PINTU_DETIK;
+      res.cookie(KUE_PINTU, `${exp}.${tandaPintu(exp)}`, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/api/auth',
+        maxAge: UMUR_PINTU_DETIK * 1000,
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      const html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
+      res.type('html').send(html.replace('<head>', '<head><script>window.KASIR_PINTU_ADMIN=true</script>'));
+    });
+  }
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(distPath, 'index.html'));

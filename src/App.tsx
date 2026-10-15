@@ -16,6 +16,7 @@ import { Purchases } from '@/pages/Purchases';
 import { Promos } from '@/pages/Promos';
 import { Settings } from '@/pages/Settings';
 import { Login } from '@/pages/Login';
+import { GERBANG_ADMIN, diPintuAdmin } from '@/lib/pintuAdmin';
 import { Shifts } from '@/pages/Shifts';
 import { Reports } from '@/pages/Reports';
 import { Expenses } from '@/pages/Expenses';
@@ -99,7 +100,8 @@ export default function App() {
       <Toaster position="top-right" richColors closeButton />
       <PinLockGate>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        {/* Di produksi formulir staf hanya di alamat rahasia (lihat lib/pintuAdmin). */}
+        <Route path="/login" element={GERBANG_ADMIN ? <Navigate to="/toko" replace /> : <Login />} />
         <Route path="/" element={<ProtectedRoute><AdminLayout><Dashboard /></AdminLayout></ProtectedRoute>} />
         <Route path="/menu" element={<ProtectedRoute><AdminLayout><MenuPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/orders" element={<ProtectedRoute><AdminLayout><Orders /></AdminLayout></ProtectedRoute>} />
@@ -132,7 +134,7 @@ export default function App() {
         <Route path="/toko/akun" element={<PublicAccount />} />
         <Route path="/toko/affiliate" element={<PublicAffiliate />} />
         <Route path="/aff/*" element={<AffiliateOpen />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={diPintuAdmin() ? <Login /> : <Navigate to="/" replace />} />
       </Routes>
       </PinLockGate>
     </BrowserRouter>

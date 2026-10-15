@@ -49,6 +49,7 @@ import {
   pendingCount,
 } from '@/lib/sync';
 import { useNavigate } from '@/lib/router';
+import { ALAMAT_SETELAH_KELUAR } from '@/lib/pintuAdmin';
 import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
 import { Globe } from 'lucide-react';
@@ -466,7 +467,7 @@ export function Settings() {
     resetBackendClient();
     await clearLocalCache();
     await signOut();
-    navigate('/login', { replace: true });
+    navigate(ALAMAT_SETELAH_KELUAR, { replace: true });
   }
 
   async function installDesktopApp() {
@@ -1347,7 +1348,7 @@ export function Settings() {
           <Button
             onClick={async () => {
               await signOut();
-              navigate('/login');
+              navigate(ALAMAT_SETELAH_KELUAR);
             }}
             variant="danger"
           >

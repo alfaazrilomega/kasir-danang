@@ -40,6 +40,7 @@ const SUITES = [
   'verify_tema_toko',
   'verify_alamat_produk',
   'verify_akun_demo_mati',
+  'verify_pintu_admin',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {
