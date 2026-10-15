@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { setCapabilityOverrides } from '@/lib/roles';
 import { isUuid } from '@/lib/format';
 import { pullRolePermissions } from '@/lib/sync';
+import { mfaApi, simpanTokenSesi } from '@/lib/mfa';
 
 /**
  * Kolom toko yang diambil ulang tiap menit oleh refreshStore. Empat kolom
@@ -30,7 +31,9 @@ interface AuthState {
   profile: Profile | null;
   store: Store | null;
   init: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
+  /** mfaToken terisi bila akun memakai verifikasi dua langkah: lanjutkan dengan verifyMfa. */
+  signIn: (email: string, password: string) => Promise<{ error?: string; mfaToken?: string }>;
+  verifyMfa: (mfaToken: string, code: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   /** Ambil ulang baris toko (pajak, struk, fitur) tanpa memuat ulang profil. */
@@ -213,6 +216,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     const api = getBackendClient();
     try {
       const { data, error } = await api.auth.signInWithPassword({ email, password });
+      const mfa = data as unknown as { mfa_required?: boolean; mfa_token?: string } | null;
+      if (!error && mfa?.mfa_required && mfa.mfa_token) return { mfaToken: mfa.mfa_token };
       if (!error && data?.user) {
         set({ userId: data.user.id, sessionStoreId: data.user.store_id ?? null });
         await get().refreshProfile();
@@ -225,6 +230,15 @@ export const useAuth = create<AuthState>((set, get) => ({
     } catch {
       return { error: 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.' };
     }
+  },
+
+  async verifyMfa(mfaToken, code) {
+    const { data, error } = await mfaApi.verify(mfaToken, code);
+    if (error || !data?.session?.access_token) return { error: error || 'Kode verifikasi salah.' };
+    simpanTokenSesi(data.session.access_token);
+    set({ userId: data.user.id, sessionStoreId: data.user.store_id ?? null });
+    await get().refreshProfile();
+    return {};
   },
 
   async signOut() {

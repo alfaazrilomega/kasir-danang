@@ -46,6 +46,7 @@ import {
   type Capability,
 } from '@/lib/roles';
 import { useAuth } from '@/stores/auth';
+import { mfaApi } from '@/lib/mfa';
 import { db } from '@/lib/db';
 import { uuid } from '@/lib/format';
 import type { RolePermission, UserRole } from '@/types';
@@ -260,6 +261,16 @@ export function UsersPage() {
     toast.success(form.id ? 'User diperbarui.' : 'User ditambahkan.');
     setOpen(false);
     await loadAdminData();
+  }
+
+  /** Staf kehilangan ponsel authenticator: admin mematikan verifikasi dua langkahnya. */
+  async function resetMfa(user: AdminUser) {
+    if (!confirm(`Matikan verifikasi dua langkah ${user.email}? Akun itu bisa masuk hanya dengan sandi sampai mengaktifkannya lagi.`)) return;
+    setBusy(true);
+    const { error } = await mfaApi.resetUser(user.id);
+    setBusy(false);
+    if (error) toast.error(error);
+    else toast.success(`Verifikasi dua langkah ${user.email} dimatikan.`);
   }
 
   async function removeUser(user: AdminUser) {
@@ -483,6 +494,16 @@ export function UsersPage() {
                             >
                               <Pencil size={14} />
                             </button>
+                            {user.id !== profile?.id && (
+                              <button
+                                onClick={() => void resetMfa(user)}
+                                className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                                disabled={busy}
+                                title="Reset verifikasi dua langkah"
+                              >
+                                <LockKeyhole size={14} />
+                              </button>
+                            )}
                             <button
                               onClick={() => removeUser(user)}
                               className={cn(

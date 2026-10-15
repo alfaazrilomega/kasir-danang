@@ -9,18 +9,31 @@ import { useAuth } from '@/stores/auth';
 
 export function Login() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { signIn, verifyMfa } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  // Terisi setelah sandi benar pada akun yang memakai verifikasi dua langkah.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [kode, setKode] = useState('');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const { error } = await signIn(email, password);
+    const hasil = mfaToken ? await verifyMfa(mfaToken, kode) : await signIn(email, password);
     setBusy(false);
-    if (error) {
-      toast.error(error);
+    if (hasil.error) {
+      toast.error(hasil.error);
+      // Token langkah kedua berlaku 5 menit: setelah habis, mulai lagi dari sandi.
+      if (mfaToken && /habis/i.test(hasil.error)) {
+        setMfaToken(null);
+        setKode('');
+      }
+      return;
+    }
+    const tokenLangkahDua = (hasil as { mfaToken?: string }).mfaToken;
+    if (tokenLangkahDua) {
+      setMfaToken(tokenLangkahDua);
       return;
     }
     navigate('/');
@@ -47,31 +60,68 @@ export function Login() {
         <p className="text-xs opacity-60">© TokoKu - self-hosted React + Postgres</p>
       </div>
       <div className="grid place-items-center p-6">
-        <form onSubmit={submit} className="card w-full max-w-md p-6">
-          <h2 className="text-xl font-bold">Masuk</h2>
-          <p className="text-sm text-ink-500">Gunakan akun yang terdaftar di backend kasir.</p>
-          <div className="mt-5 space-y-3">
-            <Input
-              label="Email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            <Input
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <Button type="submit" className="mt-5 w-full" disabled={busy}>
-            {busy ? <Spinner /> : null} Masuk
-          </Button>
-        </form>
+        {mfaToken ? (
+          <form onSubmit={submit} className="card w-full max-w-md p-6" data-langkah-mfa>
+            <h2 className="text-xl font-bold">Verifikasi dua langkah</h2>
+            <p className="text-sm text-ink-500">
+              Masukkan kode 6 angka dari aplikasi authenticator di ponselmu. Kalau ponsel tidak ada, pakai salah satu kode pemulihan.
+            </p>
+            <div className="mt-5">
+              <Input
+                name="kode-mfa"
+                label="Kode verifikasi"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                required
+                value={kode}
+                onChange={(e) => setKode(e.target.value)}
+                placeholder="123456"
+              />
+            </div>
+            <Button type="submit" className="mt-5 w-full" disabled={busy}>
+              {busy ? <Spinner /> : null} Verifikasi
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setMfaToken(null);
+                setKode('');
+              }}
+              className="mt-3 min-h-[44px] w-full text-sm font-medium text-ink-500 hover:text-ink-800 dark:hover:text-ink-200"
+            >
+              Kembali ke email dan sandi
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={submit} className="card w-full max-w-md p-6">
+            <h2 className="text-xl font-bold">Masuk</h2>
+            <p className="text-sm text-ink-500">Gunakan akun yang terdaftar di backend kasir.</p>
+            <div className="mt-5 space-y-3">
+              <Input
+                name="email"
+                label="Email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <Input
+                name="password"
+                label="Password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="mt-5 w-full" disabled={busy}>
+              {busy ? <Spinner /> : null} Masuk
+            </Button>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -50,6 +50,7 @@ import {
 } from '@/lib/sync';
 import { useNavigate } from '@/lib/router';
 import { ALAMAT_SETELAH_KELUAR } from '@/lib/pintuAdmin';
+import { KeamananAkun } from '@/components/settings/KeamananAkun';
 import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
 import { Globe } from 'lucide-react';
@@ -1234,6 +1235,8 @@ export function Settings() {
           onClose={() => setPinModal(null)}
         />
       </Section>
+
+      <KeamananAkun />
 
       <Section id="display" icon={Monitor} title="Tampilan" description="Skema warna aplikasi.">
         <div className="text-sm font-semibold mb-2">Mode</div>

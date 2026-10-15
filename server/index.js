@@ -604,7 +604,11 @@ const JENDELA_MASUK_MS = 15 * 60 * 1000;
 const BATAS_MASUK = { email: 5, ip: 20 };
 
 function kunciMasuk(req, email) {
-  return [[`email:${email}`, BATAS_MASUK.email], [`ip:${publicOrderClientIp(req)}`, BATAS_MASUK.ip]];
+  const ip = publicOrderClientIp(req);
+  // Di produksi IP pengunjung datang dari nginx (X-Forwarded-For); permintaan
+  // loopback hanya dari server sendiri (uji, pemeriksaan) dan tidak dihitung per IP.
+  const loopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
+  return [[`email:${email}`, BATAS_MASUK.email], ...(loopback ? [] : [[`ip:${ip}`, BATAS_MASUK.ip]])];
 }
 
 function cekBatasMasuk(req, email) {
@@ -733,6 +737,216 @@ app.post('/api/auth/signup', asyncHandler(async (req, res) => {
   }
 }));
 
+// ===== Verifikasi dua langkah staf (TOTP, RFC 6238), 15 Okt 2026 =====
+// Rahasia TOTP terenkripsi AES-256-GCM (kunci turunan AUTH_SECRET); kode
+// pemulihan disimpan sebagai sidik SHA-256 dan hangus setelah dipakai.
+const KUNCI_MFA = crypto.createHash('sha256').update(`mfa-totp:${authSecret}`).digest();
+const ABJAD_BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Encode(buf) {
+  let bits = 0;
+  let nilai = 0;
+  let out = '';
+  for (const b of buf) {
+    nilai = (nilai << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += ABJAD_BASE32[(nilai >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += ABJAD_BASE32[(nilai << (5 - bits)) & 31];
+  return out;
+}
+
+function base32Decode(teks) {
+  let bits = 0;
+  let nilai = 0;
+  const out = [];
+  for (const c of String(teks).toUpperCase().replace(/[^A-Z2-7]/g, '')) {
+    nilai = (nilai << 5) | ABJAD_BASE32.indexOf(c);
+    bits += 5;
+    if (bits >= 8) {
+      out.push((nilai >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+function enkripsiRahasiaMfa(teks) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', KUNCI_MFA, iv);
+  const isi = Buffer.concat([c.update(teks, 'utf8'), c.final()]);
+  return ['v1', iv.toString('base64'), c.getAuthTag().toString('base64'), isi.toString('base64')].join(':');
+}
+
+function dekripsiRahasiaMfa(simpanan) {
+  try {
+    const [v, iv, tag, isi] = String(simpanan ?? '').split(':');
+    if (v !== 'v1') return null;
+    const d = crypto.createDecipheriv('aes-256-gcm', KUNCI_MFA, Buffer.from(iv, 'base64'));
+    d.setAuthTag(Buffer.from(tag, 'base64'));
+    return Buffer.concat([d.update(Buffer.from(isi, 'base64')), d.final()]).toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function kodeTotp(rahasia, langkah) {
+  const pesan = Buffer.alloc(8);
+  pesan.writeBigUInt64BE(BigInt(langkah));
+  const h = crypto.createHmac('sha1', base32Decode(rahasia)).update(pesan).digest();
+  const o = h[h.length - 1] & 15;
+  const angka = ((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return String(angka % 1_000_000).padStart(6, '0');
+}
+
+/** Langkah 30 detik yang cocok (toleransi satu langkah), atau null. Langkah lama ditolak (anti-ulang). */
+function cocokTotp(rahasia, kode, langkahTerakhir) {
+  const k = String(kode ?? '').replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(k)) return null;
+  const kini = Math.floor(Date.now() / 30000);
+  for (const geser of [0, -1, 1]) {
+    const langkah = kini + geser;
+    if (langkahTerakhir != null && langkah <= Number(langkahTerakhir)) continue;
+    if (safeEqual(kodeTotp(rahasia, langkah), k)) return langkah;
+  }
+  return null;
+}
+
+function buatTokenMfa(userId) {
+  const exp = Math.floor(Date.now() / 1000) + 300;
+  const isi = `${userId}.${exp}`;
+  return `${isi}.${crypto.createHmac('sha256', authSecret).update(`mfa:${isi}`).digest('hex')}`;
+}
+
+function bacaTokenMfa(token) {
+  const [id, exp, tanda] = String(token ?? '').split('.');
+  if (!isUuidLike(id) || !/^\d+$/.test(exp ?? '') || Number(exp) < Date.now() / 1000) return null;
+  const benar = crypto.createHmac('sha256', authSecret).update(`mfa:${id}.${exp}`).digest('hex');
+  return safeEqual(benar, tanda ?? '') ? id : null;
+}
+
+const sidikPemulihan = (kode) =>
+  crypto.createHash('sha256').update(`pemulihan:${String(kode ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')}`).digest('hex');
+
+function buatKodePemulihan() {
+  const abjad = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 8 }, () => {
+    const s = [...crypto.randomBytes(10)].map((b) => abjad[b % abjad.length]).join('');
+    return `${s.slice(0, 5)}-${s.slice(5)}`;
+  });
+}
+
+// Langkah kedua masuk: kode authenticator atau kode pemulihan, dibatasi per akun.
+app.post('/api/auth/mfa/verify', asyncHandler(async (req, res, next) => {
+  if (PINTU_AKTIF && !kuePintuSah(req)) return next();
+  const id = bacaTokenMfa(req.body?.mfa_token);
+  if (!id) throw new HttpError(401, 'Waktu verifikasi habis. Silakan masuk lagi.');
+  cekBatasMasuk(req, `mfa:${id}`);
+  const r = await pool.query(
+    `select u.id, u.email, u.totp_secret, u.totp_last_step, u.totp_recovery, p.store_id, p.role
+       from public.app_users u left join public.profiles p on p.id = u.id
+      where u.id = $1 and u.totp_enabled`,
+    [id],
+  );
+  const u = r.rows[0];
+  if (!u) throw new HttpError(401, 'Waktu verifikasi habis. Silakan masuk lagi.');
+  const kode = String(req.body?.code ?? '').trim();
+  const rahasia = dekripsiRahasiaMfa(u.totp_secret);
+  const langkah = rahasia ? cocokTotp(rahasia, kode, u.totp_last_step) : null;
+  if (langkah != null) {
+    await pool.query('update public.app_users set totp_last_step = $2 where id = $1', [id, langkah]);
+  } else {
+    const daftar = Array.isArray(u.totp_recovery) ? u.totp_recovery : [];
+    const sidik = sidikPemulihan(kode);
+    if (!kode || !daftar.includes(sidik)) {
+      catatGagalMasuk(req, `mfa:${id}`);
+      throw new HttpError(401, 'Kode verifikasi salah.');
+    }
+    await pool.query('update public.app_users set totp_recovery = $2::jsonb where id = $1', [id, JSON.stringify(daftar.filter((x) => x !== sidik))]);
+  }
+  const user = { id: u.id, email: u.email, store_id: u.store_id ?? null, role: u.role ?? 'admin' };
+  res.json({ user, session: createSession(user) });
+}));
+
+app.get('/api/auth/mfa', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id)) return res.json({ data: { available: false, enabled: false, recovery_left: 0 } });
+  const r = await pool.query('select totp_enabled, totp_recovery from public.app_users where id = $1', [req.user.id]);
+  const baris = r.rows[0] ?? {};
+  res.json({ data: { available: true, enabled: !!baris.totp_enabled, recovery_left: Array.isArray(baris.totp_recovery) ? baris.totp_recovery.length : 0 } });
+}));
+
+app.post('/api/auth/mfa/setup', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id) || req.user.role === 'customer') throw new HttpError(403, 'Verifikasi dua langkah hanya untuk akun staf.');
+  const rahasia = base32Encode(crypto.randomBytes(20));
+  await pool.query('update public.app_users set totp_pending = $2 where id = $1', [req.user.id, enkripsiRahasiaMfa(rahasia)]);
+  const toko = (await pool.query('select name from public.stores where id = $1', [req.user.store_id]).catch(() => ({ rows: [] }))).rows[0]?.name || 'Konsol Toko';
+  const label = `${encodeURIComponent(toko)}:${encodeURIComponent(req.user.email)}`;
+  res.json({ data: { secret: rahasia, otpauth: `otpauth://totp/${label}?secret=${rahasia}&issuer=${encodeURIComponent(toko)}&algorithm=SHA1&digits=6&period=30` } });
+}));
+
+app.post('/api/auth/mfa/enable', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id)) throw new HttpError(403, 'Verifikasi dua langkah hanya untuk akun staf.');
+  cekBatasMasuk(req, `mfa:${req.user.id}`);
+  const r = await pool.query('select totp_pending from public.app_users where id = $1', [req.user.id]);
+  const rahasia = dekripsiRahasiaMfa(r.rows[0]?.totp_pending);
+  if (!rahasia) throw new HttpError(400, 'Mulai pemasangan verifikasi dua langkah dulu.');
+  const langkah = cocokTotp(rahasia, req.body?.code, null);
+  if (langkah == null) {
+    catatGagalMasuk(req, `mfa:${req.user.id}`);
+    throw new HttpError(400, 'Kode salah. Pastikan jam di ponsel tepat, lalu masukkan kode terbaru.');
+  }
+  const kode = buatKodePemulihan();
+  await pool.query(
+    `update public.app_users
+        set totp_secret = totp_pending, totp_pending = null, totp_enabled = true,
+            totp_last_step = $2, totp_recovery = $3::jsonb
+      where id = $1`,
+    [req.user.id, langkah, JSON.stringify(kode.map(sidikPemulihan))],
+  );
+  await writeAdminAudit(pool, req.user, 'auth.mfa.enable', 'user', req.user.id, {});
+  res.json({ data: { recovery_codes: kode } });
+}));
+
+app.post('/api/auth/mfa/disable', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id)) throw new HttpError(403, 'Verifikasi dua langkah hanya untuk akun staf.');
+  cekBatasMasuk(req, `mfa:${req.user.id}`);
+  const r = await pool.query('select password_hash, totp_secret, totp_last_step from public.app_users where id = $1 and totp_enabled', [req.user.id]);
+  const u = r.rows[0];
+  if (!u) throw new HttpError(400, 'Verifikasi dua langkah belum aktif.');
+  const rahasia = dekripsiRahasiaMfa(u.totp_secret);
+  const sandiBenar = await verifyPassword(String(req.body?.password ?? ''), u.password_hash);
+  if (!sandiBenar || !rahasia || cocokTotp(rahasia, req.body?.code, u.totp_last_step) == null) {
+    catatGagalMasuk(req, `mfa:${req.user.id}`);
+    throw new HttpError(400, 'Sandi atau kode salah.');
+  }
+  await pool.query(
+    'update public.app_users set totp_enabled = false, totp_secret = null, totp_pending = null, totp_recovery = null, totp_last_step = null where id = $1',
+    [req.user.id],
+  );
+  await writeAdminAudit(pool, req.user, 'auth.mfa.disable', 'user', req.user.id, {});
+  res.json({ data: { enabled: false } });
+}));
+
+// Admin mematikan verifikasi dua langkah staf lain di tokonya (ponsel hilang).
+app.post('/api/admin/users/:id/mfa/reset', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  const id = String(req.params.id ?? '');
+  if (!isUuidLike(id)) throw new HttpError(400, 'User tidak valid.');
+  const r = await pool.query(
+    `update public.app_users u
+        set totp_enabled = false, totp_secret = null, totp_pending = null, totp_recovery = null, totp_last_step = null
+       from public.profiles p
+      where p.id = u.id and u.id = $1 and p.store_id = $2
+      returning u.id`,
+    [id, req.user.store_id],
+  );
+  if (!r.rowCount) throw new HttpError(404, 'User tidak ditemukan.');
+  await writeAdminAudit(pool, req.user, 'user.mfa.reset', 'user', id, {});
+  res.json({ data: { enabled: false } });
+}));
+
 app.post('/api/auth/signin', asyncHandler(async (req, res, next) => {
   // Tanpa cookie dari halaman masuk rahasia, alamat API ini berlagak tidak ada.
   if (PINTU_AKTIF && !kuePintuSah(req)) return next();
@@ -751,7 +965,7 @@ app.post('/api/auth/signin', asyncHandler(async (req, res, next) => {
   try {
     const result = await pool.query(
       `
-        select u.id, u.email, u.password_hash, p.store_id, p.role
+        select u.id, u.email, u.password_hash, u.totp_enabled, p.store_id, p.role
         from public.app_users u
         left join public.profiles p on p.id = u.id
         where lower(u.email) = lower($1)
@@ -769,6 +983,8 @@ app.post('/api/auth/signin', asyncHandler(async (req, res, next) => {
       catatGagalMasuk(req, email);
       throw new HttpError(401, 'Email atau password salah.');
     }
+    // Verifikasi dua langkah aktif: sesi baru diberikan setelah kode benar.
+    if (dbUser.totp_enabled) return res.json({ mfa_required: true, mfa_token: buatTokenMfa(dbUser.id) });
     const user = {
       id: dbUser.id,
       email: dbUser.email,
