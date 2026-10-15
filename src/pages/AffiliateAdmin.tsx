@@ -155,7 +155,7 @@ export function AffiliateAdmin() {
       {tab === 'ringkasan' && <TabRingkasan />}
       {tab === 'komisi' && <TabKomisi />}
       {tab === 'pembayaran' && <TabPembayaran minimal={settings?.payout_minimum ?? 0} />}
-      {tab === 'affiliate' && <TabAnggota />}
+      {tab === 'affiliate' && <TabAnggota programAktif={settings ? settings.enabled : null} onBukaPengaturan={() => setTab('pengaturan')} />}
       {tab === 'pengaturan' && settings && <TabPengaturan awal={settings} onTersimpan={setSettings} />}
       {tab === 'pengaturan' &&
         !settings &&
@@ -1069,7 +1069,12 @@ type FilterAkses = '' | 'eligible' | AffiliateAccess;
 
 const PER_HALAMAN_ANGGOTA = 30;
 
-function TabAnggota() {
+/**
+ * Selama program mati tidak ada member yang berhak, termasuk yang Diizinkan.
+ * Alasannya ditulis di daftar dan di dialog, karena keterangan di kepala
+ * halaman sudah tergulir keluar layar saat admin mengatur member.
+ */
+function TabAnggota({ programAktif, onBukaPengaturan }: { programAktif: boolean | null; onBukaPengaturan: () => void }) {
   const [q, setQ] = useState('');
   const [akses, setAkses] = useState<FilterAkses>('');
   const [rows, setRows] = useState<AdminMemberRow[] | null>(null);
@@ -1104,8 +1109,28 @@ function TabAnggota() {
     };
   }, [q, akses, versi]);
 
+  const lencana = (m: AdminMemberRow) =>
+    m.eligible
+      ? { tone: 'success' as const, teks: 'Berhak' }
+      : programAktif === false && m.access === 'allowed'
+        ? { tone: 'warning' as const, teks: 'Program mati' }
+        : { tone: m.access === 'blocked' ? ('danger' as const) : ('neutral' as const), teks: 'Tidak berhak' };
+
   return (
     <div className="space-y-4">
+      {programAktif === false && (
+        <div
+          className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100"
+          data-program-mati
+        >
+          <p className="min-w-0 sm:flex-1">
+            <b>Program affiliate masih mati.</b> Member yang Diizinkan baru bisa memakai affiliate setelah program dinyalakan.
+          </p>
+          <Button onClick={onBukaPengaturan} className={cn(SENTUH, 'self-start sm:self-auto')}>
+            <IkonPengaturan size={15} /> Nyalakan di Pengaturan
+          </Button>
+        </div>
+      )}
       <Card className="flex flex-wrap items-center gap-3 p-4">
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
@@ -1148,8 +1173,8 @@ function TabAnggota() {
                     <div className="truncate font-medium">{m.name}</div>
                     <div className="truncate text-[11px] text-ink-500">{m.email ?? '-'}</div>
                   </div>
-                  <Badge tone={m.access === 'blocked' ? 'danger' : m.eligible ? 'success' : 'neutral'} className="shrink-0">
-                    {m.eligible ? 'Berhak' : 'Tidak berhak'}
+                  <Badge tone={lencana(m).tone} className="shrink-0">
+                    {lencana(m).teks}
                   </Badge>
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-500">
@@ -1203,7 +1228,7 @@ function TabAnggota() {
                       <div className="mt-0.5 text-[11px] text-ink-500">Tarif {teksTarif(m.commission) ?? 'bawaan'}</div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <Badge tone={m.access === 'blocked' ? 'danger' : m.eligible ? 'success' : 'neutral'}>{m.eligible ? 'Berhak' : 'Tidak berhak'}</Badge>
+                      <Badge tone={lencana(m).tone}>{lencana(m).teks}</Badge>
                       <div className="mt-0.5 text-[11px] text-ink-500">{LABEL_AKSES[m.access]}</div>
                     </td>
                     <td className="max-w-[160px] truncate px-3 py-2.5 text-xs">{m.upline_name ?? '-'}</td>
@@ -1252,6 +1277,7 @@ function TabAnggota() {
         <DialogAnggota
           baris={ubah}
           semua={rows ?? []}
+          programAktif={programAktif}
           onTutup={() => setUbah(null)}
           onSelesai={() => {
             setUbah(null);
@@ -1533,7 +1559,19 @@ function DaftarUndanganAdmin({ versi }: { versi: number }) {
   );
 }
 
-function DialogAnggota({ baris, semua, onTutup, onSelesai }: { baris: AdminMemberRow; semua: AdminMemberRow[]; onTutup: () => void; onSelesai: () => void }) {
+function DialogAnggota({
+  baris,
+  semua,
+  programAktif,
+  onTutup,
+  onSelesai,
+}: {
+  baris: AdminMemberRow;
+  semua: AdminMemberRow[];
+  programAktif: boolean | null;
+  onTutup: () => void;
+  onSelesai: () => void;
+}) {
   const [akses, setAkses] = useState<AffiliateAccess>(baris.access);
   const [kode, setKode] = useState(baris.code ?? '');
   const [upline, setUpline] = useState<string>(baris.upline_id ?? '');
@@ -1612,6 +1650,11 @@ function DialogAnggota({ baris, semua, onTutup, onSelesai }: { baris: AdminMembe
               <option value="allowed">{LABEL_AKSES.allowed}</option>
               <option value="blocked">{LABEL_AKSES.blocked}</option>
             </select>
+            {programAktif === false && akses === 'allowed' && (
+              <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400" data-catatan-program-mati>
+                Program masih mati. Akses ini berlaku setelah program dinyalakan di tab Pengaturan.
+              </p>
+            )}
           </div>
           <div>
             <label htmlFor="kode-member" className="mb-1 block text-xs font-medium text-ink-500">
