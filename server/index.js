@@ -1,0 +1,3721 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
+import { promisify } from 'node:util';
+import express from 'express';
+import nodemailer from 'nodemailer';
+import pg from 'pg';
+import notificationsHandler from '../api/notifications.js';
+import { describePgError, isConnectionError } from './pgErrors.js';
+
+loadEnvFile('.env');
+loadEnvFile('.env.local');
+
+const { Pool, types } = pg;
+const scrypt = promisify(crypto.scrypt);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+
+types.setTypeParser(1700, (value) => parseFloat(value));
+types.setTypeParser(1082, (value) => value);
+
+const PORT = Number(process.env.PORT || 3000);
+const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || '25mb';
+const SESSION_DAYS = Number(process.env.SESSION_DAYS || 7);
+const AUTH_SECRET = process.env.AUTH_SECRET || process.env.SESSION_SECRET || '';
+
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL belum diisi.');
+  process.exit(1);
+}
+
+if (!AUTH_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('AUTH_SECRET wajib diisi saat NODE_ENV=production.');
+  process.exit(1);
+}
+
+// Di serverless, tiap permintaan bisa menghidupkan instance baru. Kalau tiap
+// instance memegang belasan koneksi, Postgres cepat kehabisan slot. Jadi di
+// Vercel kolamnya dibuat kecil dan koneksi menganggur cepat dilepas —
+// pengelolaan koneksi yang sebenarnya diserahkan ke connection pooler Supabase.
+const DI_SERVERLESS = Boolean(process.env.VERCEL);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: parseBool(process.env.DB_SSL) ? { rejectUnauthorized: false } : undefined,
+  max: Number(process.env.DB_POOL_MAX) || (DI_SERVERLESS ? 1 : 10),
+  idleTimeoutMillis: DI_SERVERLESS ? 10_000 : 30_000,
+  connectionTimeoutMillis: 10_000,
+});
+
+pool.on('error', (err) => {
+  if (err?.code === '28P01' || err?.code === 'ECONNREFUSED') {
+    console.warn(`[Database] PostgreSQL disconnected (${err.code}): berjalan dalam mode offline/demo fallback.`);
+  } else {
+    console.warn('[Database Error]:', err?.message || err);
+  }
+});
+
+import * as tripay from './integrasi/tripay.js';
+import { IntegrationError, loadIntegration, saveIntegration, publicConfig, assertProvider } from './integrasi/settings.js';
+import * as kiriminaja from './integrasi/kiriminaja.js';
+import * as onesender from './integrasi/onesender.js';
+import * as metaWhatsapp from './integrasi/metaWhatsapp.js';
+import { mailketingAktif, kirimEmailMailketing } from './integrasi/mailketing.js';
+
+const authSecret = AUTH_SECRET || 'dev-only-change-me';
+
+const TABLES = {
+  stores: {
+    columns: [
+      'id', 'name', 'address', 'currency', 'tax_rate', 'logo_url', 'receipt_header',
+      'receipt_footer', 'points_per_amount', 'low_stock_threshold', 'industry',
+      'features', 'created_at', 'invoice_signature_url', 'invoice_signer_name',
+      'shop_phone', 'return_policy', 'warranty_info', 'pdp_banner_url', 'shop_city',
+      'bank_name', 'bank_account_number', 'bank_account_name', 'qris_image_url',
+      'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
+      'footer_links', 'chat_enabled',
+      'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+    ],
+    kind: 'store',
+  },
+  profiles: {
+    columns: ['id', 'store_id', 'full_name', 'email', 'role', 'avatar_url', 'created_at'],
+    kind: 'profile',
+  },
+  categories: {
+    columns: ['id', 'store_id', 'name', 'icon', 'sort_order', 'created_at'],
+    tenantColumn: 'store_id',
+  },
+  products: {
+    columns: [
+      'id', 'store_id', 'category_id', 'name', 'description', 'image_url',
+      'base_price', 'sizes', 'is_active', 'sku', 'barcode', 'cost_price',
+      'stock_qty', 'min_stock', 'track_stock', 'created_at', 'weight_gram',
+      'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
+      'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
+      'highlights', 'license_type', 'license_code', 'video_url',
+    ],
+    tenantColumn: 'store_id',
+  },
+  customers: {
+    // user_id & privacy_accepted_at sengaja tidak di sini: hanya diisi server
+    // lewat /api/customer/*, supaya staf tidak bisa menautkan akun orang lain.
+    columns: [
+      'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
+      'is_active', 'points', 'created_at', 'address',
+      'address_province', 'address_city',
+    ],
+    tenantColumn: 'store_id',
+  },
+  promos: {
+    columns: [
+      'id', 'store_id', 'code', 'name', 'type', 'value', 'start_date',
+      'end_date', 'is_active', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  // Sesi flash sale (jendela waktu) dan harga/kuota per produk di dalamnya.
+  // sold_qty sengaja tidak lewat jalur ini: dinaikkan atomik saat checkout,
+  // lihat POST /api/public/orders.
+  flash_sales: {
+    columns: ['id', 'store_id', 'name', 'starts_at', 'ends_at', 'is_active', 'created_at'],
+    tenantColumn: 'store_id',
+  },
+  flash_sale_items: {
+    columns: [
+      'id', 'store_id', 'flash_sale_id', 'product_id', 'flash_price',
+      'quota_qty', 'sold_qty', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  shifts: {
+    columns: [
+      'id', 'store_id', 'cashier_id', 'opened_at', 'closed_at', 'opening_cash',
+      'closing_cash', 'expected_cash', 'total_sales', 'total_orders', 'notes',
+      'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  cash_movements: {
+    columns: ['id', 'store_id', 'shift_id', 'type', 'amount', 'note', 'created_at'],
+    tenantColumn: 'store_id',
+  },
+  stock_movements: {
+    columns: [
+      'id', 'store_id', 'product_id', 'type', 'qty_delta', 'reason',
+      'ref_order_id', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  loyalty_transactions: {
+    columns: [
+      'id', 'store_id', 'customer_id', 'points_delta', 'reason',
+      'ref_order_id', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  orders: {
+    columns: [
+      'id', 'store_id', 'customer_id', 'cashier_id', 'shift_id', 'order_number',
+      'subtotal', 'tax', 'discount', 'total', 'payment_method', 'payment_status',
+      'order_status', 'order_type', 'table_number', 'notes', 'promo_code',
+      'received_amount', 'change_amount', 'points_earned', 'created_at',
+      'sales_channel', 'payment_term', 'due_date', 'paid_amount', 'settled_at',
+      'original_total', 'adjustment_amount', 'adjustment_note', 'adjusted_at',
+      'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
+      'delivery_address', 'shipping_cost', 'tax_inclusive',
+      'payment_channel', 'payment_reference', 'payment_url',
+      'delivery_province', 'delivery_city',
+      'marketplace_fee', 'net_settled', 'settlement_date', 'fee_detail',
+    ],
+    tenantColumn: 'store_id',
+  },
+  order_returns: {
+    columns: [
+      'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',
+      'created_by', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  order_return_items: {
+    columns: [
+      'id', 'return_id', 'product_id', 'name', 'sku', 'barcode', 'qty',
+      'refund_price', 'restock', 'note',
+    ],
+  },
+  order_items: {
+    columns: ['id', 'order_id', 'product_id', 'name', 'size', 'qty', 'price', 'cost_price', 'note'],
+    kind: 'order_items',
+  },
+  suppliers: {
+    columns: [
+      'id', 'store_id', 'name', 'contact_name', 'phone', 'email', 'address',
+      'default_term_days', 'default_dp_percent', 'notes', 'is_active', 'created_at',
+      'currency', 'exchange_rate',
+    ],
+    tenantColumn: 'store_id',
+  },
+  purchases: {
+    columns: [
+      'id', 'store_id', 'supplier_id', 'invoice_number', 'status', 'order_date',
+      'expected_date', 'due_date', 'subtotal', 'discount', 'tax', 'other_cost',
+      'other_cost_label', 'other_cost_date', 'other_cost_category',
+      'extra_cost', 'extra_cost_label', 'extra_cost_date', 'extra_cost_category',
+      'total', 'paid_amount', 'dp_percent', 'received_at', 'notes', 'created_by',
+      'created_at', 'currency', 'exchange_rate',
+    ],
+    tenantColumn: 'store_id',
+  },
+  purchase_items: {
+    columns: [
+      'id', 'purchase_id', 'product_id', 'name', 'sku', 'qty', 'received_qty',
+      'cost_price', 'subtotal', 'note', 'barcode', 'original_cost_price', 'currency',
+    ],
+    kind: 'child',
+    parent: { table: 'purchases', column: 'purchase_id' },
+  },
+  purchase_payments: {
+    columns: [
+      'id', 'store_id', 'purchase_id', 'type', 'amount', 'method', 'paid_at',
+      'reference', 'note', 'created_by', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  sales_channels: {
+    columns: [
+      'id', 'store_id', 'code', 'name', 'fee_percent', 'default_term_days',
+      'is_active', 'sort_order', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  order_payments: {
+    columns: [
+      'id', 'store_id', 'order_id', 'amount', 'method', 'paid_at', 'reference',
+      'note', 'created_by', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  // Pemetaan SKU internal -> SKU platform (Shopee/TikTok/dll).
+  product_channel_mappings: {
+    columns: [
+      'id', 'store_id', 'product_id', 'channel_code', 'external_sku',
+      'external_url', 'is_synced', 'last_synced_at', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  // Pengaturan hak akses per role (hanya bisa mengurangi akses default).
+  role_permissions: {
+    columns: ['id', 'store_id', 'role', 'capability', 'enabled', 'updated_at'],
+    tenantColumn: 'store_id',
+  },
+  // Sesi perhitungan stok fisik.
+  stock_opnames: {
+    columns: [
+      'id', 'store_id', 'status', 'note', 'counted_by', 'started_at',
+      'posted_at', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  stock_opname_items: {
+    columns: ['id', 'opname_id', 'product_id', 'system_qty', 'counted_qty', 'note'],
+    kind: 'child',
+    parent: { table: 'stock_opnames', column: 'opname_id' },
+  },
+  // Pengeluaran operasional (opex) untuk laporan laba rugi.
+  // Ulasan & tanya jawab toko online. Pembeli menulis lewat /api/customer/*;
+  // lewat jalur ini staf hanya membalas, menjawab, atau menyembunyikan.
+  product_reviews: {
+    columns: [
+      'id', 'store_id', 'product_id', 'order_id', 'customer_id', 'reviewer_name', 'rating',
+      'body', 'images', 'variant_label', 'is_hidden', 'seller_reply', 'replied_at', 'created_at',
+      'tags', 'helpful_count',
+    ],
+    tenantColumn: 'store_id',
+  },
+  product_questions: {
+    columns: [
+      'id', 'store_id', 'product_id', 'customer_id', 'asker_name', 'question', 'answer',
+      'answered_at', 'is_hidden', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  product_components: {
+    columns: [
+      'id', 'store_id', 'parent_product_id', 'component_product_id', 'qty', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  expenses: {
+    columns: [
+      'id', 'store_id', 'category', 'description', 'amount', 'expense_date',
+      'payment_method', 'shift_id', 'created_by', 'created_at',
+      'purchase_id', 'purchase_cost_slot',
+    ],
+    tenantColumn: 'store_id',
+  },
+  // Katalog barang supplier dengan kode & harga versi supplier.
+  supplier_product_mappings: {
+    columns: [
+      'id', 'store_id', 'supplier_id', 'product_id', 'supplier_sku',
+      'supplier_barcode', 'supplier_product_name', 'last_cost_price',
+      'currency', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+};
+
+const REQUIRED_COLUMNS = {
+  app_users: ['id', 'email', 'password_hash', 'created_at'],
+  admin_audit_logs: [
+    'id', 'store_id', 'actor_id', 'action', 'target_type',
+    'target_id', 'metadata', 'created_at',
+  ],
+  ...Object.fromEntries(Object.entries(TABLES).map(([table, meta]) => [table, meta.columns])),
+};
+const REQUIRED_TABLES = Object.keys(REQUIRED_COLUMNS);
+const ASSIGNABLE_ROLES = ['admin', 'warehouse', 'cashier', 'customer'];
+const ALL_EFFECTIVE_ROLES = ['admin', 'warehouse', 'cashier', 'customer'];
+const POS_ROLES = ['admin', 'cashier'];
+const INVENTORY_ROLES = ['admin', 'warehouse'];
+const TABLE_ROLE_ACCESS = {
+  stores: {
+    select: ALL_EFFECTIVE_ROLES,
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  profiles: {
+    select: ALL_EFFECTIVE_ROLES,
+    insert: ['admin'],
+    upsert: ALL_EFFECTIVE_ROLES,
+    update: ALL_EFFECTIVE_ROLES,
+    delete: ['admin'],
+  },
+  categories: {
+    select: ALL_EFFECTIVE_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+  products: {
+    select: ALL_EFFECTIVE_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+  customers: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: POS_ROLES,
+    delete: ['admin'],
+  },
+  promos: {
+    select: ['admin', 'cashier', 'customer'],
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  // Admin-only lewat /api/query: layar kelola sesi ada di /promos (rute itu
+  // sendiri sudah dibatasi capability managePromos, admin-only). Storefront
+  // publik dan harga saat checkout tidak lewat sini sama sekali — keduanya
+  // baca langsung dari SQL (/api/public/flash-sale dan alur order), jadi
+  // cashier/customer tidak perlu jalur select ke tabel ini.
+  flash_sales: {
+    select: ['admin'],
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  flash_sale_items: {
+    select: ['admin'],
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  shifts: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: POS_ROLES,
+    delete: ['admin'],
+  },
+  cash_movements: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  stock_movements: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  loyalty_transactions: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  orders: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: POS_ROLES,
+    delete: ['admin'],
+  },
+  order_returns: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: POS_ROLES,
+    delete: ['admin'],
+  },
+  order_return_items: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: POS_ROLES,
+    delete: ['admin'],
+  },
+  order_items: {
+    select: POS_ROLES,
+    insert: POS_ROLES,
+    upsert: POS_ROLES,
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  suppliers: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: ['admin'],
+  },
+  purchases: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: ['admin'],
+  },
+  purchase_items: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+  // Pembayaran ke supplier menyangkut uang keluar — hanya admin yang boleh mencatat.
+  purchase_payments: {
+    select: INVENTORY_ROLES,
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  sales_channels: {
+    select: ALL_EFFECTIVE_ROLES,
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  // Pelunasan piutang penjualan — kasir boleh melihat, hanya admin yang mencatat.
+  order_payments: {
+    select: POS_ROLES,
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  // Kasir perlu membaca mapping supaya SKU marketplace bisa dicari di POS,
+  // tetapi yang mengubahnya hanya tim gudang & admin.
+  product_channel_mappings: {
+    select: ['admin', 'warehouse', 'cashier'],
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+  role_permissions: {
+    select: ALL_EFFECTIVE_ROLES,
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  // Opname stok fisik: ranah gudang.
+  stock_opnames: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: ['admin'],
+  },
+  stock_opname_items: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+  // Uang keluar: kasir boleh melihat untuk rekap shift, hanya admin mencatat.
+  product_reviews: {
+    select: ['admin'],
+    insert: [],
+    upsert: [],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  product_questions: {
+    select: ['admin'],
+    insert: [],
+    upsert: [],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  product_components: {
+    // Kasir perlu MEMBACA isi set supaya POS bisa menghitung ketersediaannya,
+    // tapi menyusun isinya adalah pekerjaan data induk.
+    select: ALL_EFFECTIVE_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+  expenses: {
+    select: POS_ROLES,
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
+  supplier_product_mappings: {
+    select: INVENTORY_ROLES,
+    insert: INVENTORY_ROLES,
+    upsert: INVENTORY_ROLES,
+    update: INVENTORY_ROLES,
+    delete: INVENTORY_ROLES,
+  },
+};
+
+app.disable('x-powered-by');
+app.use(corsMiddleware);
+app.use(
+  express.json({
+    limit: REQUEST_BODY_LIMIT,
+    // Tanda tangan callback Tripay dihitung dari body mentah, bukan hasil parse.
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }),
+);
+
+const DEMO_ACCOUNTS = {
+  'admin@example.com': { id: 'usr-admin-001', role: 'admin', name: 'Admin Kasir', password: 'change-me-strong-password' },
+  'gudang@example.com': { id: 'usr-warehouse-001', role: 'warehouse', name: 'Staff Gudang', password: 'gudang12345' },
+  'kasir@example.com': { id: 'usr-cashier-001', role: 'cashier', name: 'Kasir Toko', password: 'kasir12345' },
+  'customer@example.com': { id: 'usr-customer-001', role: 'customer', name: 'Pelanggan Toko', password: 'customer12345' },
+};
+
+/**
+ * Ringkasan integrasi luar untuk diagnosa deploy: cuma menyebut sebuah kunci
+ * terpasang atau tidak (dan panjangnya), tidak pernah nilainya.
+ */
+// Pesan galat terakhir dari layanan email (bukan rahasia), untuk menelusuri
+// kenapa pengiriman gagal di server produksi yang lognya tidak bisa dibaca.
+let galatEmailTerakhir = null;
+
+function statusIntegrasi() {
+  const panjang = (v) => (v ? String(v).trim().length : 0);
+  return {
+    tripay: { aktif: tripay.tripayAktif(), mode: tripay.konfigurasi().mode, panjang_api_key: panjang(process.env.TRIPAY_API_KEY) },
+    kiriminaja: { aktif: kiriminaja.kiriminAjaAktif(), mode: kiriminaja.konfigurasi().mode },
+    mailketing: {
+      aktif: mailketingAktif(),
+      panjang_token: panjang(process.env.MAILKETING_API_TOKEN),
+      pengirim: process.env.MAILKETING_FROM_EMAIL || null,
+      galat_terakhir: galatEmailTerakhir,
+    },
+    smtp: !!process.env.SMTP_HOST,
+  };
+}
+
+app.get('/api/health', asyncHandler(async (_req, res) => {
+  try {
+    await pool.query('select 1');
+    const existing = await pool.query(
+      `
+        select table_name
+        from information_schema.tables
+        where table_schema = 'public'
+          and table_name = any($1::text[])
+      `,
+      [REQUIRED_TABLES],
+    );
+    const found = new Set(existing.rows.map((row) => row.table_name));
+    const missing = REQUIRED_TABLES.filter((table) => !found.has(table));
+    if (missing.length) {
+      return res.json({ ok: true, database: 'postgres', status: 'partial_schema', missing_tables: missing });
+    }
+
+    res.json({ ok: true, database: 'postgres', integrasi: statusIntegrasi() });
+  } catch (error) {
+    res.json({
+      ok: true,
+      database: 'offline_fallback',
+      warning: error?.message ?? 'PostgreSQL tidak terhubung; beralih ke IndexedDB lokal.',
+    });
+  }
+}));
+
+app.post('/api/auth/signup', asyncHandler(async (req, res) => {
+  if (!parseBool(process.env.ALLOW_PUBLIC_SIGNUP)) {
+    throw new HttpError(403, 'Signup publik dinonaktifkan. Admin harus membuat user dari menu Users.');
+  }
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password ?? '');
+  const fullName = String(req.body?.full_name ?? '').trim() || email;
+
+  if (!email) throw new HttpError(400, 'Email wajib diisi.');
+  if (password.length < 6) throw new HttpError(400, 'Password minimal 6 karakter.');
+
+  const passwordHash = await hashPassword(password);
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const userRes = await client.query(
+      `
+        insert into public.app_users(email, password_hash)
+        values ($1, $2)
+        returning id, email
+      `,
+      [email, passwordHash],
+    );
+    const user = userRes.rows[0];
+    await client.query(
+      `
+        insert into public.profiles(id, email, full_name)
+        values ($1, $2, $3)
+        on conflict (id) do nothing
+      `,
+      [user.id, user.email, fullName],
+    );
+    await client.query('commit');
+    res.json({ user, session: createSession(user) });
+  } catch (error) {
+    await client.query('rollback');
+    if (error?.code === '23505') throw new HttpError(400, 'User already registered');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.post('/api/auth/signin', asyncHandler(async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password ?? '');
+  if (!email || !password) throw new HttpError(400, 'Email dan password wajib diisi.');
+
+  // Akun asli di database diperiksa LEBIH DULU. DEMO_ACCOUNTS hanya cadangan
+  // saat database belum tersedia. Kalau demo dicek duluan, akun hasil
+  // `npm run bootstrap:admin` dengan email yang sama (default admin@example.com)
+  // tidak akan pernah bisa login, dan store_id-nya tertimpa string palsu
+  // 'store-default-001' yang bukan UUID sehingga semua tulis tenant gagal.
+  let dbUser = null;
+  let dbReachable = true;
+  try {
+    const result = await pool.query(
+      `
+        select u.id, u.email, u.password_hash, p.store_id, p.role
+        from public.app_users u
+        left join public.profiles p on p.id = u.id
+        where lower(u.email) = lower($1)
+        limit 1
+      `,
+      [email],
+    );
+    dbUser = result.rows[0] ?? null;
+  } catch {
+    dbReachable = false;
+  }
+
+  if (dbUser) {
+    if (!(await verifyPassword(password, dbUser.password_hash))) {
+      throw new HttpError(401, 'Email atau password salah.');
+    }
+    const user = {
+      id: dbUser.id,
+      email: dbUser.email,
+      store_id: dbUser.store_id ?? null,
+      role: dbUser.role ?? 'admin',
+    };
+    return res.json({ user, session: createSession(user) });
+  }
+
+  const demo = DEMO_ACCOUNTS[email];
+  if (demo) {
+    if (demo.password !== password) throw new HttpError(401, 'Email atau password salah.');
+    // Kalau database hidup, pakai toko yang benar-benar ada supaya store_id
+    // tetap UUID valid; 'store-default-001' hanya untuk mode offline murni.
+    const user = {
+      id: demo.id,
+      email,
+      role: demo.role,
+      name: demo.name,
+      store_id: dbReachable ? await resolveDemoStoreId() : 'store-default-001',
+    };
+    return res.json({ user, session: createSession(user) });
+  }
+
+  throw new HttpError(401, 'Email atau password salah.');
+}));
+
+app.get('/api/auth/session', requireUser, asyncHandler(async (req, res) => {
+  res.json({ session: createSession(req.user, req.authToken, req.authExp) });
+}));
+
+app.get('/api/auth/user', requireUser, asyncHandler(async (req, res) => {
+  res.json({ user: publicUser(req.user) });
+}));
+
+function requireIntegrationAdmin(req, _res, next) {
+  try {
+    assertTableAccess(req.user, 'stores', 'update');
+    if (!isUuidLike(req.user.store_id)) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+    next();
+  } catch (error) { next(error); }
+}
+
+app.get('/api/admin/integrations', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const data = {};
+  for (const provider of ['tripay', 'kiriminaja', 'onesender', 'meta_whatsapp']) {
+    data[provider] = publicConfig(provider, await loadIntegration(pool, req.user.store_id, provider));
+  }
+  res.json({ data });
+}));
+
+app.patch('/api/admin/integrations/:provider', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await saveIntegration(pool, req.user.store_id, req.params.provider, req.body) });
+}));
+
+app.post('/api/admin/integrations/:provider/test', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const provider = req.params.provider;
+  assertProvider(provider);
+  const config = await loadIntegration(pool, req.user.store_id, provider);
+  const credential = provider === 'meta_whatsapp' ? config.accessToken : provider === 'kiriminaja' ? config.token : config.apiKey;
+  if (!credential) throw new HttpError(400, 'Simpan kunci API terlebih dahulu.');
+  let metaResult;
+  try {
+    if (provider === 'tripay') await tripay.daftarKanal(config, true);
+    else if (provider === 'kiriminaja') await kiriminaja.tesKoneksi(config);
+    else if (provider === 'onesender') await onesender.tesKoneksi(config);
+    else metaResult = await metaWhatsapp.tesKoneksi(config);
+  } catch (error) {
+    if (error instanceof metaWhatsapp.MetaWhatsAppError) throw new HttpError(502, error.message);
+    // Respons penyedia tidak diteruskan karena dapat memuat kredensial.
+    throw new HttpError(502, 'Koneksi gagal. Periksa kunci API, mode, dan ketersediaan layanan.');
+  }
+  res.json({ data: { message: provider === 'meta_whatsapp'
+    ? `Koneksi Meta berhasil. Nomor ${metaResult.phoneNumber} terdaftar pada WABA ini. Tes tidak mengirim pesan.`
+    : provider === 'onesender'
+    ? 'API OneSender dapat diakses. Status perangkat WhatsApp perlu diperiksa di dashboard OneSender.'
+    : 'Kunci API diterima. Koneksi berhasil.' } });
+}));
+
+app.get('/api/admin/users', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+  try {
+    const result = await pool.query(
+      `
+        select p.id, u.email, p.full_name, p.role, p.store_id, p.created_at
+        from public.profiles p
+        join public.app_users u on u.id = p.id
+        where p.store_id = $1
+        order by p.created_at desc
+      `,
+      [req.user.store_id],
+    );
+    res.json({ data: result.rows.map(publicManagedUser) });
+  } catch (error) {
+    const demoUsers = Object.entries(DEMO_ACCOUNTS).map(([email, d]) => ({
+      id: d.id,
+      email,
+      full_name: d.name,
+      role: d.role,
+      store_id: req.user.store_id || 'store-default-001',
+      created_at: new Date().toISOString(),
+    }));
+    res.json({ data: demoUsers.map(publicManagedUser) });
+  }
+}));
+
+app.get('/api/admin/audit-logs', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+  const limit = clampInt(req.query?.limit, 100, 1, 200);
+  try {
+    const result = await pool.query(
+      `
+        select
+          l.id, l.store_id, l.actor_id, l.action, l.target_type, l.target_id,
+          l.metadata, l.created_at,
+          au.email as actor_email,
+          p.full_name as actor_name
+        from public.admin_audit_logs l
+        left join public.app_users au on au.id = l.actor_id
+        left join public.profiles p on p.id = l.actor_id
+        where l.store_id = $1
+        order by l.created_at desc
+        limit $2
+      `,
+      [req.user.store_id, limit],
+    );
+    res.json({ data: result.rows.map(publicAuditLog) });
+  } catch (error) {
+    res.json({ data: [] });
+  }
+}));
+
+app.get('/api/admin/system', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+  const storeId = req.user.store_id;
+  try {
+    const [users, products, orders, shifts, audit] = await Promise.all([
+      pool.query(
+        `
+          select case when role = 'manager' then 'admin' else role end as role, count(*)::int as count
+          from public.profiles
+          where store_id = $1
+          group by 1
+        `,
+        [storeId],
+      ),
+      pool.query(
+        `
+          select
+            count(*)::int as total,
+            count(*) filter (where is_active)::int as active,
+            count(*) filter (where track_stock and stock_qty <= min_stock and stock_qty > 0)::int as low_stock,
+            count(*) filter (where track_stock and stock_qty <= 0)::int as empty
+          from public.products
+          where store_id = $1
+        `,
+        [storeId],
+      ),
+      pool.query(
+        `
+          -- 'awaiting_confirmation' = pesanan storefront publik yang belum
+          -- dikonfirmasi staff: belum dibayar, stok belum dipotong, dan masih
+          -- bisa ditolak. Menghitungnya di sini membuat angka bisnis dan
+          -- piutang terlihat lebih besar dari kenyataan.
+          select
+            count(*) filter (
+              where created_at >= date_trunc('day', now())
+                and order_status <> 'awaiting_confirmation'
+            )::int as today_count,
+            coalesce(
+              sum(total) filter (
+                where created_at >= date_trunc('day', now())
+                  and payment_status = 'paid'
+                  and order_status not in ('canceled', 'awaiting_confirmation')
+              ),
+              0
+            )::numeric as today_sales,
+            count(*) filter (
+              where payment_status = 'unpaid'
+                and order_status not in ('canceled', 'awaiting_confirmation')
+            )::int as unpaid_count
+          from public.orders
+          where store_id = $1
+        `,
+        [storeId],
+      ),
+      pool.query(
+        `
+          select count(*) filter (where closed_at is null)::int as open
+          from public.shifts
+          where store_id = $1
+        `,
+        [storeId],
+      ),
+      pool.query(
+        `
+          select max(created_at) as latest_at
+          from public.admin_audit_logs
+          where store_id = $1
+        `,
+        [storeId],
+      ),
+    ]);
+
+    res.json({
+      data: publicAdminSystemStats({
+        users: users.rows,
+        products: products.rows[0],
+        orders: orders.rows[0],
+        shifts: shifts.rows[0],
+        audit: audit.rows[0],
+      }),
+    });
+  } catch (error) {
+    res.json({
+      data: publicAdminSystemStats({
+        users: [
+          { role: 'admin', count: 1 },
+          { role: 'warehouse', count: 1 },
+          { role: 'cashier', count: 1 },
+          { role: 'customer', count: 1 },
+        ],
+        products: { total: 0, active: 0, low_stock: 0, empty: 0 },
+        orders: { today_count: 0, today_sales: 0, unpaid_count: 0 },
+        shifts: { open: 0 },
+        audit: { latest_at: null },
+      }),
+    });
+  }
+}));
+
+app.post('/api/admin/users', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password ?? '');
+  const fullName = String(req.body?.full_name ?? '').trim() || email;
+  const role = normalizeAssignableRole(req.body?.role ?? 'cashier');
+
+  if (!email) throw new HttpError(400, 'Email wajib diisi.');
+  if (password.length < 6) throw new HttpError(400, 'Password minimal 6 karakter.');
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const userResult = await client.query(
+      `
+        insert into public.app_users(email, password_hash)
+        values ($1, $2)
+        returning id, email, created_at
+      `,
+      [email, await hashPassword(password)],
+    );
+    const user = userResult.rows[0];
+    const profileResult = await client.query(
+      `
+        insert into public.profiles(id, store_id, full_name, email, role)
+        values ($1, $2, $3, $4, $5)
+        returning id, store_id, full_name, role, created_at
+      `,
+      [user.id, req.user.store_id, fullName, user.email, role],
+    );
+    await writeAdminAudit(client, req.user, 'user.create', 'profile', user.id, {
+      email: user.email,
+      full_name: fullName,
+      role,
+    });
+    await client.query('commit');
+    res.status(201).json({ data: publicManagedUser({ ...profileResult.rows[0], email: user.email }) });
+  } catch (error) {
+    await client.query('rollback');
+    if (error?.code === '23505') throw new HttpError(409, 'Email sudah terdaftar.');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.patch('/api/admin/users/:id', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+  const targetId = String(req.params.id ?? '');
+  const email = req.body?.email === undefined ? undefined : normalizeEmail(req.body.email);
+  const fullName = req.body?.full_name === undefined ? undefined : String(req.body.full_name ?? '').trim();
+  const role = req.body?.role === undefined ? undefined : normalizeAssignableRole(req.body.role);
+  const password = req.body?.password === undefined ? undefined : String(req.body.password ?? '');
+
+  if (email === '') throw new HttpError(400, 'Email wajib diisi.');
+  if (password !== undefined && password !== '' && password.length < 6) {
+    throw new HttpError(400, 'Password minimal 6 karakter.');
+  }
+  if (targetId === req.user.id && role && effectiveRole(role) !== 'admin') {
+    throw new HttpError(400, 'Admin tidak bisa mengubah role akun sendiri.');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const target = await lockManagedUser(client, req.user.store_id, targetId);
+    if (!target) throw new HttpError(404, 'User tidak ditemukan.');
+    if (role && effectiveRole(target.role) === 'admin' && effectiveRole(role) !== 'admin') {
+      await assertNotLastAdmin(client, req.user.store_id, targetId);
+    }
+    const auditChanges = {};
+    if (email !== undefined && email !== target.email) {
+      auditChanges.email = { from: target.email, to: email };
+    }
+    if (fullName !== undefined) {
+      const nextName = fullName || email || target.email;
+      if (nextName !== (target.full_name ?? '')) {
+        auditChanges.full_name = { from: target.full_name ?? null, to: nextName };
+      }
+    }
+    if (role !== undefined && role !== target.role) {
+      auditChanges.role = { from: target.role, to: role };
+    }
+    if (password !== undefined && password !== '') {
+      auditChanges.password_reset = true;
+    }
+
+    if (email !== undefined || (password !== undefined && password !== '')) {
+      const sets = [];
+      const params = [];
+      if (email !== undefined) {
+        params.push(email);
+        sets.push(`email = $${params.length}`);
+      }
+      if (password !== undefined && password !== '') {
+        params.push(await hashPassword(password));
+        sets.push(`password_hash = $${params.length}`);
+      }
+      params.push(targetId);
+      await client.query(`update public.app_users set ${sets.join(', ')} where id = $${params.length}`, params);
+    }
+
+    const profileSets = [];
+    const profileParams = [];
+    if (fullName !== undefined) {
+      profileParams.push(fullName || email || target.email);
+      profileSets.push(`full_name = $${profileParams.length}`);
+    }
+    if (email !== undefined) {
+      profileParams.push(email);
+      profileSets.push(`email = $${profileParams.length}`);
+    }
+    if (role !== undefined) {
+      profileParams.push(role);
+      profileSets.push(`role = $${profileParams.length}`);
+    }
+    if (profileSets.length) {
+      profileParams.push(targetId);
+      await client.query(
+        `update public.profiles set ${profileSets.join(', ')} where id = $${profileParams.length}`,
+        profileParams,
+      );
+    }
+
+    const updated = await lockManagedUser(client, req.user.store_id, targetId);
+    if (Object.keys(auditChanges).length) {
+      await writeAdminAudit(client, req.user, 'user.update', 'profile', targetId, {
+        email: updated.email,
+        changes: auditChanges,
+      });
+    }
+    await client.query('commit');
+    res.json({ data: publicManagedUser(updated) });
+  } catch (error) {
+    await client.query('rollback');
+    if (error?.code === '23505') throw new HttpError(409, 'Email sudah terdaftar.');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.delete('/api/admin/users/:id', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'Admin belum terhubung ke toko.');
+  const targetId = String(req.params.id ?? '');
+  if (targetId === req.user.id) throw new HttpError(400, 'Admin tidak bisa menghapus akun sendiri.');
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    const target = await lockManagedUser(client, req.user.store_id, targetId);
+    if (!target) throw new HttpError(404, 'User tidak ditemukan.');
+    if (effectiveRole(target.role) === 'admin') {
+      await assertNotLastAdmin(client, req.user.store_id, targetId);
+    }
+    await writeAdminAudit(client, req.user, 'user.delete', 'profile', targetId, {
+      email: target.email,
+      full_name: target.full_name ?? null,
+      role: target.role,
+    });
+    await client.query('delete from public.app_users where id = $1', [targetId]);
+    await client.query('commit');
+    res.json({ data: null });
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+// ---- Checkout publik (storefront tanpa login) ------------------------------
+//
+// Satu-satunya jalur tulis di server ini yang SENGAJA tidak lewat requireUser.
+// Belum ada payment gateway di jalur ini, jadi pesanan masuk berstatus
+// 'awaiting_confirmation' dan TIDAK memotong stok — staff mengonfirmasinya
+// lewat RPC confirm_web_order (di bawah), yang baru saat itu memanggil
+// apply_order_stock. Karena ini publik, semua angka (harga, nama produk)
+// dihitung ulang dari database sendiri, tidak pernah dipercaya dari body.
+// Bisa disetel lewat env supaya bisa dilonggarkan saat pengujian berulang dan
+// diperketat di produksi tanpa mengubah kode.
+const PUBLIC_ORDER_RATE_LIMIT = {
+  windowMs: Number(process.env.PUBLIC_ORDER_RATE_WINDOW_MS) || 10 * 60 * 1000,
+  max: Number(process.env.PUBLIC_ORDER_RATE_MAX) || 5,
+};
+const publicOrderRateState = new Map(); // ip -> { count, windowStart }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidLike(value) {
+  return UUID_RE.test(String(value ?? ''));
+}
+
+function publicOrderClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] ?? '').split(',')[0]?.trim();
+  return forwarded || req.socket?.remoteAddress || 'unknown';
+}
+
+function assertPublicOrderRateLimit(ip) {
+  const now = Date.now();
+  const entry = publicOrderRateState.get(ip);
+  if (!entry || now - entry.windowStart > PUBLIC_ORDER_RATE_LIMIT.windowMs) {
+    publicOrderRateState.set(ip, { count: 1, windowStart: now });
+    return;
+  }
+  entry.count += 1;
+  if (entry.count > PUBLIC_ORDER_RATE_LIMIT.max) {
+    throw new HttpError(429, 'Terlalu banyak percobaan checkout, coba lagi nanti.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Akun pembeli storefront (keputusan client: pembeli memakai akun).
+//
+// Terpisah dari /api/auth/signup (signup staf yang dikunci ALLOW_PUBLIC_SIGNUP):
+// jalur di sini selalu membuat role 'customer' untuk satu toko, tidak pernah
+// akun staf, dan menolak login akun staf.
+const CUSTOMER_AUTH_RATE_LIMIT = {
+  windowMs: Number(process.env.CUSTOMER_AUTH_RATE_WINDOW_MS) || 10 * 60 * 1000,
+  max: Number(process.env.CUSTOMER_AUTH_RATE_MAX) || 20,
+};
+const customerAuthRateState = new Map(); // ip -> { count, windowStart }
+
+function assertCustomerAuthRateLimit(ip) {
+  const now = Date.now();
+  const entry = customerAuthRateState.get(ip);
+  if (!entry || now - entry.windowStart > CUSTOMER_AUTH_RATE_LIMIT.windowMs) {
+    customerAuthRateState.set(ip, { count: 1, windowStart: now });
+    return;
+  }
+  entry.count += 1;
+  if (entry.count > CUSTOMER_AUTH_RATE_LIMIT.max) {
+    throw new HttpError(429, 'Terlalu banyak percobaan, coba lagi beberapa menit lagi.');
+  }
+}
+
+async function assertStoreExists(storeId) {
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  const found = await pool.query('select 1 from public.stores where id = $1', [storeId]);
+  if (!found.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+}
+
+function customerMeRow(row) {
+  return {
+    email: row.email,
+    name: row.name,
+    phone: row.phone ?? null,
+    address: row.address ?? null,
+    // Wilayah disimpan terpisah karena ongkir dihitung dari sini, bukan dari alamat teks.
+    province: row.address_province ?? null,
+    city: row.address_city ?? null,
+  };
+}
+
+async function loadCustomerForUser(userId, storeId) {
+  const found = await pool.query(
+    `select c.id, c.name, c.phone, c.address, c.address_province, c.address_city, u.email
+       from public.customers c
+       join public.app_users u on u.id = c.user_id
+      where c.user_id = $1 and c.store_id = $2
+      limit 1`,
+    [userId, storeId],
+  );
+  return found.rows[0] ?? null;
+}
+
+/** Akun login, profil pembeli, dan baris customers dibuat dalam satu transaksi. */
+async function createCustomerAccount(client, { storeId, email, passwordHash, name, phone }) {
+  const userRes = await client.query(
+    'insert into public.app_users(email, password_hash) values ($1, $2) returning id, email',
+    [email, passwordHash],
+  );
+  const user = userRes.rows[0];
+  await client.query(
+    `insert into public.profiles(id, email, full_name, role, store_id)
+     values ($1, $2, $3, 'customer', $4)
+     on conflict (id) do update set role = 'customer', store_id = excluded.store_id, full_name = excluded.full_name`,
+    [user.id, user.email, name, storeId],
+  );
+  await client.query(
+    `insert into public.customers(store_id, name, phone, email, user_id, privacy_accepted_at)
+     values ($1, $2, $3, $4, $5, now())`,
+    [storeId, name, phone || null, user.email, user.id],
+  );
+  return user;
+}
+
+function customerSessionResponse(user, storeId, meRow) {
+  const session = createSession({ id: user.id, email: user.email, role: 'customer', store_id: storeId });
+  return { token: session.access_token, me: customerMeRow(meRow) };
+}
+
+async function requireCustomer(req, res, next) {
+  await requireUser(req, res, (err) => {
+    if (err) return next(err);
+    if (req.user?.role !== 'customer' || !req.user.store_id) {
+      return next(new HttpError(403, 'Halaman ini khusus akun pembeli.'));
+    }
+    return next();
+  });
+}
+
+app.get('/api/customer/config', (_req, res) => {
+  res.json({ data: { google_client_id: process.env.GOOGLE_CLIENT_ID || null } });
+});
+
+app.post('/api/customer/signup', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const storeId = String(req.body?.store_id ?? '').trim();
+  const email = normalizeEmail(req.body?.email);
+  const password = String(req.body?.password ?? '');
+  const name = String(req.body?.name ?? '').trim().slice(0, 120);
+  const phone = String(req.body?.phone ?? '').trim().slice(0, 20);
+  if (req.body?.privacy_accepted !== true) {
+    throw new HttpError(400, 'Persetujuan penggunaan data pribadi wajib dicentang.');
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Email tidak valid.');
+  if (!name) throw new HttpError(400, 'Nama wajib diisi.');
+  if (!phone) throw new HttpError(400, 'Nomor HP wajib diisi.');
+  if (password.length < 6) throw new HttpError(400, 'Kata sandi minimal 6 karakter.');
+  await assertStoreExists(storeId);
+  const hpTerpakai = await pool.query(
+    `select 1 from public.customers where store_id = $1 and user_id is not null and ${SQL_HP('phone')} = $2 limit 1`,
+    [storeId, normalPhone(phone)],
+  );
+  if (hpTerpakai.rowCount) throw new HttpError(409, 'Nomor HP ini sudah terdaftar. Silakan masuk.');
+
+  const passwordHash = await hashPassword(password);
+  const client = await pool.connect();
+  let user;
+  try {
+    await client.query('begin');
+    user = await createCustomerAccount(client, { storeId, email, passwordHash, name, phone });
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    if (error?.code === '23505') throw new HttpError(409, 'Email ini sudah terdaftar. Silakan masuk.');
+    throw error;
+  } finally {
+    client.release();
+  }
+  res.json({ data: customerSessionResponse(user, storeId, { email: user.email, name, phone, address: null }) });
+}));
+
+app.post('/api/customer/signin', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const storeId = String(req.body?.store_id ?? '').trim();
+  // `identifier` = email atau nomor HP; `email` tetap diterima untuk klien lama.
+  const identifier = String(req.body?.identifier ?? req.body?.email ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (!identifier || !password) throw new HttpError(400, 'No. HP/email dan kata sandi wajib diisi.');
+  await assertStoreExists(storeId);
+
+  const row = await cariAkunPembeli(storeId, identifier);
+  if (row?.ganda) throw new HttpError(409, 'Nomor HP ini dipakai lebih dari satu akun. Masuk dengan email.');
+  if (!row || !(await verifyPassword(password, row.password_hash))) {
+    throw new HttpError(401, 'No. HP/email atau kata sandi salah.');
+  }
+  if (row.role !== 'customer') {
+    throw new HttpError(403, 'Akun ini akun staf. Masuk lewat halaman login staf.');
+  }
+  const me = await loadCustomerForUser(row.id, storeId);
+  if (!me) throw new HttpError(403, 'Akun ini belum terdaftar sebagai pembeli di toko ini.');
+  res.json({ data: customerSessionResponse(row, storeId, me) });
+}));
+
+app.post('/api/customer/google', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) throw new HttpError(503, 'Masuk dengan Google belum diaktifkan toko.');
+  const storeId = String(req.body?.store_id ?? '').trim();
+  const credential = String(req.body?.credential ?? '');
+  if (!credential) throw new HttpError(400, 'Token Google kosong.');
+  await assertStoreExists(storeId);
+
+  // Token diverifikasi ke Google: penerbit, tujuan (client id toko ini), dan
+  // email yang sudah terverifikasi. Tanpa ini siapa pun bisa mengaku email lain.
+  let info = null;
+  try {
+    const verify = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    info = verify.ok ? await verify.json() : null;
+  } catch {
+    info = null;
+  }
+  if (
+    !info ||
+    info.aud !== clientId ||
+    !['accounts.google.com', 'https://accounts.google.com'].includes(info.iss) ||
+    String(info.email_verified) !== 'true' ||
+    !info.email
+  ) {
+    throw new HttpError(401, 'Verifikasi Google gagal. Coba lagi.');
+  }
+  const email = normalizeEmail(info.email);
+  const name = String(info.name || email.split('@')[0]).slice(0, 120);
+
+  const existing = await pool.query(
+    `select u.id, u.email, p.role
+       from public.app_users u
+       left join public.profiles p on p.id = u.id
+      where lower(u.email) = lower($1)
+      limit 1`,
+    [email],
+  );
+  let user = existing.rows[0];
+  if (user && user.role !== 'customer') {
+    throw new HttpError(403, 'Email ini terdaftar sebagai akun staf. Masuk lewat halaman login staf.');
+  }
+  if (!user) {
+    const passwordHash = await hashPassword(crypto.randomBytes(24).toString('hex'));
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      user = await createCustomerAccount(client, { storeId, email, passwordHash, name, phone: '' });
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  let me = await loadCustomerForUser(user.id, storeId);
+  if (!me) {
+    await pool.query(
+      `insert into public.customers(store_id, name, email, user_id, privacy_accepted_at)
+       values ($1, $2, $3, $4, now()) on conflict do nothing`,
+      [storeId, name, email, user.id],
+    );
+    me = await loadCustomerForUser(user.id, storeId);
+  }
+  if (!me) throw new HttpError(409, 'Akun Google ini sudah terhubung ke toko lain.');
+  res.json({ data: customerSessionResponse(user, storeId, me) });
+}));
+
+/** Nomor HP ke bentuk 08…: buang selain angka, 62… → 0…, 8… → 08…. */
+function normalPhone(value) {
+  let d = String(value ?? '').replace(/\D/g, '');
+  if (d.startsWith('62')) d = `0${d.slice(2)}`;
+  else if (d.startsWith('8')) d = `0${d}`;
+  return d;
+}
+
+/** Ekspresi SQL yang menormalkan kolom nomor HP sama seperti normalPhone(). */
+function SQL_HP(kolom) {
+  const angka = `regexp_replace(coalesce(${kolom}, ''), '\D', '', 'g')`;
+  return `(case when ${angka} like '62%' then '0' || substr(${angka}, 3) when ${angka} like '8%' then '0' || ${angka} else ${angka} end)`;
+}
+
+/**
+ * Cari akun pembeli dari email atau nomor HP. Nomor HP dicari di pelanggan
+ * toko ini; bila satu nomor dipakai lebih dari satu akun, hasilnya { ganda }.
+ */
+async function cariAkunPembeli(storeId, identifier) {
+  const id = String(identifier ?? '').trim();
+  if (!id) return null;
+  if (id.includes('@')) {
+    const found = await pool.query(
+      `select u.id, u.email, u.password_hash, p.role
+         from public.app_users u
+         left join public.profiles p on p.id = u.id
+        where lower(u.email) = lower($1)
+        limit 1`,
+      [normalizeEmail(id)],
+    );
+    return found.rows[0] ?? null;
+  }
+  const hp = normalPhone(id);
+  if (hp.length < 8) return null;
+  const found = await pool.query(
+    `select u.id, u.email, u.password_hash, p.role
+       from public.customers c
+       join public.app_users u on u.id = c.user_id
+       left join public.profiles p on p.id = u.id
+      where c.store_id = $1 and ${SQL_HP('c.phone')} = $2
+      order by c.created_at
+      limit 2`,
+    [storeId, hp],
+  );
+  if (found.rows.length > 1) return { ganda: true };
+  return found.rows[0] ?? null;
+}
+
+const RESET_BERLAKU_MENIT = 10;
+const RESET_MAKS_SALAH = 5;
+
+function hashKodeReset(userId, code) {
+  return crypto.createHmac('sha256', AUTH_SECRET || 'kasir-reset').update(`${userId}:${code}`).digest('hex');
+}
+
+function escHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+let pengirimEmail;
+/**
+ * SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM mengaktifkan email sungguhan.
+ * Di lokal tanpa SMTP, email disimpan ke server/.outbox (tidak dikirim) supaya
+ * alurnya tetap bisa dicoba. Di produksi tanpa SMTP fitur ini menolak dengan jelas.
+ */
+function ambilPengirimEmail() {
+  if (pengirimEmail !== undefined) return pengirimEmail;
+  if (process.env.SMTP_HOST) {
+    const port = Number(process.env.SMTP_PORT || 587);
+    pengirimEmail = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port,
+      secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465,
+      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' } : undefined,
+    });
+  } else if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    pengirimEmail = nodemailer.createTransport({ jsonTransport: true });
+  } else {
+    pengirimEmail = null;
+  }
+  return pengirimEmail;
+}
+
+/**
+ * Kabar pesanan baru ke pembeli dan ke toko.
+ *
+ * Dipisah dari alur simpan pesanan dan SELALU dibungkus try/catch: pesanan yang
+ * sudah tersimpan tidak boleh gagal hanya karena layanan email sedang menolak.
+ * Kegagalannya cukup masuk log — staf tetap melihat pesanannya di antrian.
+ */
+/**
+ * Alamat yang tidak boleh benar-benar dikirimi email.
+ *
+ * Domain contoh/uji dipakai suite Playwright tiap kali membuat pesanan. Mengirim
+ * ke sana berarti memantulkan email berkali-kali dari domain pengirim toko, dan
+ * pantulan beruntun itulah yang membuat domain dicurigai penyedia email.
+ */
+function alamatUji(email) {
+  const domain = String(email || '').split('@')[1]?.toLowerCase() || '';
+  if (!domain) return true;
+  if (domain === 'contoh.id' || domain === 'pesanan.web') return true;
+  if (/^example\.(com|net|org)$/.test(domain)) return true;
+  return /\.(test|invalid|localhost|local)$/.test(domain);
+}
+
+async function kabarkanPesananBaru({ storeId, orderNumber, total, items, pembeliEmail, customerName, customerPhone, alamat, metode }) {
+  const toko = (await pool.query('select name from public.stores where id = $1', [storeId])).rows[0]?.name || 'Toko';
+  const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+  const barisBarang = items
+    .map((it) => `<tr><td>${escHtml(it.name)}</td><td align="center">${it.qty}</td><td align="right">${rupiah(it.price * it.qty)}</td></tr>`)
+    .join('');
+  const tabel =
+    '<table cellpadding="6" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:520px">' +
+    '<tr><th align="left">Barang</th><th align="center">Qty</th><th align="right">Subtotal</th></tr>' +
+    barisBarang +
+    `<tr><td colspan="2"><b>Total</b></td><td align="right"><b>${rupiah(total)}</b></td></tr>` +
+    '</table>';
+
+  if (!pembeliEmail || alamatUji(pembeliEmail)) {
+    console.log(`[pesanan] ${orderNumber}: email pembeli dilewati (${pembeliEmail || 'tanpa email'}).`);
+  } else {
+    await kirimEmail({
+      to: pembeliEmail,
+      subject: `Pesanan ${orderNumber} diterima - ${toko}`,
+      text:
+        `Terima kasih, pesananmu di ${toko} sudah kami terima.\n\n` +
+        `Nomor pesanan: ${orderNumber}\nTotal: ${rupiah(total)}\n` +
+        `Metode pembayaran: ${metode}\n\n` +
+        'Pesanan sedang menunggu konfirmasi toko. Ongkos kirim dikabari terpisah.',
+      html:
+        `<p>Terima kasih, pesananmu di <b>${escHtml(toko)}</b> sudah kami terima.</p>` +
+        `<p>Nomor pesanan: <b>${escHtml(orderNumber)}</b><br>Metode pembayaran: ${escHtml(metode)}</p>` +
+        tabel +
+        '<p>Pesanan sedang menunggu konfirmasi toko. Ongkos kirim dikabari terpisah lewat WhatsApp.</p>',
+    });
+  }
+
+  // Alamat pemberitahuan toko HARUS disetel sendiri lewat ORDER_NOTIFY_EMAIL.
+  // Sengaja tidak jatuh ke alamat pengirim: alamat pengirim ada di setiap
+  // pemasangan, termasuk mesin pengembangan, dan toko akan kebanjiran email dari
+  // pesanan uji tanpa pernah memintanya.
+  const tujuanToko = (process.env.ORDER_NOTIFY_EMAIL || '').trim();
+  if (!tujuanToko || alamatUji(tujuanToko)) {
+    console.log(`[pesanan] ${orderNumber}: ORDER_NOTIFY_EMAIL belum disetel, toko tidak dikabari lewat email.`);
+  } else {
+    await kirimEmail({
+      to: tujuanToko,
+      subject: `Pesanan website baru ${orderNumber} - ${rupiah(total)}`,
+      text:
+        `Pesanan baru dari toko online ${toko}.\n\n` +
+        `Nomor: ${orderNumber}\nPembeli: ${customerName} (${customerPhone})\n` +
+        `Alamat: ${alamat}\nTotal: ${rupiah(total)}\nMetode: ${metode}`,
+      html:
+        `<p>Pesanan baru dari toko online <b>${escHtml(toko)}</b>.</p>` +
+        `<p>Nomor: <b>${escHtml(orderNumber)}</b><br>` +
+        `Pembeli: ${escHtml(customerName)} (${escHtml(customerPhone)})<br>` +
+        `Alamat: ${escHtml(alamat)}<br>Metode: ${escHtml(metode)}</p>` +
+        tabel +
+        '<p>Pesanan menunggu konfirmasi di menu Riwayat Transaksi, tab Pesanan Website.</p>',
+    });
+  }
+}
+
+async function kirimEmail({ to, subject, text, html }) {
+  // Domain pengirim client sudah terverifikasi di Mailketing, jadi dipakai lebih
+  // dulu. Kalau layanannya menolak (token salah, kredit habis), pengiriman
+  // jatuh ke SMTP: reset kata sandi tidak boleh ikut mati karena satu layanan.
+  if (mailketingAktif()) {
+    try {
+      await kirimEmailMailketing({ to, subject, html: html || text });
+      return;
+    } catch (error) {
+      galatEmailTerakhir = { waktu: new Date().toISOString(), pesan: String(error.message).slice(0, 200) };
+      console.error('[mailketing] gagal, beralih ke SMTP:', error.message);
+    }
+  }
+  const transport = ambilPengirimEmail();
+  if (!transport) throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
+  const info = await transport.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@tokoku.local',
+    to,
+    subject,
+    text,
+    html,
+  });
+  if (!process.env.SMTP_HOST) {
+    const dir = path.join(__dirname, '.outbox');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${Date.now()}.json`), String(info.message));
+    console.log(`[email lokal] ${subject} -> ${to} (disimpan di server/.outbox)`);
+  }
+}
+
+async function periksaKodeReset(storeId, identifier, code) {
+  const akun = await cariAkunPembeli(storeId, identifier);
+  if (!akun || akun.ganda) throw new HttpError(400, 'Kode verifikasi salah atau sudah kedaluwarsa.');
+  const found = await pool.query(
+    `select id, code_hash, attempts, expires_at
+       from public.customer_password_resets
+      where user_id = $1 and store_id = $2 and used_at is null
+      order by created_at desc
+      limit 1`,
+    [akun.id, storeId],
+  );
+  const baris = found.rows[0];
+  if (!baris || new Date(baris.expires_at).getTime() < Date.now()) {
+    throw new HttpError(400, 'Kode sudah kedaluwarsa. Minta kode baru.');
+  }
+  if (baris.attempts >= RESET_MAKS_SALAH) throw new HttpError(429, 'Terlalu banyak percobaan. Minta kode baru.');
+  const cocok =
+    /^\d{6}$/.test(code) &&
+    crypto.timingSafeEqual(Buffer.from(hashKodeReset(akun.id, code)), Buffer.from(baris.code_hash));
+  if (!cocok) {
+    await pool.query('update public.customer_password_resets set attempts = attempts + 1 where id = $1', [baris.id]);
+    const sisa = RESET_MAKS_SALAH - baris.attempts - 1;
+    throw new HttpError(400, sisa > 0 ? `Kode verifikasi salah. Sisa ${sisa} percobaan.` : 'Terlalu banyak percobaan. Minta kode baru.');
+  }
+  return { akun, resetId: baris.id };
+}
+
+app.post('/api/customer/password/forgot', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const storeId = String(req.body?.store_id ?? '').trim();
+  const identifier = String(req.body?.identifier ?? '').trim();
+  if (!identifier) throw new HttpError(400, 'Isi nomor HP atau email akunmu.');
+  await assertStoreExists(storeId);
+  // Email bisa lewat Mailketing atau SMTP; salah satu saja sudah cukup.
+  if (!mailketingAktif() && !ambilPengirimEmail()) {
+    throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
+  }
+
+  // Jawabannya sama untuk akun yang ada maupun tidak, supaya daftar akun tidak bisa ditebak.
+  const akun = await cariAkunPembeli(storeId, identifier);
+  if (akun && !akun.ganda && akun.role === 'customer' && (await loadCustomerForUser(akun.id, storeId))) {
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await pool.query(
+      'update public.customer_password_resets set used_at = now() where user_id = $1 and used_at is null',
+      [akun.id],
+    );
+    await pool.query(
+      `insert into public.customer_password_resets(user_id, store_id, code_hash, expires_at)
+       values ($1, $2, $3, now() + make_interval(mins => $4))`,
+      [akun.id, storeId, hashKodeReset(akun.id, code), RESET_BERLAKU_MENIT],
+    );
+    const toko = (await pool.query('select name from public.stores where id = $1', [storeId])).rows[0]?.name || 'Toko';
+    await kirimEmail({
+      to: akun.email,
+      subject: `Kode reset kata sandi ${toko}: ${code}`,
+      text:
+        `Kode verifikasi untuk mengatur ulang kata sandi akunmu di ${toko}: ${code}\n\n` +
+        `Kode berlaku ${RESET_BERLAKU_MENIT} menit. Jangan berikan kode ini kepada siapa pun. ` +
+        'Abaikan email ini jika kamu tidak meminta reset kata sandi.',
+      html:
+        `<p>Kode verifikasi untuk mengatur ulang kata sandi akunmu di <b>${escHtml(toko)}</b>:</p>` +
+        `<p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p>` +
+        `<p>Kode berlaku ${RESET_BERLAKU_MENIT} menit. Jangan berikan kode ini kepada siapa pun. ` +
+        'Abaikan email ini jika kamu tidak meminta reset kata sandi.</p>',
+    });
+  }
+  res.json({ data: { ok: true } });
+}));
+
+app.post('/api/customer/password/verify', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const storeId = String(req.body?.store_id ?? '').trim();
+  await assertStoreExists(storeId);
+  await periksaKodeReset(storeId, String(req.body?.identifier ?? '').trim(), String(req.body?.code ?? '').trim());
+  res.json({ data: { ok: true } });
+}));
+
+app.post('/api/customer/password/reset', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const storeId = String(req.body?.store_id ?? '').trim();
+  const password = String(req.body?.password ?? '');
+  if (password.length < 6) throw new HttpError(400, 'Kata sandi minimal 6 karakter.');
+  await assertStoreExists(storeId);
+  const { akun, resetId } = await periksaKodeReset(
+    storeId,
+    String(req.body?.identifier ?? '').trim(),
+    String(req.body?.code ?? '').trim(),
+  );
+  await pool.query('update public.app_users set password_hash = $1 where id = $2', [await hashPassword(password), akun.id]);
+  await pool.query('update public.customer_password_resets set used_at = now() where id = $1', [resetId]);
+  const me = await loadCustomerForUser(akun.id, storeId);
+  res.json({ data: customerSessionResponse(akun, storeId, me) });
+}));
+
+app.get('/api/customer/me', requireCustomer, asyncHandler(async (req, res) => {
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  res.json({ data: customerMeRow(me) });
+}));
+
+app.patch('/api/customer/me', requireCustomer, asyncHandler(async (req, res) => {
+  const name = String(req.body?.name ?? '').trim().slice(0, 120);
+  const phone = String(req.body?.phone ?? '').trim().slice(0, 20);
+  const address = String(req.body?.address ?? '').trim().slice(0, 500);
+  const province = String(req.body?.province ?? '').trim().slice(0, 80);
+  const city = String(req.body?.city ?? '').trim().slice(0, 80);
+  if (!name) throw new HttpError(400, 'Nama wajib diisi.');
+  const updated = await pool.query(
+    `update public.customers
+        set name = $3, phone = $4, address = $5, address_province = $6, address_city = $7
+      where user_id = $1 and store_id = $2
+      returning id`,
+    [req.user.id, req.user.store_id, name, phone || null, address || null, province || null, city || null],
+  );
+  if (!updated.rowCount) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  await pool.query('update public.profiles set full_name = $2 where id = $1', [req.user.id, name]);
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  res.json({ data: customerMeRow(me) });
+}));
+
+app.get('/api/customer/orders', requireCustomer, asyncHandler(async (req, res) => {
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  const orders = await pool.query(
+    `select id, order_number, created_at, order_status, payment_status, total,
+            coalesce(shipping_cost, 0) as shipping_cost, delivery_address
+       from public.orders
+      where store_id = $1 and customer_id = $2
+      order by created_at desc
+      limit 100`,
+    [req.user.store_id, me.id],
+  );
+  const ids = orders.rows.map((o) => o.id);
+  const items = ids.length
+    ? await pool.query(
+        'select order_id, name, qty, price from public.order_items where order_id = any($1::uuid[]) order by name',
+        [ids],
+      )
+    : { rows: [] };
+  const byOrder = new Map();
+  for (const it of items.rows) {
+    const list = byOrder.get(it.order_id) ?? [];
+    list.push({ name: it.name, qty: Number(it.qty), price: Number(it.price) });
+    byOrder.set(it.order_id, list);
+  }
+  res.json({
+    data: orders.rows.map((o) => ({
+      ...o,
+      total: Number(o.total),
+      shipping_cost: Number(o.shipping_cost),
+      items: byOrder.get(o.id) ?? [],
+    })),
+  });
+}));
+
+/** Nama pengulas/penanya disamarkan seperti marketplace: "Budi" -> "B***i". */
+function samarkanNama(nama) {
+  const n = String(nama ?? '').trim();
+  if (n.length <= 2) return `${n.slice(0, 1) || '*'}***`;
+  return `${n[0]}***${n[n.length - 1]}`;
+}
+
+/** Stok set = berapa set bisa dirakit dari stok isinya (sama seperti POS). */
+function hitungStokSetDariBaris(baris) {
+  const stok = new Map();
+  for (const c of baris) {
+    if (!c.track_stock) continue;
+    const bisa = Math.floor(Number(c.stock_qty) / Math.max(Number(c.qty), 1e-9));
+    const lama = stok.get(c.parent_product_id);
+    stok.set(c.parent_product_id, lama === undefined ? bisa : Math.min(lama, bisa));
+  }
+  return stok;
+}
+
+// Detail satu produk untuk halaman produk toko online: varian (produk aktif
+// bernama sama), isi paket, ulasan, tanya jawab, dan info toko.
+app.get('/api/public/product', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  const id = String(req.query.id ?? '');
+  if (!isUuidLike(storeId) || !isUuidLike(id)) throw new HttpError(400, 'Parameter tidak valid.');
+
+  const storeRes = await pool.query(
+    // chat_enabled ikut di-select: halaman detail produk punya dua tombol chat
+    // sendiri, dan tanpa kolom ini saklarnya tidak sampai ke sana.
+    `select id, name, currency, logo_url, shop_phone, return_policy, warranty_info, pdp_banner_url,
+            chat_enabled, created_at
+       from public.stores where id = $1`,
+    [storeId],
+  );
+  if (!storeRes.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+
+  const productRes = await pool.query(
+    `select id, name, description, image_url, images, base_price, compare_at_price, category_id,
+            track_stock, stock_qty, sku, brand, variant_name, parent_sku, weight_gram, length_cm, width_cm, height_cm,
+            spec, variant_label, warranty_type, warranty_period, box_contents, highlights,
+            license_type, license_code, video_url
+       from public.products
+      where id = $1 and store_id = $2 and is_active = true`,
+    [id, storeId],
+  );
+  if (!productRes.rowCount) throw new HttpError(404, 'Produk tidak ditemukan atau sudah tidak dijual.');
+  const product = productRes.rows[0];
+
+  // Varian dikumpulkan lewat SKU Induk kalau produknya punya; nama produk cuma
+  // cadangan untuk data lama. Di katalog client ada dua produk bernama sama
+  // persis dengan SKU Induk berbeda, dan mengelompokkan dari nama membuat
+  // keduanya tampil sebagai satu produk berisi varian campur.
+  const variantRes = product.parent_sku
+    ? await pool.query(
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+           from public.products
+          where store_id = $1 and is_active = true and parent_sku = $2`,
+        [storeId, product.parent_sku],
+      )
+    : await pool.query(
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+           from public.products
+          where store_id = $1 and is_active = true and parent_sku is null
+            and lower(btrim(name)) = lower(btrim($2))`,
+        [storeId, product.name],
+      );
+  const ids = variantRes.rows.map((v) => v.id);
+
+  const komponenRes = await pool.query(
+    `select c.parent_product_id, c.qty, p.stock_qty, p.track_stock, p.name, p.sku
+       from public.product_components c
+       join public.products p on p.id = c.component_product_id
+      where c.parent_product_id = any($1::uuid[])`,
+    [ids],
+  );
+  const setIds = new Set(komponenRes.rows.map((c) => c.parent_product_id));
+  const stokSet = hitungStokSetDariBaris(komponenRes.rows);
+  const stokDari = (row) =>
+    setIds.has(row.id)
+      ? { track_stock: stokSet.has(row.id), stock_qty: Math.max(0, stokSet.get(row.id) ?? 0) }
+      : { track_stock: row.track_stock, stock_qty: Number(row.stock_qty) };
+
+  const soldRes = await pool.query(
+    `select oi.product_id, sum(oi.qty)::int as sold
+       from public.order_items oi
+       join public.orders o on o.id = oi.order_id
+      where o.store_id = $1 and o.order_status not in ('canceled', 'awaiting_confirmation')
+        and oi.product_id = any($2::uuid[])
+      group by oi.product_id`,
+    [storeId, ids],
+  );
+  const soldBy = new Map(soldRes.rows.map((r) => [r.product_id, Number(r.sold)]));
+
+  // "Pelanggan berulang" seperti Lazada: pengulas yang punya 2 pesanan selesai
+  // atau lebih di toko ini.
+  const reviewRes = await pool.query(
+    `select r.id, r.product_id, r.reviewer_name, r.rating, r.body, r.images, r.variant_label, r.seller_reply,
+            r.replied_at, r.created_at, r.tags, r.helpful_count,
+            (select count(*) from public.orders o
+              where o.store_id = r.store_id and o.customer_id = r.customer_id and o.order_status = 'done') >= 2
+              as pelanggan_berulang
+       from public.product_reviews r
+      where r.store_id = $1 and r.product_id = any($2::uuid[]) and not r.is_hidden
+      order by r.created_at desc
+      limit 500`,
+    [storeId, ids],
+  );
+  // Angka toko ala kartu penjual Lazada, semuanya dari data asli toko.
+  const statRes = await pool.query(
+    `select (select count(*) from public.products where store_id = $1 and is_active)::int as product_count,
+            (select count(*) from public.product_reviews where store_id = $1 and not is_hidden)::int as rating_count,
+            (select count(*) from public.product_reviews where store_id = $1 and not is_hidden and rating >= 4)::int as positive_count,
+            (select coalesce(sum(oi.qty), 0) from public.order_items oi join public.orders o on o.id = oi.order_id
+              where o.store_id = $1 and o.order_status not in ('canceled', 'awaiting_confirmation'))::int as total_sold,
+            (select count(*) from (select customer_id from public.orders
+              where store_id = $1 and order_status = 'done' and customer_id is not null
+              group by customer_id having count(*) >= 2) t)::int as repeat_customers`,
+    [storeId],
+  );
+
+  res.json({
+    data: {
+      store: { ...storeRes.rows[0], ...statRes.rows[0] },
+      product: {
+        ...product,
+        base_price: Number(product.base_price),
+        compare_at_price: Number(product.compare_at_price),
+        ...stokDari(product),
+        sold_qty: ids.reduce((sum, v) => sum + (soldBy.get(v) ?? 0), 0),
+      },
+      variants: variantRes.rows.map((v) => ({
+        ...v,
+        base_price: Number(v.base_price),
+        compare_at_price: Number(v.compare_at_price),
+        ...stokDari(v),
+      })),
+      components: komponenRes.rows
+        .filter((c) => c.parent_product_id === product.id)
+        .map((c) => ({ name: c.name, sku: c.sku, qty: Number(c.qty) })),
+      reviews: reviewRes.rows.map((r) => ({ ...r, reviewer_name: samarkanNama(r.reviewer_name) })),
+    },
+  });
+}));
+
+// Barang dari pesanan selesai milik pembeli, beserta tanda sudah diulas atau belum.
+app.get('/api/customer/reviewable', requireCustomer, asyncHandler(async (req, res) => {
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  const found = await pool.query(
+    `select distinct on (oi.order_id, oi.product_id)
+            oi.order_id, o.order_number, o.created_at, oi.product_id, oi.name, p.image_url, p.variant_name,
+            exists (select 1 from public.product_reviews rv
+                     where rv.order_id = oi.order_id and rv.product_id = oi.product_id) as reviewed
+       from public.order_items oi
+       join public.orders o on o.id = oi.order_id
+       left join public.products p on p.id = oi.product_id
+      where o.store_id = $1 and o.customer_id = $2 and o.order_status = 'done' and oi.product_id is not null
+      order by oi.order_id, oi.product_id`,
+    [req.user.store_id, me.id],
+  );
+  const rows = found.rows.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  res.json({ data: rows });
+}));
+
+app.post('/api/customer/reviews', requireCustomer, asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const orderId = String(req.body?.order_id ?? '');
+  const productId = String(req.body?.product_id ?? '');
+  const rating = Number(req.body?.rating);
+  const body = String(req.body?.body ?? '').trim().slice(0, 2000);
+  const images = Array.isArray(req.body?.images) ? req.body.images : [];
+  const tags = (Array.isArray(req.body?.tags) ? req.body.tags : [])
+    .map(String)
+    .filter((t) => TAG_ULASAN.includes(t))
+    .slice(0, TAG_ULASAN.length);
+  if (!isUuidLike(orderId) || !isUuidLike(productId)) throw new HttpError(400, 'Data ulasan tidak valid.');
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new HttpError(400, 'Pilih bintang 1 sampai 5.');
+  if (images.length > 3) throw new HttpError(400, 'Maksimal 3 foto.');
+  for (const img of images) {
+    if (typeof img !== 'string' || !img.startsWith('data:image/') || img.length > 450_000) {
+      throw new HttpError(400, 'Foto ulasan tidak valid atau terlalu besar.');
+    }
+  }
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  const owned = await pool.query(
+    `select p.variant_name
+       from public.order_items oi
+       join public.orders o on o.id = oi.order_id
+       left join public.products p on p.id = oi.product_id
+      where o.id = $1 and o.store_id = $2 and o.customer_id = $3 and o.order_status = 'done' and oi.product_id = $4
+      limit 1`,
+    [orderId, req.user.store_id, me.id, productId],
+  );
+  if (!owned.rowCount) {
+    throw new HttpError(403, 'Ulasan hanya untuk barang dari pesanan kamu yang sudah selesai.');
+  }
+  try {
+    await pool.query(
+      `insert into public.product_reviews
+         (store_id, product_id, order_id, customer_id, reviewer_name, rating, body, images, variant_label, tags)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb)`,
+      [req.user.store_id, productId, orderId, me.id, me.name, rating, body || null,
+        JSON.stringify(images), owned.rows[0].variant_name ?? null, JSON.stringify(tags)],
+    );
+  } catch (error) {
+    if (error?.code === '23505') throw new HttpError(409, 'Barang ini sudah kamu ulas.');
+    throw error;
+  }
+  res.json({ data: { ok: true } });
+}));
+
+// Tag ulasan yang bisa dipilih pembeli; tampil sebagai chip filter seperti di Lazada.
+const TAG_ULASAN = [
+  'Barang bagus',
+  'Dikemas dengan baik',
+  'Penjual ramah',
+  'Kualitas tinggi',
+  'Performa bagus',
+  'Tiba lebih awal',
+];
+
+// Tombol "Helpful" di ulasan. Satu tekan per perangkat dijaga di peramban;
+// server hanya menambah hitungan dan membatasi laju per IP.
+app.post('/api/public/reviews/:id/helpful', asyncHandler(async (req, res) => {
+  assertCustomerAuthRateLimit(publicOrderClientIp(req));
+  const id = String(req.params.id ?? '');
+  if (!isUuidLike(id)) throw new HttpError(400, 'Ulasan tidak valid.');
+  const updated = await pool.query(
+    `update public.product_reviews set helpful_count = helpful_count + 1
+      where id = $1 and not is_hidden
+      returning helpful_count`,
+    [id],
+  );
+  if (!updated.rowCount) throw new HttpError(404, 'Ulasan tidak ditemukan.');
+  res.json({ data: { helpful_count: Number(updated.rows[0].helpful_count) } });
+}));
+
+/** Pembeli di balik token checkout. Checkout tanpa akun ditolak. */
+async function resolveCustomerFromRequest(req) {
+  const auth = String(req.headers.authorization ?? '');
+  const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+  if (!token) throw new HttpError(401, 'Masuk dulu untuk checkout.');
+  let payload;
+  try {
+    payload = verifyToken(token);
+  } catch {
+    throw new HttpError(401, 'Sesi berakhir, silakan masuk lagi.');
+  }
+  const found = await pool.query(
+    `select c.id, c.store_id, c.email, c.name, c.phone
+       from public.customers c
+       join public.profiles p on p.id = c.user_id
+      where c.user_id = $1 and p.role = 'customer'
+      limit 1`,
+    [payload.sub],
+  );
+  if (!found.rowCount) throw new HttpError(403, 'Checkout khusus akun pembeli.');
+  return found.rows[0];
+}
+
+app.post('/api/public/orders', asyncHandler(async (req, res) => {
+  assertPublicOrderRateLimit(publicOrderClientIp(req));
+  // Keputusan client: checkout memakai akun. Pesanan dicatat atas nama akun
+  // pembeli yang masuk (customer_id), bukan lagi tamu anonim.
+  const pembeli = await resolveCustomerFromRequest(req);
+
+  const body = req.body ?? {};
+  const storeId = String(body.store_id ?? '').trim();
+  const customerName = String(body.customer_name ?? '').trim();
+  const customerPhone = String(body.customer_phone ?? '').trim();
+  const deliveryAddress = String(body.delivery_address ?? '').trim();
+  const deliveryProvince = String(body.delivery_province ?? '').trim().slice(0, 80);
+  const deliveryCity = String(body.delivery_city ?? '').trim().slice(0, 80);
+  const paymentMethod = String(body.payment_method ?? '').trim();
+  const notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
+  const items = Array.isArray(body.items) ? body.items : [];
+
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  if (pembeli.store_id !== storeId) throw new HttpError(403, 'Akun ini bukan pembeli toko ini.');
+  if (!customerName || customerName.length > 120) {
+    throw new HttpError(400, 'Nama penerima wajib diisi (maks 120 karakter).');
+  }
+  if (!customerPhone || customerPhone.length > 20) {
+    throw new HttpError(400, 'Nomor HP wajib diisi (maks 20 karakter).');
+  }
+  if (!deliveryAddress || deliveryAddress.length > 500) {
+    throw new HttpError(400, 'Alamat kirim wajib diisi (maks 500 karakter).');
+  }
+  // Kanal Tripay (mis. BRIVA, QRIS, SHOPEEPAY) dikirim terpisah dari metode
+  // manual; metode bayar yang dicatat menyesuaikan grup kanalnya.
+  const paymentChannel = String(body.payment_channel ?? '').trim().toUpperCase();
+  const tripayConfig = paymentChannel ? await loadIntegration(pool, storeId, 'tripay') : null;
+  if (paymentChannel && !tripay.tripayAktif(tripayConfig)) {
+    throw new HttpError(400, 'Pembayaran otomatis belum aktif di toko ini.');
+  }
+  if (!paymentChannel && !['cash', 'qris', 'transfer'].includes(paymentMethod)) {
+    throw new HttpError(400, 'Metode bayar tidak dikenali.');
+  }
+  if (!items.length || items.length > 30) {
+    throw new HttpError(400, 'Jumlah baris pesanan tidak valid (maksimal 30 baris).');
+  }
+
+  const cleanItems = items.map((it) => {
+    const productId = String(it?.product_id ?? '');
+    const qty = Number(it?.qty);
+    if (!isUuidLike(productId)) throw new HttpError(400, 'product_id tidak valid.');
+    if (!Number.isInteger(qty) || qty < 1 || qty > 50) {
+      throw new HttpError(400, 'Qty per baris harus bilangan bulat 1-50.');
+    }
+    return {
+      product_id: productId,
+      qty,
+      size: it?.size ? String(it.size).slice(0, 60) : null,
+      note: it?.note ? String(it.note).slice(0, 200) : null,
+    };
+  });
+
+  const store = await pool.query('select id from public.stores where id = $1', [storeId]);
+  if (!store.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+
+  const productIds = [...new Set(cleanItems.map((it) => it.product_id))];
+  const productRows = await pool.query(
+    `select id, name, base_price, cost_price from public.products
+     where id = any($1::uuid[]) and store_id = $2 and is_active = true`,
+    [productIds, storeId],
+  );
+  const productById = new Map(productRows.rows.map((p) => [p.id, p]));
+  if (productById.size !== productIds.length) {
+    throw new HttpError(400, 'Ada produk yang sudah tidak tersedia, muat ulang halaman.');
+  }
+
+  const orderId = crypto.randomUUID();
+  const nowIso = new Date().toISOString();
+  const orderNumber =
+    `WEB-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+
+  // Grup kanal menentukan metode bayar yang tercatat di pembukuan.
+  const PETA_GRUP = {
+    'Virtual Account': 'transfer',
+    'E-Wallet': 'ewallet',
+    QRIS: 'qris',
+    'Convenience Store': 'other',
+    'Credit Card': 'card',
+    'Direct Debit': 'other',
+  };
+  let metodeTercatat = paymentMethod;
+  let kanalTripay = null;
+  if (paymentChannel) {
+    const kanal = (await tripay.daftarKanal(tripayConfig).catch(() => [])).find((k) => String(k.code).toUpperCase() === paymentChannel);
+    if (!kanal || kanal.active === false) throw new HttpError(400, 'Kanal pembayaran tidak tersedia.');
+    kanalTripay = kanal;
+    metodeTercatat = PETA_GRUP[kanal.group] || 'other';
+  }
+
+  const client = await pool.connect();
+  let orderItems;
+  let total;
+  try {
+    await client.query('begin');
+
+    // Harga flash dicek & "direbut" DI DALAM transaksi yang sama dengan
+    // insert pesanan, bukan di query produk di atas, supaya penambahan
+    // sold_qty dan harga baris yang tercatat selalu konsisten. UPDATE ini
+    // atomik dan mengunci baris flash_sale_items: kalau dua pembeli checkout
+    // produk & sesi yang sama nyaris bersamaan dan kuota tinggal satu,
+    // permintaan kedua baru dievaluasi setelah yang pertama commit, jadi
+    // sold_qty + qty <= quota_qty selalu dicek terhadap angka yang sudah naik
+    // — tidak pernah ada dua baris yang sama-sama "menang" kuota terakhir.
+    // Kondisi periode & is_active ikut dicek di WHERE yang sama supaya sesi
+    // yang baru saja berakhir/nonaktif tidak lolos hanya karena sempat lolos
+    // pengecekan sebelumnya. Tidak kena baris (kuota habis, sesi tidak
+    // berjalan, atau produk memang bukan peserta flash sale) = harga baris
+    // itu balik ke base_price seperti biasa.
+    let subtotal = 0;
+    orderItems = [];
+    for (const it of cleanItems) {
+      const product = productById.get(it.product_id);
+      let price = Number(product.base_price);
+
+      const flash = await client.query(
+        `update public.flash_sale_items fsi
+            set sold_qty = fsi.sold_qty + $3
+           from public.flash_sales fs
+          where fs.id = fsi.flash_sale_id
+            and fsi.store_id = $1
+            and fsi.product_id = $2
+            and fs.is_active = true
+            and now() between fs.starts_at and fs.ends_at
+            and (fsi.quota_qty is null or fsi.sold_qty + $3 <= fsi.quota_qty)
+          returning fsi.flash_price`,
+        [storeId, it.product_id, it.qty],
+      );
+      if (flash.rowCount) price = Number(flash.rows[0].flash_price);
+
+      subtotal += price * it.qty;
+      orderItems.push({
+        id: crypto.randomUUID(),
+        product_id: it.product_id,
+        name: product.name,
+        size: it.size,
+        qty: it.qty,
+        price,
+        cost_price: product.cost_price != null ? Number(product.cost_price) : null,
+        note: it.note,
+      });
+    }
+    // TODO: tambahkan ongkir dari KiriminAja di sini saat integrasinya siap.
+    total = subtotal;
+
+    await client.query(
+      `insert into public.orders (
+        id, store_id, customer_id, cashier_id, shift_id, order_number,
+        subtotal, tax, discount, total, payment_method, payment_status,
+        order_status, order_type, table_number, notes, created_at,
+        sales_channel, payment_term, due_date, paid_amount, settled_at,
+        customer_name, customer_phone, delivery_address, points_earned,
+        delivery_province, delivery_city
+      ) values (
+        $1, $2, $11, null, null, $3,
+        $4, 0, 0, $4, $5, 'unpaid',
+        'awaiting_confirmation', 'take_away', null, $6, $7,
+        'website', 'cash', null, 0, null,
+        $8, $9, $10, 0,
+        $12, $13
+      )`,
+      [orderId, storeId, orderNumber, total, metodeTercatat, notes, nowIso, customerName, customerPhone, deliveryAddress, pembeli.id,
+       deliveryProvince || null, deliveryCity || null],
+    );
+    for (const item of orderItems) {
+      await client.query(
+        `insert into public.order_items (id, order_id, product_id, name, size, qty, price, cost_price, note)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [item.id, orderId, item.product_id, item.name, item.size, item.qty, item.price, item.cost_price, item.note],
+      );
+    }
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  let pembayaran = null;
+  if (kanalTripay) {
+    try {
+      const trx = await tripay.buatTransaksi({
+        method: kanalTripay.code,
+        merchantRef: orderNumber,
+        amount: total,
+        customerName,
+        // Tripay menolak transaksi tanpa email pembeli.
+        customerEmail: pembeli.email || `${customerPhone.replace(/\D/g, '') || 'pembeli'}@pesanan.web`,
+        customerPhone,
+        items: orderItems.map((it) => ({ name: it.name, price: it.price, quantity: it.qty })),
+        callbackUrl: tripayConfig.callbackUrl || undefined,
+        returnUrl: tripayConfig.returnUrl || undefined,
+      }, tripayConfig);
+      await pool.query(
+        'update public.orders set payment_channel = $2, payment_reference = $3, payment_url = $4 where id = $1',
+        [orderId, kanalTripay.code, trx.reference ?? null, trx.checkout_url ?? null],
+      );
+      pembayaran = {
+        channel: kanalTripay.code,
+        channel_name: kanalTripay.name,
+        reference: trx.reference ?? null,
+        checkout_url: trx.checkout_url ?? null,
+        pay_code: trx.pay_code ?? null,
+        qr_url: trx.qr_url ?? null,
+        expired_time: trx.expired_time ?? null,
+      };
+    } catch (error) {
+      // Pesanan sudah tercatat; kegagalan gateway tidak boleh menghapusnya.
+      // Staff menagih manual seperti pesanan lain.
+      console.error('[tripay] gagal membuat transaksi', error.message);
+      pembayaran = { channel: kanalTripay.code, error: 'Pembayaran otomatis gagal dibuat. Toko akan menagih manual.' };
+    }
+  }
+
+  // Kabar dikirim setelah transaksi database aman. Ditunggu (bukan dilepas)
+  // karena di serverless proses bisa dimatikan begitu balasan terkirim, tapi
+  // kegagalannya tidak pernah menggagalkan pesanan.
+  try {
+    await kabarkanPesananBaru({
+      storeId,
+      orderNumber,
+      total,
+      items: orderItems,
+      pembeliEmail: pembeli.email || null,
+      customerName,
+      customerPhone,
+      alamat: deliveryAddress,
+      metode: kanalTripay ? kanalTripay.name : metodeTercatat,
+    });
+  } catch (error) {
+    console.error('[pesanan] gagal mengabarkan lewat email:', error.message);
+  }
+
+  res.json({ data: { order_id: orderId, order_number: orderNumber, payment: pembayaran } });
+}));
+
+// Kanal pembayaran otomatis yang aktif di akun Tripay toko. Selama Tripay
+// belum dikonfigurasi, daftarnya kosong dan checkout memakai metode manual.
+app.get('/api/public/payment-channels', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  await assertStoreExists(storeId);
+  const config = await loadIntegration(pool, storeId, 'tripay');
+  if (!tripay.tripayAktif(config)) {
+    res.json({ data: { active: false, mode: null, channels: [] } });
+    return;
+  }
+  let kanal;
+  try {
+    kanal = await tripay.daftarKanal(config);
+  } catch (err) {
+    // Gangguan atau kunci ditolak di sisi Tripay tidak boleh membuat halaman
+    // checkout gagal dimuat: pembeli tetap bisa memakai metode bayar manual.
+    console.error('[tripay] daftar kanal gagal:', err?.message || err);
+    res.json({ data: { active: false, mode: config.mode, channels: [] } });
+    return;
+  }
+  res.json({
+    data: {
+      active: true,
+      mode: config.mode,
+      channels: kanal
+        .filter((k) => k.active !== false)
+        .map((k) => ({
+          code: k.code,
+          name: k.name,
+          group: k.group,
+          icon_url: k.icon_url,
+          fee_flat: k.total_fee?.flat ?? k.fee_merchant?.flat ?? 0,
+          fee_percent: k.total_fee?.percent ?? k.fee_merchant?.percent ?? 0,
+          minimum_amount: k.minimum_amount ?? 0,
+          maximum_amount: k.maximum_amount ?? 0,
+        })),
+    },
+  });
+}));
+
+// Callback Tripay: menandai pesanan lunas. Tanda tangan diperiksa dari body
+// mentah; pesanan tetap perlu dikonfirmasi staff (stok & ongkir).
+app.post('/api/tripay/callback', asyncHandler(async (req, res) => {
+  const signature = req.get('X-Callback-Signature');
+  const raw = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
+  const body = req.body ?? {};
+  const reference = String(body.reference ?? '');
+  const merchantRef = String(body.merchant_ref ?? '');
+  const status = String(body.status ?? '').toUpperCase();
+  if (!reference || !merchantRef) throw new HttpError(400, 'Referensi transaksi kosong.');
+  const found = await pool.query(
+    'select id, store_id, payment_reference from public.orders where order_number = $1', [merchantRef],
+  );
+  const order = found.rows[0];
+  if (found.rowCount !== 1 || (order.payment_reference && order.payment_reference !== reference)) {
+    throw new HttpError(403, 'Referensi callback tidak sah.');
+  }
+  const config = await loadIntegration(pool, order.store_id, 'tripay');
+  if (!tripay.callbackSah(raw, signature, config) || req.get('X-Callback-Event') !== 'payment_status') {
+    throw new HttpError(403, 'Tanda tangan atau event callback tidak sah.');
+  }
+
+  if (status === 'PAID') {
+    await pool.query(
+      `update public.orders
+          set payment_status = 'paid', paid_amount = total, settled_at = now()
+        where id = $1 and store_id = $2
+          and payment_status <> 'paid'`,
+      [order.id, order.store_id],
+    );
+  } else if (['EXPIRED', 'FAILED', 'REFUND'].includes(status)) {
+    await pool.query(
+      `update public.orders
+          set order_status = 'canceled'
+        where id = $1 and store_id = $2
+          and order_status = 'awaiting_confirmation'
+          and payment_status <> 'paid'`,
+      [order.id, order.store_id],
+    );
+  }
+  res.json({ success: true });
+}));
+
+// Tarif ongkir KiriminAja. Selama tokennya kosong, jawabannya active:false dan
+// checkout tetap memakai keterangan "ongkir dihitung toko".
+app.post('/api/public/shipping-rates', asyncHandler(async (req, res) => {
+  const body = req.body ?? {};
+  const storeId = String(body.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  await assertStoreExists(storeId);
+  const config = await loadIntegration(pool, storeId, 'kiriminaja');
+  if (!kiriminaja.kiriminAjaAktif(config)) {
+    res.json({ data: { active: false, results: [] } });
+    return;
+  }
+  const angka = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const origin = angka(config.originDistrict);
+  const subOrigin = angka(config.originSubdistrict);
+  const destination = angka(body.destination);
+  const subDestination = angka(body.subdistrict_destination);
+  const weight = Math.max(1, angka(body.weight));
+  if (!origin || !subOrigin) throw new HttpError(400, 'Alamat asal toko belum disetel.');
+  if (!destination || !subDestination) throw new HttpError(400, 'Kecamatan & kelurahan tujuan wajib diisi.');
+
+  const results = await kiriminaja.tarifOngkir({
+    origin,
+    subdistrictOrigin: subOrigin,
+    destination,
+    subdistrictDestination: subDestination,
+    weight,
+    itemValue: angka(body.item_value),
+    insurance: !!body.insurance,
+    courier: Array.isArray(body.courier) ? body.courier : undefined,
+  }, config);
+  res.json({ data: { active: true, mode: config.mode, results } });
+}));
+
+// Katalog untuk storefront publik. Sama-sama tanpa requireUser: /api/query
+// (dipakai pullCustomerCatalog untuk role customer yang SUDAH login) menolak
+// permintaan tanpa token, jadi pengunjung anonim butuh jalur baca sendiri.
+// Cuma kolom yang aman ditampilkan ke publik yang di-select.
+app.get('/api/public/catalog', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+
+  const storeRes = await pool.query(
+    `select id, name, currency, logo_url, shop_phone, pdp_banner_url, shop_city,
+            bank_name, bank_account_number, bank_account_name, qris_image_url,
+            social_facebook, social_instagram, social_tiktok, social_youtube,
+            footer_links, chat_enabled,
+            meta_pixel_id, tiktok_pixel_id, google_ads_id, google_ads_purchase_label
+       from public.stores where id = $1`,
+    [storeId],
+  );
+  if (!storeRes.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+
+  const categoriesRes = await pool.query(
+    'select id, name from public.categories where store_id = $1 order by sort_order',
+    [storeId],
+  );
+  // Terjual = jumlah barang di pesanan yang benar-benar terjual (bukan batal,
+  // bukan menunggu konfirmasi), seperti angka "terjual" di marketplace.
+  const productsRes = await pool.query(
+    `select p.id, p.name, p.description, p.image_url, p.base_price, p.category_id,
+            p.track_stock, p.stock_qty, p.weight_gram, p.length_cm, p.width_cm, p.height_cm,
+            p.brand, p.variant_name, p.parent_sku, p.compare_at_price,
+            coalesce(s.sold, 0)::int as sold_qty,
+            coalesce(rv.avg_rating, 0)::float as rating_avg,
+            coalesce(rv.jumlah, 0)::int as rating_count
+       from public.products p
+       left join (
+         select product_id, avg(rating) as avg_rating, count(*) as jumlah
+           from public.product_reviews
+          where store_id = $1 and not is_hidden
+          group by product_id
+       ) rv on rv.product_id = p.id
+       left join (
+         select oi.product_id, sum(oi.qty) as sold
+           from public.order_items oi
+           join public.orders o on o.id = oi.order_id
+          where o.store_id = $1 and o.order_status not in ('canceled', 'awaiting_confirmation')
+          group by oi.product_id
+       ) s on s.product_id = p.id
+      where p.store_id = $1 and p.is_active = true
+      order by p.name`,
+    [storeId],
+  );
+
+  // Produk set tidak punya stok sendiri: stoknya berapa set yang bisa dirakit
+  // dari stok isinya, sama seperti di POS (hitungStokSet).
+  const komponenRes = await pool.query(
+    `select c.parent_product_id, c.qty, p.stock_qty, p.track_stock
+       from public.product_components c
+       join public.products p on p.id = c.component_product_id
+      where c.store_id = $1`,
+    [storeId],
+  );
+  const stokSet = new Map();
+  for (const c of komponenRes.rows) {
+    if (!c.track_stock) continue;
+    const bisa = Math.floor(Number(c.stock_qty) / Math.max(Number(c.qty), 1e-9));
+    const lama = stokSet.get(c.parent_product_id);
+    stokSet.set(c.parent_product_id, lama === undefined ? bisa : Math.min(lama, bisa));
+  }
+  const setIds = new Set(komponenRes.rows.map((c) => c.parent_product_id));
+  const products = productsRes.rows.map((p) =>
+    setIds.has(p.id)
+      ? {
+          ...p,
+          track_stock: stokSet.has(p.id),
+          stock_qty: Math.max(0, stokSet.get(p.id) ?? 0),
+        }
+      : p,
+  );
+
+  res.json({
+    data: {
+      store: storeRes.rows[0],
+      categories: categoriesRes.rows,
+      products,
+    },
+  });
+}));
+
+// Sesi flash sale yang sedang berjalan untuk storefront publik. Tanpa
+// requireUser sama seperti /api/public/catalog: pengunjung anonim juga perlu
+// melihat banner & harga flash sale sebelum masuk/checkout. Kalau ada lebih
+// dari satu sesi aktif bersamaan, yang ditampilkan yang paling dekat
+// berakhir — itu yang paling mendesak dilihat pembeli. Cuma kolom produk
+// yang aman ditampilkan ke publik yang di-select (tidak ada cost_price/sku).
+app.get('/api/public/flash-sale', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+
+  const sessionRes = await pool.query(
+    `select id, store_id, name, starts_at, ends_at
+       from public.flash_sales
+      where store_id = $1 and is_active = true and now() between starts_at and ends_at
+        -- Sesi tanpa produk dilewati. Kalau pemilik toko punya dua sesi aktif
+        -- dan yang lebih cepat berakhir masih kosong, memilih sesi kosong itu
+        -- membuat promo yang sedang jalan hilang dari toko.
+        and exists (
+          select 1 from public.flash_sale_items fsi
+          join public.products p on p.id = fsi.product_id
+          where fsi.flash_sale_id = flash_sales.id and p.is_active = true
+        )
+      order by ends_at asc
+      limit 1`,
+    [storeId],
+  );
+  const flashSale = sessionRes.rows[0] ?? null;
+  if (!flashSale) {
+    res.json({ data: { flash_sale: null, items: [] } });
+    return;
+  }
+
+  const itemsRes = await pool.query(
+    `select fsi.product_id, fsi.flash_price, fsi.quota_qty, fsi.sold_qty,
+            p.name, p.image_url, p.base_price, p.stock_qty
+       from public.flash_sale_items fsi
+       join public.products p on p.id = fsi.product_id
+      where fsi.flash_sale_id = $1 and p.is_active = true
+      order by p.name`,
+    [flashSale.id],
+  );
+
+  res.json({ data: { flash_sale: flashSale, items: itemsRes.rows } });
+}));
+
+app.post('/api/query', requireUser, asyncHandler(async (req, res) => {
+  const data = await runQuery(req.user, req.body);
+  res.json({ data });
+}));
+
+app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
+  if (!req.user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+
+  if (req.params.name === 'confirm_web_order') {
+    const orderId = String(req.body?.p_order_id ?? '');
+    if (!orderId) throw new HttpError(400, 'p_order_id wajib diisi.');
+    assertRoleAccess(req.user, POS_ROLES, 'Role ini tidak bisa mengonfirmasi pesanan.');
+
+    // Ongkir diisi staff saat konfirmasi (KiriminAja belum terintegrasi).
+    const ongkir = Number(req.body?.p_shipping_cost ?? 0);
+    if (!Number.isFinite(ongkir) || ongkir < 0 || ongkir > 100_000_000) {
+      throw new HttpError(400, 'Ongkir tidak valid.');
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      // Update kondisional ini WAJIB: apply_order_stock TIDAK idempotent
+      // (dipanggil dua kali = stok kepotong dua kali), jadi baris ini hanya
+      // boleh lolos sekali per order, aman dari klik ganda/race staff.
+      //
+      // Total dihitung ulang DI SINI dari subtotal + ongkir, bukan diambil
+      // dari klien: total yang dikirim klien bisa saja tidak cocok dengan
+      // isi pesanannya.
+      const updated = await client.query(
+        `update public.orders
+            set order_status = 'done',
+                payment_status = 'paid',
+                shipping_cost = $3,
+                total = subtotal - discount + tax + $3
+          where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
+         returning id`,
+        [orderId, req.user.store_id, ongkir],
+      );
+      if (!updated.rowCount) {
+        throw new HttpError(409, 'Pesanan sudah diproses atau bukan milik toko ini.');
+      }
+      await client.query('select public.apply_order_stock($1::uuid)', [orderId]);
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+    res.json({ data: null });
+    return;
+  }
+
+  if (req.params.name === 'reject_web_order') {
+    const orderId = String(req.body?.p_order_id ?? '');
+    if (!orderId) throw new HttpError(400, 'p_order_id wajib diisi.');
+    assertRoleAccess(req.user, POS_ROLES, 'Role ini tidak bisa menolak pesanan.');
+    const updated = await pool.query(
+      `update public.orders set order_status = 'canceled'
+       where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
+       returning id`,
+      [orderId, req.user.store_id],
+    );
+    if (!updated.rowCount) {
+      throw new HttpError(409, 'Pesanan sudah diproses atau bukan milik toko ini.');
+    }
+    res.json({ data: null });
+    return;
+  }
+
+  if (req.params.name === 'void_orders') {
+    // Batal/hapus massal menyentuh angka penjualan dan stok, jadi admin saja,
+    // sama seperti penyesuaian harga.
+    assertRoleAccess(req.user, ['admin'], 'Hanya admin yang bisa membatalkan atau menghapus pesanan.');
+    const ids = Array.isArray(req.body?.p_order_ids) ? req.body.p_order_ids.map(String) : [];
+    if (!ids.length) throw new HttpError(400, 'Pilih minimal satu pesanan.');
+    if (ids.length > 500) throw new HttpError(400, 'Maksimal 500 pesanan sekali proses.');
+    if (!ids.every(isUuidLike)) throw new HttpError(400, 'id pesanan tidak valid.');
+    const hapus = req.body?.p_delete === true;
+    // Satu pemanggilan fungsi = satu transaksi: semua pesanan diproses atau
+    // tidak sama sekali. Pesanan toko lain diabaikan lewat filter store_id.
+    const result = await pool.query(
+      'select public.void_orders($1::uuid, $2::uuid[], $3::boolean) as n',
+      [req.user.store_id, ids, hapus],
+    );
+    res.json({ data: { count: Number(result.rows[0]?.n ?? 0) } });
+    return;
+  }
+
+  if (req.params.name === 'apply_order_stock') {
+    const orderId = String(req.body?.p_order_id ?? '');
+    if (!orderId) throw new HttpError(400, 'p_order_id wajib diisi.');
+    assertRoleAccess(req.user, POS_ROLES, 'Role ini tidak bisa memproses stok dari order.');
+    try {
+      await assertOrdersBelongToStore([orderId], req.user.store_id);
+      await pool.query('select public.apply_order_stock($1::uuid)', [orderId]);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      // In offline mode, stock movement is handled locally in IndexedDB
+    }
+    res.json({ data: null });
+    return;
+  }
+
+  if (req.params.name === 'receive_purchase_actual') {
+    const purchaseId = String(req.body?.p_purchase_id ?? '');
+    if (!purchaseId) throw new HttpError(400, 'p_purchase_id wajib diisi.');
+    assertRoleAccess(req.user, INVENTORY_ROLES, 'Role ini tidak bisa menerima barang pembelian.');
+    const rawItems = Array.isArray(req.body?.p_items) ? req.body.p_items : [];
+    const items = rawItems.map((it) => {
+      const id = String(it?.id ?? '');
+      const qty = Number(it?.qty);
+      if (!isUuidLike(id)) throw new HttpError(400, 'id item tidak valid.');
+      if (!Number.isFinite(qty) || qty < 0) throw new HttpError(400, 'Jumlah diterima harus angka 0 atau lebih.');
+      return { id, qty };
+    });
+    const owned = await pool.query(
+      'select 1 from public.purchases where id = $1 and store_id = $2 limit 1',
+      [purchaseId, req.user.store_id],
+    );
+    if (!owned.rowCount) throw new HttpError(403, 'Nota pembelian bukan milik toko aktif.');
+    // Tidak dibungkus penelan error: menerima barang mengubah stok dan nilai
+    // nota, jadi kegagalannya harus terlihat oleh pengguna.
+    await pool.query('select public.receive_purchase_actual($1::uuid, $2::jsonb)', [
+      purchaseId,
+      JSON.stringify(items),
+    ]);
+    res.json({ data: null });
+    return;
+  }
+
+  if (req.params.name === 'receive_purchase') {
+    const purchaseId = String(req.body?.p_purchase_id ?? '');
+    if (!purchaseId) throw new HttpError(400, 'p_purchase_id wajib diisi.');
+    assertRoleAccess(req.user, INVENTORY_ROLES, 'Role ini tidak bisa menerima barang pembelian.');
+    try {
+      const owned = await pool.query(
+        'select 1 from public.purchases where id = $1 and store_id = $2 limit 1',
+        [purchaseId, req.user.store_id],
+      );
+      if (!owned.rowCount) throw new HttpError(403, 'Nota pembelian bukan milik toko aktif.');
+      await pool.query('select public.receive_purchase($1::uuid)', [purchaseId]);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      // In offline mode, purchase receiving is handled locally in IndexedDB
+    }
+    res.json({ data: null });
+    return;
+  }
+
+  if (req.params.name === 'post_stock_opname') {
+    const opnameId = String(req.body?.p_opname_id ?? '');
+    if (!opnameId) throw new HttpError(400, 'p_opname_id wajib diisi.');
+    assertRoleAccess(req.user, INVENTORY_ROLES, 'Role ini tidak bisa memposting opname stok.');
+    const owned = await pool.query(
+      'select 1 from public.stock_opnames where id = $1 and store_id = $2 limit 1',
+      [opnameId, req.user.store_id],
+    );
+    if (!owned.rowCount) throw new HttpError(403, 'Sesi opname bukan milik toko aktif.');
+    // Sengaja TIDAK dibungkus try/catch penelan error seperti RPC lain:
+    // opname mengubah stok, jadi kegagalan harus terlihat oleh pengguna.
+    await pool.query('select public.post_stock_opname($1::uuid)', [opnameId]);
+    res.json({ data: null });
+    return;
+  }
+
+  throw new HttpError(404, `RPC ${req.params.name} tidak tersedia.`);
+}));
+
+app.all('/api/notifications', (req, res) => {
+  void notificationsHandler(req, res);
+});
+
+const distPath = path.resolve(__dirname, '../dist');
+if (fs.existsSync(path.join(distPath, 'index.html'))) {
+  app.use(express.static(distPath, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('kasir-config.js')) {
+        res.setHeader('Cache-Control', 'no-store, must-revalidate');
+      }
+    },
+  }));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+app.use(errorMiddleware);
+
+// Di Vercel tidak ada proses yang hidup terus: setiap permintaan dilayani
+// serverless function, jadi membuka port justru menggagalkan build. Server
+// hanya didengarkan saat dijalankan langsung (lokal / PM2).
+const DI_VERCEL = Boolean(process.env.VERCEL);
+if (!DI_VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Kasir API listening on :${PORT}`);
+  });
+}
+
+// Dipakai oleh api/[...path].js sebagai handler serverless.
+export default app;
+
+/**
+ * Lempar ulang error database yang merupakan kesalahan DATA supaya terlihat
+ * pengguna; hanya kegagalan koneksi yang boleh jatuh ke mode offline.
+ * Dipanggil di setiap catch jalur query.
+ */
+function rethrowIfDataError(error) {
+  if (error instanceof HttpError) throw error;
+  const described = describePgError(error);
+  if (described) {
+    if (described.status >= 500) console.error('[DB]', error?.code, error?.message);
+    throw new HttpError(described.status, described.message, error?.code);
+  }
+  // Sampai sini artinya masalah koneksi: pemanggil boleh fallback offline.
+  if (!isConnectionError(error)) console.warn('[DB] tidak terklasifikasi:', error?.message);
+}
+
+async function runQuery(user, body) {
+  const table = String(body?.table ?? '');
+  const meta = TABLES[table];
+  if (!meta) throw new HttpError(400, `Tabel "${table}" tidak tersedia.`);
+
+  const action = String(body?.action ?? 'select');
+  if (!['select', 'insert', 'upsert', 'update', 'delete'].includes(action)) {
+    throw new HttpError(400, `Aksi "${action}" tidak valid.`);
+  }
+  assertTableAccess(user, table, action);
+
+  if (action === 'select') return selectRows(user, table, meta, body);
+  if (action === 'insert') return insertRows(user, table, meta, body);
+  if (action === 'upsert') return upsertRows(user, table, meta, body);
+  if (action === 'update') return updateRows(user, table, meta, body);
+  return deleteRows(user, table, meta, body);
+}
+
+async function selectRows(user, table, meta, body) {
+  const params = [];
+  const where = [
+    ...buildFilters(meta, body.filters, params),
+    ...tenantWhere(table, meta, user, 'select', params),
+  ];
+  const columns = selectSql(meta, body.columns);
+  const orderBy = orderSql(meta, body.orderBy);
+  const limit = limitSql(body.limit, params);
+  const sql = [
+    `select ${columns} from public.${quoteIdent(table)}`,
+    where.length ? `where ${where.join(' and ')}` : '',
+    orderBy,
+    limit,
+  ].filter(Boolean).join(' ');
+
+  try {
+    const result = await pool.query(sql, params);
+    if (body.single || body.maybeSingle) return result.rows[0] ?? null;
+    return result.rows;
+  } catch (error) {
+    // Kolom/skema salah adalah bug, bukan alasan mengembalikan daftar kosong
+    // yang menyesatkan. Hanya kegagalan koneksi yang jatuh ke data demo.
+    rethrowIfDataError(error);
+    if (table === 'profiles') {
+      const demoProfile = { id: user.id, email: user.email, full_name: user.name || 'Admin Kasir', role: user.role || 'admin', store_id: user.store_id || 'store-default-001' };
+      if (body.single || body.maybeSingle) return demoProfile;
+      return [demoProfile];
+    }
+    if (table === 'stores') {
+      const demoStore = { id: 'store-default-001', name: 'Toko Aplikasi Kasir', currency: 'IDR', tax_rate: 10, low_stock_threshold: 10, points_per_amount: 0.01 };
+      if (body.single || body.maybeSingle) return demoStore;
+      return [demoStore];
+    }
+    if (body.single || body.maybeSingle) return null;
+    return [];
+  }
+}
+
+async function insertRows(user, table, meta, body) {
+  const rows = normalizeRows(body.payload);
+  await validateRowsForWrite(table, meta, rows, user);
+  if (!rows.length) return body.returning ? [] : null;
+
+  const { sql, params } = buildInsert(table, meta, rows, body.returning ? selectSql(meta, body.columns) : '');
+  try {
+    const result = await pool.query(sql, params);
+    return body.returning ? result.rows : null;
+  } catch (error) {
+    rethrowIfDataError(error);
+    return body.returning ? rows : null;
+  }
+}
+
+async function upsertRows(user, table, meta, body) {
+  const rows = normalizeRows(body.payload);
+  await validateRowsForWrite(table, meta, rows, user);
+  for (const row of rows) {
+    if (!row.id) throw new HttpError(400, 'Upsert membutuhkan kolom id.');
+  }
+  if (!rows.length) return body.returning ? [] : null;
+
+  const { sql, params } = buildUpsert(table, meta, rows, body.returning ? selectSql(meta, body.columns) : '');
+  try {
+    const result = await pool.query(sql, params);
+    return body.returning ? result.rows : null;
+  } catch (error) {
+    rethrowIfDataError(error);
+    return body.returning ? rows : null;
+  }
+}
+
+async function updateRows(user, table, meta, body) {
+  const patch = cleanRow(meta, body.payload ?? {}, { update: true });
+  const columns = Object.keys(patch);
+  if (!columns.length) return null;
+  await validatePatchForUpdate(table, patch, user);
+
+  const params = [];
+  const setSql = columns.map((column) => {
+    params.push(patch[column]);
+    return `${quoteIdent(column)} = $${params.length}`;
+  }).join(', ');
+  // Alasan sama seperti deleteRows: klausa tenant tidak boleh dianggap
+  // sebagai filter pengguna, kalau tidak `update` tanpa filter akan menimpa
+  // seluruh baris milik toko.
+  const userFilters = buildFilters(meta, body.filters, params);
+  if (!userFilters.length) throw new HttpError(400, 'Update membutuhkan filter.');
+  const where = [...userFilters, ...tenantWhere(table, meta, user, 'update', params)];
+
+  const returning = body.returning ? ` returning ${selectSql(meta, body.columns)}` : '';
+  const sql = `update public.${quoteIdent(table)} set ${setSql} where ${where.join(' and ')}${returning}`;
+  try {
+    const result = await pool.query(sql, params);
+    return body.returning ? result.rows : null;
+  } catch (error) {
+    rethrowIfDataError(error);
+    return body.returning ? [patch] : null;
+  }
+}
+
+async function deleteRows(user, table, meta, body) {
+  const params = [];
+  // Filter dari pemanggil dihitung TERPISAH dari klausa tenant.
+  // Sebelumnya keduanya digabung lalu dicek `if (!where.length)` — padahal
+  // tenantWhere hampir selalu menambahkan `store_id = $n`, sehingga penjaga
+  // ini tidak pernah aktif dan `delete` tanpa filter menghapus SELURUH isi
+  // tabel milik toko tersebut.
+  const userFilters = buildFilters(meta, body.filters, params);
+  if (!userFilters.length) throw new HttpError(400, 'Delete membutuhkan filter.');
+  const where = [...userFilters, ...tenantWhere(table, meta, user, 'delete', params)];
+
+  const returning = body.returning ? ` returning ${selectSql(meta, body.columns)}` : '';
+  const sql = `delete from public.${quoteIdent(table)} where ${where.join(' and ')}${returning}`;
+  try {
+    const result = await pool.query(sql, params);
+    return body.returning ? result.rows : null;
+  } catch (error) {
+    rethrowIfDataError(error);
+    return body.returning ? [] : null;
+  }
+}
+
+function buildInsert(table, meta, rawRows, returningSql) {
+  const rows = rawRows.map((row) => cleanRow(meta, row));
+  const columns = unionColumns(rows);
+  if (!columns.length) throw new HttpError(400, 'Payload insert kosong.');
+
+  const params = [];
+  const values = rows.map((row) => {
+    const cells = columns.map((column) => {
+      if (row[column] === undefined) return 'default';
+      params.push(row[column]);
+      return `$${params.length}`;
+    });
+    return `(${cells.join(', ')})`;
+  });
+  const returning = returningSql ? ` returning ${returningSql}` : '';
+  const sql = `
+    insert into public.${quoteIdent(table)} (${columns.map(quoteIdent).join(', ')})
+    values ${values.join(', ')}
+    ${returning}
+  `;
+  return { sql, params };
+}
+
+function buildUpsert(table, meta, rawRows, returningSql) {
+  const rows = rawRows.map((row) => cleanRow(meta, row));
+  const columns = unionColumns(rows);
+  const updateColumns = columns.filter((column) => column !== 'id');
+  const params = [];
+  const values = rows.map((row) => {
+    const cells = columns.map((column) => {
+      if (row[column] === undefined) return 'default';
+      params.push(row[column]);
+      return `$${params.length}`;
+    });
+    return `(${cells.join(', ')})`;
+  });
+  const conflict = updateColumns.length
+    ? `do update set ${updateColumns.map((column) => `${quoteIdent(column)} = excluded.${quoteIdent(column)}`).join(', ')}`
+    : 'do nothing';
+  const returning = returningSql ? ` returning ${returningSql}` : '';
+  const sql = `
+    insert into public.${quoteIdent(table)} (${columns.map(quoteIdent).join(', ')})
+    values ${values.join(', ')}
+    on conflict (id) ${conflict}
+    ${returning}
+  `;
+  return { sql, params };
+}
+
+function buildFilters(meta, filters, params) {
+  if (!Array.isArray(filters)) return [];
+  const clauses = [];
+  for (const filter of filters) {
+    const column = String(filter?.column ?? '');
+    assertColumn(meta, column);
+    if (filter.type === 'eq') {
+      if (filter.value === null) {
+        clauses.push(`${quoteIdent(column)} is null`);
+      } else {
+        params.push(filter.value);
+        clauses.push(`${quoteIdent(column)} = $${params.length}`);
+      }
+    } else if (filter.type === 'in') {
+      const values = Array.isArray(filter.values) ? filter.values : [];
+      if (!values.length) clauses.push('false');
+      else {
+        params.push(values);
+        clauses.push(`${quoteIdent(column)} = any($${params.length})`);
+      }
+    } else if (filter.type === 'not_in') {
+      // Dipakai untuk memangkas baris anak yang tidak lagi ada di sumbernya.
+      // Daftar kosong berarti tidak ada yang dikecualikan, jadi semuanya cocok.
+      const values = Array.isArray(filter.values) ? filter.values : [];
+      if (!values.length) clauses.push('true');
+      else {
+        params.push(values);
+        clauses.push(`${quoteIdent(column)} <> all($${params.length})`);
+      }
+    } else {
+      throw new HttpError(400, `Filter "${filter.type}" tidak didukung.`);
+    }
+  }
+  return clauses;
+}
+
+function tenantWhere(table, meta, user, action, params) {
+  const role = effectiveRole(user.role);
+  if (meta.kind === 'store') {
+    if (action === 'insert') return [];
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    params.push(user.store_id);
+    return [`id = $${params.length}`];
+  }
+
+  if (meta.kind === 'profile') {
+    // Akun demo / token lama punya id non-UUID yang tidak bisa dibandingkan ke
+    // kolom uuid — query `id = 'usr-admin-001'` gagal 22P02 dan (sejak error
+    // database tidak lagi ditelan) membuat pemuatan aplikasi ikut gagal.
+    if (!isStorableActorId(user.id)) {
+      if (action === 'select' && user.store_id) {
+        params.push(user.store_id);
+        return [`store_id = $${params.length}`];
+      }
+      return ['false'];
+    }
+    params.push(user.id);
+    const own = `id = $${params.length}`;
+    if (action === 'select' && user.store_id) {
+      params.push(user.store_id);
+      return [`(${own} or store_id = $${params.length})`];
+    }
+    return [own];
+  }
+
+  if (meta.kind === 'order_items') {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    params.push(user.store_id);
+    const storeParam = params.length;
+    // Penjaga yang sama dengan cabang `orders` dan `shifts` di bawah: akun demo
+    // punya id non-UUID ('usr-cashier-001') yang tidak bisa dibandingkan ke
+    // kolom uuid. Tanpa penjaga ini SETIAP pembacaan order_items oleh kasir
+    // gagal 22P02, dan karena pull menghapus cache lokal sebelum mengisi ulang,
+    // Export CSV di Riwayat Transaksi berakhir nol baris.
+    //
+    // Membiarkan klausa ini turun juga menjaga konsistensi: `orders` sudah
+    // melepas batasan kasir untuk id yang tidak tersimpan, jadi item-nya tidak
+    // boleh lebih ketat daripada induknya.
+    const cashierClause = role === 'cashier' && isStorableActorId(user.id)
+      ? (() => {
+          params.push(user.id);
+          return ` and o.cashier_id = $${params.length}`;
+        })()
+      : '';
+    return [
+      `exists (
+        select 1 from public.orders o
+        where o.id = ${quoteIdent(table)}.${quoteIdent('order_id')}
+          and o.store_id = $${storeParam}
+          ${cashierClause}
+      )`,
+    ];
+  }
+
+  // Tabel anak (mis. purchase_items) ikut tenant lewat induknya.
+  if (meta.kind === 'child') {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    params.push(user.store_id);
+    return [
+      `exists (
+        select 1 from public.${meta.parent.table} parent
+        where parent.id = ${quoteIdent(table)}.${quoteIdent(meta.parent.column)}
+          and parent.store_id = $${params.length}
+      )`,
+    ];
+  }
+
+  if (meta.tenantColumn) {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    params.push(user.store_id);
+    const clauses = [`${quoteIdent(meta.tenantColumn)} = $${params.length}`];
+    if (role === 'cashier' && (table === 'orders' || table === 'shifts') && isStorableActorId(user.id)) {
+      params.push(user.id);
+      clauses.push(`${quoteIdent('cashier_id')} = $${params.length}`);
+    }
+    if (role === 'cashier' && table === 'cash_movements' && isStorableActorId(user.id)) {
+      params.push(user.id);
+      clauses.push(
+        `exists (
+          select 1 from public.shifts s
+          where s.id = ${quoteIdent(table)}.${quoteIdent('shift_id')}
+            and s.cashier_id = $${params.length}
+        )`,
+      );
+    }
+    return clauses;
+  }
+
+  return [];
+}
+
+async function validateRowsForWrite(table, meta, rows, user) {
+  if (!rows.length) return;
+  const role = effectiveRole(user.role);
+
+  if (meta.kind === 'profile') {
+    for (const row of rows) {
+      if (row.id !== user.id) throw new HttpError(403, 'Profil hanya bisa diubah oleh pemilik akun.');
+      if (row.store_id && user.store_id && row.store_id !== user.store_id) {
+        throw new HttpError(403, 'Profil tidak boleh dipindahkan ke toko lain.');
+      }
+      if (row.role && user.store_id && row.role !== user.role) {
+        throw new HttpError(403, 'Role tidak bisa diubah dari profil sendiri.');
+      }
+      if (row.store_id && !user.store_id) {
+        const existingMembers = await pool.query(
+          'select 1 from public.profiles where store_id = $1 and id <> $2 limit 1',
+          [row.store_id, user.id],
+        );
+        if (existingMembers.rowCount) {
+          throw new HttpError(403, 'Toko ini sudah memiliki anggota. Minta admin menambahkan akun Anda.');
+        }
+      }
+    }
+    return;
+  }
+
+  if (meta.kind === 'store') {
+    for (const row of rows) periksaIdPixel(row);
+    return;
+  }
+
+  if (meta.kind === 'order_items') {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    // Maksudnya: SETIAP baris wajib punya order_id. Versi lama membandingkan
+    // jumlah order_id UNIK dengan jumlah baris, sehingga menyimpan beberapa
+    // item milik SATU order (kasus normal di POS) selalu ditolak — dan karena
+    // error database dulu ditelan, item order multi-baris tidak pernah benar
+    // benar tersimpan ke Postgres.
+    if (rows.some((row) => !row.order_id)) {
+      throw new HttpError(400, 'order_id wajib diisi.');
+    }
+    const orderIds = [...new Set(rows.map((row) => row.order_id))];
+    await assertOrdersBelongToStore(orderIds, user.store_id);
+    if (role === 'cashier') await assertOrdersBelongToCashier(orderIds, user.id);
+    return;
+  }
+
+  if (meta.kind === 'child') {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    const parentIds = [...new Set(rows.map((row) => row[meta.parent.column]).filter(Boolean))];
+    if (parentIds.length === 0) throw new HttpError(400, `${meta.parent.column} wajib diisi.`);
+    const result = await pool.query(
+      `select id from public.${meta.parent.table} where id = any($1::uuid[]) and store_id = $2`,
+      [parentIds, user.store_id],
+    );
+    if (result.rowCount !== parentIds.length) {
+      throw new HttpError(403, 'Data induk bukan milik toko aktif.');
+    }
+    return;
+  }
+
+  // Kolom store_id saja tidak cukup: tanpa cek ini, user toko A bisa menulis
+  // mapping yang menunjuk product_id milik toko B.
+  if (table === 'product_channel_mappings' || table === 'supplier_product_mappings') {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    const productIds = [...new Set(rows.map((row) => row.product_id).filter(Boolean))];
+    if (productIds.length) await assertProductsBelongToStore(productIds, user.store_id);
+  }
+
+  if (meta.tenantColumn) {
+    if (!user.store_id) throw new HttpError(403, 'User belum terhubung ke toko.');
+    for (const row of rows) {
+      if (row[meta.tenantColumn] !== user.store_id) {
+        throw new HttpError(403, 'Data toko tidak cocok dengan user yang login.');
+      }
+      const cashierOk = isStorableActorId(user.id)
+        ? row.cashier_id === user.id
+        : row.cashier_id == null; // akun demo: wajib null, lihat isStorableActorId
+      if (role === 'cashier' && table === 'orders' && !cashierOk) {
+        throw new HttpError(403, 'Kasir hanya bisa membuat order atas nama sendiri.');
+      }
+      if (role === 'cashier' && table === 'shifts' && !cashierOk) {
+        throw new HttpError(403, 'Kasir hanya bisa mengelola shift sendiri.');
+      }
+      if (role === 'cashier' && table === 'cash_movements' && row.shift_id) {
+        await assertShiftBelongsToCashier(row.shift_id, user.id, user.store_id);
+      }
+    }
+  }
+}
+
+// ID pixel tampil di halaman publik dan ikut menyusun URL skrip pihak ketiga,
+// jadi formatnya dipaksa di server, bukan hanya di form pengaturan.
+const POLA_ID_PIXEL = {
+  meta_pixel_id: [/^\d{10,20}$/, 'Meta Pixel ID berisi 10 sampai 20 angka.'],
+  tiktok_pixel_id: [/^[A-Z0-9]{10,40}$/, 'TikTok Pixel ID berisi huruf besar dan angka saja.'],
+  google_ads_id: [/^AW-\d{6,15}$/, 'Google Ads ID berbentuk AW- diikuti angka, contoh AW-123456789.'],
+  google_ads_purchase_label: [
+    /^[A-Za-z0-9_-]{4,60}$/,
+    'Label konversi Google Ads hanya berisi huruf, angka, garis bawah, dan tanda hubung.',
+  ],
+};
+
+function periksaIdPixel(row) {
+  for (const [kolom, [pola, pesan]] of Object.entries(POLA_ID_PIXEL)) {
+    if (!(kolom in row)) continue;
+    const nilai = row[kolom];
+    if (nilai === null || nilai === undefined || nilai === '') continue;
+    if (typeof nilai !== 'string' || !pola.test(nilai)) throw new HttpError(400, pesan);
+  }
+}
+
+async function validatePatchForUpdate(table, patch, user) {
+  const role = effectiveRole(user.role);
+  if (table === 'stores') periksaIdPixel(patch);
+  if (table === 'profiles' && ('role' in patch || 'store_id' in patch)) {
+    throw new HttpError(403, 'Role dan toko user hanya bisa diubah dari menu Users oleh admin.');
+  }
+  if (role === 'cashier' && table === 'orders' && patch.cashier_id && isStorableActorId(user.id) && patch.cashier_id !== user.id) {
+    throw new HttpError(403, 'Kasir hanya bisa mengubah order miliknya sendiri.');
+  }
+  if (role === 'cashier' && table === 'shifts' && patch.cashier_id && isStorableActorId(user.id) && patch.cashier_id !== user.id) {
+    throw new HttpError(403, 'Kasir hanya bisa mengubah shift miliknya sendiri.');
+  }
+  if (role === 'cashier' && table === 'cash_movements' && patch.shift_id) {
+    await assertShiftBelongsToCashier(patch.shift_id, user.id, user.store_id);
+  }
+}
+
+async function assertProductsBelongToStore(productIds, storeId) {
+  const result = await pool.query(
+    'select id from public.products where id = any($1::uuid[]) and store_id = $2',
+    [productIds, storeId],
+  );
+  if (result.rowCount !== productIds.length) {
+    throw new HttpError(403, 'Produk bukan milik toko aktif.');
+  }
+}
+
+async function assertOrdersBelongToStore(orderIds, storeId) {
+  const result = await pool.query(
+    'select id from public.orders where id = any($1::uuid[]) and store_id = $2',
+    [orderIds, storeId],
+  );
+  if (result.rowCount !== orderIds.length) {
+    throw new HttpError(403, 'Order bukan milik toko aktif.');
+  }
+}
+
+async function assertOrdersBelongToCashier(orderIds, cashierId) {
+  // Tidak bisa dibandingkan ke kolom uuid; pembatasan toko sudah berlaku.
+  if (!isStorableActorId(cashierId)) return;
+  const result = await pool.query(
+    'select id from public.orders where id = any($1::uuid[]) and cashier_id = $2',
+    [orderIds, cashierId],
+  );
+  if (result.rowCount !== orderIds.length) {
+    throw new HttpError(403, 'Order bukan milik kasir aktif.');
+  }
+}
+
+async function assertShiftBelongsToCashier(shiftId, cashierId, storeId) {
+  if (!isStorableActorId(cashierId)) return;
+  const result = await pool.query(
+    'select 1 from public.shifts where id = $1 and cashier_id = $2 and store_id = $3 limit 1',
+    [shiftId, cashierId, storeId],
+  );
+  if (!result.rowCount) throw new HttpError(403, 'Shift bukan milik kasir aktif.');
+}
+
+function cleanRow(meta, value, options = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, 'Payload harus berupa object.');
+  }
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (val === undefined) continue;
+    assertColumn(meta, key);
+    if (options.update && key === 'id') continue;
+    // Kolom jsonb (products.sizes, stores.features, admin_audit_logs.metadata)
+    // harus dikirim sebagai teks JSON. node-pg menerjemahkan array/objek JS
+    // jadi literal ARRAY Postgres, yang ditolak tipe json dengan 22P02.
+    // Dulu error itu ditelan, sehingga penyimpanan produk SELALU gagal diam-diam
+    // dan datanya hanya mendarat di IndexedDB.
+    out[key] = val !== null && typeof val === 'object' ? JSON.stringify(val) : val;
+  }
+  return out;
+}
+
+function unionColumns(rows) {
+  const set = new Set();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) set.add(key);
+  }
+  return [...set];
+}
+
+function normalizeRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === 'object') return [payload];
+  throw new HttpError(400, 'Payload wajib diisi.');
+}
+
+function selectSql(meta, columns = '*') {
+  const raw = String(columns || '*').trim();
+  if (raw === '*') return meta.columns.map(quoteIdent).join(', ');
+  return raw.split(',')
+    .map((column) => column.trim())
+    .filter(Boolean)
+    .map((column) => {
+      assertColumn(meta, column);
+      return quoteIdent(column);
+    })
+    .join(', ');
+}
+
+function orderSql(meta, orderBy) {
+  if (!orderBy) return '';
+  const column = String(orderBy.column ?? '');
+  assertColumn(meta, column);
+  return `order by ${quoteIdent(column)} ${orderBy.ascending === false ? 'desc' : 'asc'}`;
+}
+
+function limitSql(limit, params) {
+  if (limit == null) return '';
+  const n = Number(limit);
+  if (!Number.isInteger(n) || n < 0 || n > 1000) throw new HttpError(400, 'Limit tidak valid.');
+  params.push(n);
+  return `limit $${params.length}`;
+}
+
+function assertColumn(meta, column) {
+  if (!meta.columns.includes(column)) throw new HttpError(400, `Kolom "${column}" tidak tersedia.`);
+}
+
+function quoteIdent(value) {
+  if (!/^[a-z_][a-z0-9_]*$/i.test(value)) throw new HttpError(400, `Identifier "${value}" tidak valid.`);
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function requireRoles(roles) {
+  return (req, _res, next) => {
+    try {
+      assertRoleAccess(req.user, roles, 'Role ini tidak memiliki akses.');
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+// Capability yang mengatur tiap tabel. Dipakai untuk menerapkan pembatasan
+// tambahan dari role_permissions. Tabel yang tidak terdaftar tidak bisa
+// dibatasi lewat UI (mis. profiles, yang selalu dibutuhkan untuk login).
+const TABLE_CAPABILITY = {
+  order_returns: 'useCashier',
+  order_return_items: 'useCashier',
+  stores: 'manageStoreSettings',
+  categories: 'manageInventory',
+  products: 'manageInventory',
+  stock_movements: 'manageInventory',
+  stock_opnames: 'manageInventory',
+  stock_opname_items: 'manageInventory',
+  product_channel_mappings: 'manageInventory',
+  product_reviews: 'manageStoreSettings',
+  product_questions: 'manageStoreSettings',
+  suppliers: 'managePurchasing',
+  purchases: 'managePurchasing',
+  purchase_items: 'managePurchasing',
+  purchase_payments: 'managePurchasing',
+  supplier_product_mappings: 'managePurchasing',
+  customers: 'manageCustomers',
+  promos: 'managePromos',
+  orders: 'useCashier',
+  order_items: 'useCashier',
+  order_payments: 'useCashier',
+  shifts: 'manageShifts',
+  cash_movements: 'manageShifts',
+  expenses: 'manageExpenses',
+};
+
+function assertTableAccess(user, table, action) {
+  const role = effectiveRole(user.role);
+  const allowed = TABLE_ROLE_ACCESS[table]?.[action] ?? [];
+  if (!allowed.includes(role)) {
+    throw new HttpError(403, `Role "${role}" tidak boleh ${action} tabel ${table}.`);
+  }
+
+  // Pembatasan tambahan dari pengaturan toko. Sengaja hanya bisa MENOLAK:
+  // daftar `allowed` di atas tetap jadi batas atas, jadi salah konfigurasi
+  // tidak pernah bisa menaikkan hak sebuah role.
+  const capability = TABLE_CAPABILITY[table];
+  if (!capability) return;
+  const disabled = user.disabledCapabilities;
+  if (disabled && disabled.has(capability)) {
+    throw new HttpError(
+      403,
+      `Akses "${capability}" dimatikan untuk role "${role}" di pengaturan toko.`,
+    );
+  }
+}
+
+/**
+ * store_id untuk akun demo. Kalau database hidup, pakai toko yang benar-benar
+ * ada supaya nilainya UUID valid; 'store-default-001' hanya untuk mode offline
+ * murni. HARUS dipakai oleh signin DAN requireUser — kalau keduanya beda,
+ * sesi demo mengirim store_id yang ditolak sendiri oleh server.
+ */
+async function resolveDemoStoreId() {
+  try {
+    const r = await pool.query('select id from public.stores order by created_at limit 1');
+    return r.rows[0]?.id ?? 'store-default-001';
+  } catch {
+    return 'store-default-001';
+  }
+}
+
+// Cache kecil supaya tidak query tiap request.
+const rolePermCache = new Map();
+const ROLE_PERM_TTL_MS = 30000;
+
+async function loadDisabledCapabilities(storeId, role) {
+  if (!storeId) return new Set();
+  const key = `${storeId}|${role}`;
+  const hit = rolePermCache.get(key);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  try {
+    const result = await pool.query(
+      `select capability from public.role_permissions
+        where store_id = $1 and role = $2 and enabled = false`,
+      [storeId, role],
+    );
+    const value = new Set(result.rows.map((r) => r.capability));
+    rolePermCache.set(key, { value, expires: Date.now() + ROLE_PERM_TTL_MS });
+    return value;
+  } catch {
+    // Database bermasalah: jangan kunci pengguna, pakai default kode saja.
+    return new Set();
+  }
+}
+
+function assertRoleAccess(user, roles, message) {
+  const role = effectiveRole(user?.role);
+  if (!roles.includes(role)) throw new HttpError(403, message);
+}
+
+/**
+ * Akun DEMO_ACCOUNTS memakai id seperti 'usr-cashier-001' yang bukan UUID.
+ * Kolom cashier_id/created_by bertipe uuid dan ber-foreign-key ke profiles,
+ * jadi id itu tidak akan pernah bisa disimpan maupun dibandingkan — query
+ * seperti `where cashier_id = 'usr-cashier-001'` gagal dengan 22P02.
+ *
+ * Konsekuensinya: pembatasan "hanya milik kasir sendiri" tidak bisa ditegakkan
+ * untuk akun demo. Untuk akun itu pembatasan turun ke level TOKO saja, dan
+ * penulisan wajib mengirim cashier_id null. Akun sungguhan (UUID) tetap
+ * dibatasi ketat per kasir.
+ */
+function isStorableActorId(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value ?? ''));
+}
+
+function effectiveRole(role) {
+  if (role === 'manager') return 'admin';
+  if (role === 'admin' || role === 'warehouse' || role === 'cashier' || role === 'customer') {
+    return role;
+  }
+  return 'cashier';
+}
+
+function normalizeAssignableRole(value) {
+  const role = String(value ?? '').trim().toLowerCase();
+  if (role === 'manager') return 'admin';
+  if (!ASSIGNABLE_ROLES.includes(role)) {
+    throw new HttpError(400, `Role harus salah satu: ${ASSIGNABLE_ROLES.join(', ')}.`);
+  }
+  return role;
+}
+
+function publicManagedUser(row) {
+  return {
+    id: row.id,
+    email: row.email,
+    full_name: row.full_name ?? null,
+    role: row.role,
+    store_id: row.store_id ?? null,
+    created_at: row.created_at,
+  };
+}
+
+function publicAuditLog(row) {
+  return {
+    id: row.id,
+    store_id: row.store_id,
+    actor_id: row.actor_id ?? null,
+    actor_email: row.actor_email ?? null,
+    actor_name: row.actor_name ?? null,
+    action: row.action,
+    target_type: row.target_type,
+    target_id: row.target_id ?? null,
+    metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+    created_at: row.created_at,
+  };
+}
+
+function publicAdminSystemStats(input) {
+  const roleCounts = Object.fromEntries(ASSIGNABLE_ROLES.map((role) => [role, 0]));
+  for (const row of input.users ?? []) {
+    const role = String(row.role ?? '');
+    if (role in roleCounts) roleCounts[role] = Number(row.count ?? 0);
+  }
+  return {
+    users: {
+      total: Object.values(roleCounts).reduce((total, count) => total + Number(count), 0),
+      roles: roleCounts,
+    },
+    products: {
+      total: Number(input.products?.total ?? 0),
+      active: Number(input.products?.active ?? 0),
+      low_stock: Number(input.products?.low_stock ?? 0),
+      empty: Number(input.products?.empty ?? 0),
+    },
+    orders: {
+      today_count: Number(input.orders?.today_count ?? 0),
+      today_sales: Number(input.orders?.today_sales ?? 0),
+      unpaid_count: Number(input.orders?.unpaid_count ?? 0),
+    },
+    shifts: {
+      open: Number(input.shifts?.open ?? 0),
+    },
+    audit: {
+      latest_at: input.audit?.latest_at ?? null,
+    },
+  };
+}
+
+async function writeAdminAudit(client, actor, action, targetType, targetId, metadata = {}) {
+  if (!actor?.store_id) return;
+  try {
+    await client.query(
+      `
+        insert into public.admin_audit_logs(
+          store_id, actor_id, action, target_type, target_id, metadata
+        )
+        values ($1, $2, $3, $4, $5, $6::jsonb)
+      `,
+      [
+        actor.store_id,
+        // Akun demo / token lama membawa id seperti 'usr-admin-001' yang bukan
+        // UUID; kolom actor_id bertipe uuid sehingga seluruh transaksi
+        // (termasuk pembuatan user-nya) ikut gagal dengan 22P02.
+        isStorableActorId(actor.id) ? actor.id : null,
+        action,
+        targetType,
+        targetId || null,
+        JSON.stringify(metadata ?? {}),
+      ],
+    );
+  } catch (error) {
+    if (error?.code === '42P01') return;
+    throw error;
+  }
+}
+
+async function lockManagedUser(client, storeId, userId) {
+  const result = await client.query(
+    `
+      select p.id, u.email, p.full_name, p.role, p.store_id, p.created_at
+      from public.profiles p
+      join public.app_users u on u.id = p.id
+      where p.store_id = $1 and p.id = $2
+      for update of p, u
+    `,
+    [storeId, userId],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function assertNotLastAdmin(client, storeId, exceptUserId) {
+  const result = await client.query(
+    `
+      select count(*)::int as count
+      from public.profiles
+      where store_id = $1
+        and id <> $2
+        and role in ('admin', 'manager')
+    `,
+    [storeId, exceptUserId],
+  );
+  if (Number(result.rows[0]?.count ?? 0) < 1) {
+    throw new HttpError(400, 'Toko harus tetap memiliki minimal satu admin.');
+  }
+}
+
+async function requireUser(req, _res, next) {
+  try {
+    const auth = String(req.headers.authorization ?? '');
+    const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+    if (!token) throw new HttpError(401, 'Sesi tidak ditemukan.');
+    const payload = verifyToken(token);
+
+    // Cocokkan HANYA lewat id demo. Sebelumnya email juga dipakai, sehingga
+    // token milik akun asli (sub = UUID) dengan email yang sama ikut dianggap
+    // demo dan store_id-nya tertimpa 'store-default-001'.
+    const demo = Object.values(DEMO_ACCOUNTS).find((d) => d.id === payload.sub);
+    if (demo) {
+      const demoStoreId = await resolveDemoStoreId();
+      req.user = {
+        id: demo.id,
+        email: payload.email || `${demo.role}@example.com`,
+        store_id: demoStoreId,
+        role: demo.role,
+      };
+      req.user.disabledCapabilities = await loadDisabledCapabilities(
+        demoStoreId,
+        effectiveRole(demo.role),
+      );
+      req.authToken = token;
+      req.authExp = payload.exp;
+      return next();
+    }
+
+    try {
+      const result = await pool.query(
+        `
+          select u.id, u.email, p.store_id, p.role
+          from public.app_users u
+          left join public.profiles p on p.id = u.id
+          where u.id = $1
+          limit 1
+        `,
+        [payload.sub],
+      );
+      if (!result.rows[0]) throw new HttpError(401, 'User tidak ditemukan.');
+      req.user = result.rows[0];
+      req.user.disabledCapabilities = await loadDisabledCapabilities(
+        req.user.store_id,
+        effectiveRole(req.user.role),
+      );
+      req.authToken = token;
+      req.authExp = payload.exp;
+      next();
+    } catch (dbErr) {
+      if (dbErr instanceof HttpError) throw dbErr;
+      req.user = { id: payload.sub, email: payload.email || 'admin@example.com', store_id: 'store-default-001', role: 'admin' };
+      req.authToken = token;
+      req.authExp = payload.exp;
+      next();
+    }
+  } catch (error) {
+    next(error);
+  }
+}
+
+function createSession(user, token = createToken(user), expiresAt = undefined) {
+  return {
+    access_token: token,
+    token_type: 'bearer',
+    user: publicUser(user),
+    expires_at: expiresAt ?? Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400,
+  };
+}
+
+function publicUser(user) {
+  // store_id & role ikut dikirim supaya klien tidak perlu menebaknya dari
+  // tabel profiles. Untuk akun demo baris profiles bisa tidak ada, dan klien
+  // yang menebak akan memakai 'store-default-001' sementara server memakai
+  // UUID toko asli — mismatch itu membuat semua penulisan ditolak 403.
+  return {
+    id: user.id,
+    email: user.email,
+    store_id: user.store_id ?? null,
+    role: user.role ?? null,
+  };
+}
+
+function createToken(user) {
+  const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
+  return signToken({ sub: user.id, email: user.email, exp });
+}
+
+function signToken(payload) {
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const encodedHeader = base64Url(JSON.stringify(header));
+  const encodedPayload = base64Url(JSON.stringify(payload));
+  const signature = tokenSignature(`${encodedHeader}.${encodedPayload}`);
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function verifyToken(token) {
+  const [encodedHeader, encodedPayload, signature] = token.split('.');
+  if (!encodedHeader || !encodedPayload || !signature) throw new HttpError(401, 'Token tidak valid.');
+  const expected = tokenSignature(`${encodedHeader}.${encodedPayload}`);
+  if (!safeEqual(signature, expected)) throw new HttpError(401, 'Token tidak valid.');
+  const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+    throw new HttpError(401, 'Sesi sudah kedaluwarsa.');
+  }
+  return payload;
+}
+
+function tokenSignature(value) {
+  return crypto.createHmac('sha256', authSecret).update(value).digest('base64url');
+}
+
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function base64Url(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const key = await scrypt(password, salt, 64);
+  return `scrypt:${salt}:${Buffer.from(key).toString('hex')}`;
+}
+
+async function verifyPassword(password, stored) {
+  const [scheme, salt, hash] = String(stored ?? '').split(':');
+  if (scheme !== 'scrypt' || !salt || !hash) return false;
+  const key = await scrypt(password, salt, 64);
+  return safeEqual(Buffer.from(key).toString('hex'), hash);
+}
+
+function normalizeEmail(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function clampInt(value, fallback, min, max) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(String(raw ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function corsMiddleware(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+}
+
+function isAllowedOrigin(origin) {
+  const configured = String(process.env.CORS_ORIGIN ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+  if (configured.includes('*') || configured.includes(origin)) return true;
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
+
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+function errorMiddleware(error, _req, res, _next) {
+  if (error?.code === '22P02') {
+  }
+  if (error instanceof HttpError || error instanceof IntegrationError) {
+    return res.status(error.status).json({ error: error.message, code: error.code });
+  }
+  if (
+    error instanceof SyntaxError ||
+    error?.type === 'entity.parse.failed' ||
+    ((error?.status === 400 || error?.statusCode === 400) && error?.type?.startsWith('entity.'))
+  ) {
+    return res.status(400).json({ error: 'Payload JSON tidak valid.' });
+  }
+  const described = describePgError(error);
+  if (described) {
+    if (described.status >= 500) console.error(error);
+    return res.status(described.status).json({ error: described.message, code: error?.code });
+  }
+  console.error(error);
+  res.status(500).json({
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error.'
+      : error?.message ?? 'Internal server error.',
+  });
+}
+
+class HttpError extends Error {
+  constructor(status, message, code) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function parseBool(value) {
+  return /^(1|true|yes)$/i.test(String(value ?? ''));
+}
+
+function loadEnvFile(filename) {
+  try {
+    const raw = fs.readFileSync(path.resolve(process.cwd(), filename), 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+      if (!match) continue;
+      const [, key, rawValue] = match;
+      if (process.env[key] !== undefined) continue;
+      process.env[key] = rawValue.replace(/^["']|["']$/g, '');
+    }
+  } catch {
+    // optional file
+  }
+}

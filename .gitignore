@@ -1,0 +1,25 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.log
+*.tsbuildinfo
+
+# Tangkapan layar hasil pemeriksaan otomatis: bukti sementara, bukan sumber.
+# Isinya 8 MB dan ditulis ulang tiap kali suite dijalankan.
+audit_screenshots
+.antigravity
+.vercel
+
+.vercel
+.env*
+server/.outbox/
+
+# Tangkapan layar hasil uji, bukan bagian aplikasi
+scripts/screenshots/

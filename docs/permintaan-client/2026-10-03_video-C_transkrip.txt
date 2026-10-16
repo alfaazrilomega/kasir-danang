@@ -1,0 +1,9 @@
+[    0.0-   16.0] Mas Swahib, Mas Asriel, ini terkait untuk di riwayat pesanan atau pesanan yang masuk dari website, itu kan masuk ke riwayat transaksi ya, di sini kan dikonfirmasi.
+[   16.0-   26.0] Oke, nah, jika memang ongkos kirim ini nanti udah jalan pakai yang teripai, mungkin kan udah nggak menu-nya seperti ini lagi ya.
+[   26.0-   36.0] Nah, cuma saya ada temuannya begini mas, ketika, saya konfirmasi dulu lah ya, konfirmasi, potong stok, oke.
+[   37.0-   46.0] Oke, nah, di sini untuk label pengiriman mas, jadi labeling itu produk atau alamat tujuan yang saya kirimkan.
+[   46.0-   54.0] Di sini kan belum ada, di sini kan hanya riwayat transaksi atau orderan yang masuk ke sistem kasirnya.
+[   54.0-   60.0] Nah, alamat untuk tujuan sih, pengiriman barangnya itu kan belum muncul di sini.
+[   60.0-   65.0] Apakah nanti dibikinkan di fitur lain atau tetap di sini.
+[   68.0-   74.0] Jadi, catak label alamat tujuan, yaitu atau labeling proses pengirimannya, seperti itu mas.
+[   76.0-   77.0] Makasih.

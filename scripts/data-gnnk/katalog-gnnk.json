@@ -1,0 +1,2996 @@
+{
+ "sumber": "https://gnnkracing.id (WooCommerce Store API), diambil 2026-09-13",
+ "toko": {
+  "nama": "GNNK Racing",
+  "wa": "081296319445",
+  "wa_cs": "085641836252",
+  "logo": "https://gnnkracing.id/wp-content/uploads/2025/05/cropped-Logo-01-scaled-1.jpg",
+  "banner": [
+   "https://gnnkracing.id/wp-content/uploads/2025/12/BANNER-WEBSITE-520-full-baja-gambar-terpasang-1.jpg",
+   "https://gnnkracing.id/wp-content/uploads/2025/12/BANNER-WEBSITE-kombinasi-baja-alloy-red-dan-blue-wr-crf.jpg"
+  ],
+  "video": [
+   "https://www.youtube.com/watch?v=RwYJluFfbAE",
+   "https://www.youtube.com/watch?v=lF-elg-6Nxs"
+  ],
+  "instagram": "https://www.instagram.com/gnnkracing.id/",
+  "tiktok": "https://www.tiktok.com/@gnnkracing",
+  "youtube": "https://www.youtube.com/@gnnkracing"
+ },
+ "produk": [
+  {
+   "id": 5906,
+   "nama": "Gear Set Honda Supra X 125 Kharisma GNNK Racing",
+   "sku": "GEAR-SET-SUPRA125-ALLOY",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-supra-x-125-kharisma-gnnk-racing/",
+   "harga": 285000,
+   "harga_coret": 385000,
+   "deskripsi": "Gear Set Honda Supra X 125 Kharisma GNNK Racing Product\nDengan ukuran opsi pilihan\n415/14-35-Ornge+R\nHarga Rp 385.000 – Rp 415.000 tergantung aplikasi masing masing\nUntuk Gear Belakang saja\nGb-415-35F-Ornge : Harga 285rbu\n#gnnkracingproduct\n#geargnnksracing\n#geargnnkracingproduct\n#Honda",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nDragrace ✅ | Roadrace ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-SUPRA-X-125-_-KHARISMA-TYPE-415-ORANGE-FULL-ALLOY_WEBSITE-3.jpg"
+   ],
+   "kategori": [
+    "Gear Set SupraX 125 | Kharisma"
+   ],
+   "berat": 1000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5916,
+     "sku": "415/14-36S-Ornge+R",
+     "nilai": "415/14-36S-Ornge+R",
+     "harga": 385000,
+     "harga_coret": 425000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-SUPRA-X-125-_-KHARISMA-TYPE-415-ORANGE-FULL-ALLOY_WEBSITE-3.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5917,
+     "sku": "Gb-415-35S-Ornge",
+     "nilai": "Gb-415-35S-Ornge",
+     "harga": 285000,
+     "harga_coret": 385000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-SUPRA-X-125-_-KHARISMA-TYPE-415-ORANGE-FULL-ALLOY_WEBSITE-2.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 5857,
+   "nama": "Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product",
+   "sku": "GEAR-BLKNG-FIZR-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-belakang-yamaha-fiz-r-rx-king-black-gnnk-racing-product/",
+   "harga": 165000,
+   "harga_coret": 200000,
+   "deskripsi": "Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product\nLubang 4 (dudukan nap gear baut 4)\nGear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product\nuntuk motor Yamaha Fiz R / Rx king Jupiter z / Persamaan motor,\nUntuk Ukuran List Gear Bahan Baja warna Black",
+   "ringkas": "Teruji untuk harian maupun balap road / drag race\nGear Set Sudah Teruji\nRingan\nBerkualitas",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-33-sampai-35.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product"
+   ],
+   "berat": 300,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5858,
+     "sku": "Gb-415-33F-Black",
+     "nilai": "Gb-415-33F-Black",
+     "harga": 165000,
+     "harga_coret": 200000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-33-sampai-35.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5859,
+     "sku": "415/14-33Black+R-1",
+     "nilai": "Gb-415-30F-Black",
+     "harga": 165000,
+     "harga_coret": 200000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-33-sampai-35.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 5860,
+     "sku": "Gb-415-34F-Black",
+     "nilai": "Gb-415-34F-Black",
+     "harga": 165000,
+     "harga_coret": 225000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-33-sampai-35.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5861,
+     "sku": "Gb-415-35F-Black",
+     "nilai": "Gb-415-35F-Black",
+     "harga": 165000,
+     "harga_coret": 225000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-33-sampai-35.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5862,
+     "sku": "Gb-415-36F-Black",
+     "nilai": "Gb-415-36F-Black",
+     "harga": 175000,
+     "harga_coret": 235000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5863,
+     "sku": "Gb-415-37F-Black",
+     "nilai": "Gb-415-37F-Black",
+     "harga": 175000,
+     "harga_coret": 235000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5864,
+     "sku": "Gb-415-38F-Black",
+     "nilai": "Gb-415-38F-Black",
+     "harga": 175000,
+     "harga_coret": 235000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5865,
+     "sku": "Gb-415-39F-Black",
+     "nilai": "Gb-415-39F-Black",
+     "harga": 175000,
+     "harga_coret": 235000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5866,
+     "sku": "Gb-415-40F-Black",
+     "nilai": "Gb-415-40F-Black",
+     "harga": 175000,
+     "harga_coret": 235000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5867,
+     "sku": "Gb-415-41F-Black",
+     "nilai": "Gb-415-41F-Black",
+     "harga": 185000,
+     "harga_coret": 245000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-41-sampai-45.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5868,
+     "sku": "Gb-415-42F-Black",
+     "nilai": "Gb-415-42F-Black",
+     "harga": 185000,
+     "harga_coret": 245000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5869,
+     "sku": "Gb-415-43F-Black",
+     "nilai": "Gb-415-43F-Black",
+     "harga": 185000,
+     "harga_coret": 245000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5870,
+     "sku": "Gb-415-44F-Black",
+     "nilai": "Gb-415-44F-Black",
+     "harga": 185000,
+     "harga_coret": 245000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-41-sampai-45.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5871,
+     "sku": "Gb-415-45F-Black",
+     "nilai": "Gb-415-45F-Black",
+     "harga": 185000,
+     "harga_coret": 245000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-41-sampai-45.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5872,
+     "sku": "Gb-415-46F-Black",
+     "nilai": "Gb-415-46F-Black",
+     "harga": 195000,
+     "harga_coret": 250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-46-sampai-47.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5873,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/13-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5874,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/12-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5875,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/14-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5876,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/15-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5877,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/16-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5878,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/12-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5879,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/13-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5880,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/14-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5881,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/15-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5882,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/16-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5883,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/12-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5884,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/13-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5885,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/14-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5886,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/15-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5887,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/16-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5888,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/13-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5889,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/12-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5890,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/14-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5891,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/15-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5892,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/16-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5893,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/12-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5894,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/13-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5895,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/14-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5896,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/15-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5897,
+     "sku": "GEAR-BLKNG-FIZR-BLACK",
+     "nilai": "G-415/16-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-36-sampai-40.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 5902,
+     "sku": "Gb-415-47F-Black",
+     "nilai": "Gb-415-47F-Black",
+     "harga": 195000,
+     "harga_coret": 250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-BELAKANG-YAMAHA-TYPE-415-BLACK-ukuran-415-46-sampai-47.jpg",
+     "berat": 300,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 5848,
+   "nama": "Gear Set Honda CRF150 Type 520 Blue Alloy Baja GNNK Racing Product",
+   "sku": "SET-CRF-BLUE-ALLOY+BJA",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-type-520-blue-alloy-baja-gnnk-racing-product/",
+   "harga": 955000,
+   "harga_coret": 1250000,
+   "deskripsi": "Gear Set Honda CRF150 TYPE 520 Blue Alloy Baja – GNNK Racing Product\n🔥 HARGA PROMO LAUNCHING: Rp 955.000 / Set (Harga Normal: Rp 1.250.000 — Promo berlaku terbatas, setelah stok habis harga kembali normal)\nPILIHAN UKURAN & SPESIFIKASI:\nGear Depan:\n520-11T Black\n520-12T Black\n520-13T Black\nGear Belakang: 520-46T Warna Blue (Bahan Alloy & Baja)\nRantai: 520-130L Gold\nDETAIL KODE SPESIFIKASI SATU SET:\nSETCRF-11-44AB-R\nSETCRF-12-44AB-R\nSETCRF-13-44B-R (Keterangan Kode AB-R: Material ALLOY + BAJA dan Warna RED)\nKELEBIHAN PRODUK GNNK RACING:\nBahan Berkualitas: Menggunakan material Baja #1045 pilihan.\nDaya Tahan Tinggi: Awet dan tahan lama untuk pemakaian harian lebih dari 1 tahun.\nDesain Sporty: Tampilan menarik, presisi, dan stylish.\nTeruji Ekstrem: Ketahanan produk sudah teruji di berbagai kalangan pengguna, termasuk untuk kompetisi balap Motocross, Grasstrack, Enduro, hingga Freestyle.",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-SET-CRF-150-520-44-BLUE-KOMBINASI_MEDSOS-.png"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Yamaha Wr155 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 3000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5849,
+     "sku": "SETCRF-11-44AB+BE",
+     "nilai": "SETCRF-11-44AB+BE",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 5850,
+     "sku": "SETCRF-12-44AB+BE",
+     "nilai": "SETCRF-12-44AB+BE",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 5851,
+     "sku": "SETCRF-13-44AB+BE",
+     "nilai": "SETCRF-13-44AB+BE",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 5810,
+   "nama": "Gear Set Honda CRF150 TYPE 520 Red Alloy Baja GNNK Racing Product",
+   "sku": "SET-CRF-RED-ALLOY+BJA",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-type-520-red-alloy-baja-gnnk-racing-product/",
+   "harga": 955000,
+   "harga_coret": 1250000,
+   "deskripsi": "Gear Set Honda CRF150 TYPE 520 Red Alloy Baja – GNNK Racing Product\n🔥 HARGA PROMO LAUNCHING: Rp 955.000 / Set (Harga Normal: Rp 1.250.000 — Promo berlaku terbatas, setelah stok habis harga kembali normal)\nPILIHAN UKURAN & SPESIFIKASI:\nGear Depan:\n520-11T Black\n520-12T Black\n520-13T Black\nGear Belakang: 520-44T Warna Red (Bahan Alloy & Baja)\nRantai: 520-130L Gold\nDETAIL KODE SPESIFIKASI SET:\nSETCRF-11-44AB-R\nSETCRF-12-44AB-R\nSETCRF-13-44AB-R (Keterangan Kode AB-R: Material ALLOY + BAJA dan Warna RED)\nKELEBIHAN PRODUK GNNK RACING:\nBahan Berkualitas: Menggunakan material Baja #1045 pilihan.\nDaya Tahan Tinggi: Awet dan tahan lama untuk pemakaian harian lebih dari 1 tahun.\nDesain Sporty: Tampilan menarik, presisi, dan stylish.\nTeruji Ekstrem: Ketahanan produk sudah teruji di berbagai kalangan pengguna, termasuk untuk kompetisi balap Motocross, Grasstrack, Enduro, hingga Freestyle.",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :\n(Untuk Order Via Shopee dan Tiktok (harga lebih tinggi karena ada biaya admin khusus)",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/12/CRF-150-520H-44-RED-KOMBINASI-2.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/12/CRF-150-520H-44-RED-KOMBINASI.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2026/08/RANTAI-520-130L-WEBSITE.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2026/08/GEAR-DEPAN-TYPE-520.1.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Honda Crf150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 3000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5815,
+     "sku": "SETCRF-11-44AB-R",
+     "nilai": "SETCRF-11-44AB-R",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/CRF-150-520H-44-RED-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 5816,
+     "sku": "SETCRF-12-44AB-R",
+     "nilai": "SETCRF-12-44AB-R",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/CRF-150-520H-44-RED-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 5817,
+     "sku": "SETCRF-13-44AB-R",
+     "nilai": "SETCRF-13-44AB-R",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/CRF-150-520H-44-RED-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 5593,
+   "nama": "Gear Set Honda Crf150 Type 428 Black GNNK Racing",
+   "sku": "SET-CRF-428-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-type-428-black-gnnk-racing/",
+   "harga": 285000,
+   "harga_coret": 350000,
+   "deskripsi": "Gear Set Honda Crf150 Type 428 Black GNNK Racing\nHarga khusus Rp 485.000 satu set ini adalah harga khusus promo lauching\nsetelah habis stok promo akan kembali ke harga normal Rp 655.000\nMotor Crf150 Type 428\nGear Depan Tersedia Ukuran :\n# 428-15T Black\nGear Belakang Tersedia Ukuran :\n# 428-47T Warna Black Bahan Baja\nRantai 428-140L Gold\njadi satu set 428/14-47 Black dan rantai 428-140L Gold\nDetail spesifikasi\nG-SETCRF-428-15-47-B = gear set : gear depan, belakang dan rantai\nGB-CRF-428-47-BLACK = hanya gear belakang saja Rp 245.000\n____________________\n————– kode B (BAJA DAN WARNA GEAR BLACK+RANTAI GOLD)\nSpesifikasi Kelebihan produk GNNK Racing\n# Menggunakan bahan Baja #1045\n# Kekuatan dan masa pemakaian untuk harian lebih dari 1 tahun\n# Desain menarik\n# Kekuatan produk ini sudah teruji di berbagai macam pengguna motor, Untuk berkompetisi di ajang balap motorcross / grasstrack / Enduro / Freestyle",
+   "ringkas": "",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2026/03/GEAR-SET-HONDA-CRF-150-TYPE-428-47-BLACK-WEBSITE.jpg"
+   ],
+   "kategori": [
+    "Gear Set Supermoto Type 428 Gnnk Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": null,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5594,
+     "sku": "GB-CRF-428-47-BLACK",
+     "nilai": "GB-CRF-428-47-BLACK",
+     "harga": 285000,
+     "harga_coret": 350000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/03/GEAR-BLKNG-HONDA-CRF-150-TYPE-428-47-BLACK-WEBSITE.jpg",
+     "berat": 350,
+     "stok_ada": true
+    },
+    {
+     "id": 5595,
+     "sku": "G-SETCRF-428-15-47-B",
+     "nilai": "G-SETCRF-428-15-47-B",
+     "harga": 485000,
+     "harga_coret": 650000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/03/GEAR-SET-HONDA-CRF-150-TYPE-428-47-BLACK-WEBSITE.jpg",
+     "berat": 13000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 5166,
+   "nama": "Gear Set Suzuki Satria 2 Tak Type 415 Alloy Orange GNNK Racing",
+   "sku": "SET-ST2-415-ORANGE",
+   "tautan": "https://gnnkracing.id/product/gear-set-suzuki-satria-2-tak-type-415-alloy-orange-gnnk-racing/",
+   "harga": 285000,
+   "harga_coret": 385000,
+   "deskripsi": "Gear Set Suzuki Satria 2 Tak Type 415 Alloy Orange GNNK Racing\nHarga khusus Rp 385.000 satu set ini adalah harga khusus promo lauching\nsetelah habis stok promo akan kembali ke harga normal Rp 485.000\nGear Depan Tersedia Ukuran :\n# 415-14T Black\n# 415-15 Black\nGear Belakang Tersedia Ukuran :\n# 415-40T Warna Orange Bahan Alloy\nRantai 415-130L Gold\nDetail spesifikasi\nGB-ST2-40-ORANGE : Harga Rp 285.000\nG-SET-ST2-415-14-40-O : Harga Rp 385.000\nG-SET-ST2-415-15-40-O : Harga Rp 385.000\n————– kode O (Orange DAN WARNA GEAR ORANGE+RANTAI GOLD)\nSpesifikasi Kelebihan produk GNNK Racing\n# Menggunakan bahan Baja #1045\n# Kekuatan dan masa pemakaian untuk harian lebih dari 1 tahun\n# Desain menarik\n# Kekuatan produk ini sudah teruji di berbagai macam pengguna motor, Untuk berkompetisi di ajang balap Roadrace, Dragrace",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nDragrace ✅ | Roadrace ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-SUZUKI-SATRIA-FU-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg"
+   ],
+   "kategori": [
+    "Gear Set Suzuki Satria 2 Tak"
+   ],
+   "berat": 1000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5220,
+     "sku": "GB-ST2-40-ORANGE",
+     "nilai": "GB-ST2-40-ORANGE",
+     "harga": 285000,
+     "harga_coret": 385000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-BLKNG-SUZUKI-SATRIA-FU-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5221,
+     "sku": "G-SET-ST2-415-14-40",
+     "nilai": "G-ST2-415-14-40-O",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-SUZUKI-SATRIA-FU-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5222,
+     "sku": "G-SET-ST2-415-15-40",
+     "nilai": "G-ST2-415-15-40-O",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-SUZUKI-SATRIA-FU-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4752,
+   "nama": "Gear Set Yamaha MX King Type 415 Alloy Orange GNNK Racing",
+   "sku": "SET-MX-KING-415-ORANGE",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-mx-king-type-415-alloy-orange-gnnk-racing/",
+   "harga": 285000,
+   "harga_coret": 385000,
+   "deskripsi": "Gear Set Yamaha MX King Type 415 Alloy Orange GNNK Racing\nGB-MX-KING-40-Orange | Harga gear belakang saja Rp 285.000\nGB-MX-KING-42-Orange Harga gear belakang saja Rp 285.000\n____________________\nG-SETMX-415-12-40-O | G-SETMX-415-13-40-O | G-SETMX-415-14-40-O | G-SETMX-415-15-40-O |\nG-SETMX-415-16-40-O | G-SETMX-415-12-42-O | G-SETMX-415-13-42-O | G-SETMX-415-14-42-O |\nG-SETMX-415-15-42-O | G-SETMX-415-16-42-O\nkode B (BAJA DAN WARNA GEAR BLACK+RANTAI GOLD)\nHarga gear set : gear depan, belakang dan rantai = Rp 415.000",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nDragrace ✅ | Roadrace ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Mx King 6 Holes"
+   ],
+   "berat": 1000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4753,
+     "sku": "GB-MX-KING-40-ORANGE",
+     "nilai": "GB-MX-KING-40-ORANGE",
+     "harga": 285000,
+     "harga_coret": 385000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-BLKNG-YAMAHA-MX-KING-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 4754,
+     "sku": "GB-MX-KING-42-ORANGE",
+     "nilai": "GB-MX-KING-42-ORANGE",
+     "harga": 285000,
+     "harga_coret": 385000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-BLKNG-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 4755,
+     "sku": "G-SETMX-415-12-40-O",
+     "nilai": "G-SETMX-415-12-40-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4756,
+     "sku": "G-SETMX-415-13-40-O",
+     "nilai": "G-SETMX-415-13-40-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4757,
+     "sku": "G-SETMX-415-14-40-O",
+     "nilai": "G-SETMX-415-14-40-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4758,
+     "sku": "G-SETMX-415-15-40-O",
+     "nilai": "G-SETMX-415-15-40-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4759,
+     "sku": "G-SETMX-415-16-40-O",
+     "nilai": "G-SETMX-415-16-40-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4760,
+     "sku": "G-SETMX-415-12-42-O",
+     "nilai": "G-SETMX-415-12-42-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4761,
+     "sku": "G-SETMX-415-13-42-O",
+     "nilai": "G-SETMX-415-13-42-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4762,
+     "sku": "G-SETMX-415-14-42-O",
+     "nilai": "G-SETMX-415-14-42-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4763,
+     "sku": "G-SETMX-415-15-42-O",
+     "nilai": "G-SETMX-415-15-42-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 300,
+     "stok_ada": true
+    },
+    {
+     "id": 4764,
+     "sku": "G-SETMX-415-16-42-O",
+     "nilai": "G-SETMX-415-16-42-O",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-ORANGE-FULL-ALLOY_WEBSITE.jpg",
+     "berat": 300,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4712,
+   "nama": "Gear Set Yamaha MX King Type 415 Black GNNK Racing",
+   "sku": "SET-MX-KING-415-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-mx-king-type-415-black-gnnk-racing/",
+   "harga": 185000,
+   "harga_coret": 285000,
+   "deskripsi": "Gear Set Yamaha MX King Type 415 Black GNNK Racing\nGB-MX-KING-40-BLACK Harga gear belakang saja Rp 185.000\nGB-MX-KING-42-BLACK Harga gear belakang saja Rp 185.000\n____________________\nG-SETMX-415-12-40-B | G-SETMX-415-13-40-B | G-SETMX-415-14-40-B | G-SETMX-415-15-40-B\nG-SETMX-415-16-40-B | G-SETMX-415-12-42-B | G-SETMX-415-13-42-B | G-SETMX-415-14-42-B\nG-SETMX-415-15-42-B | G-SETMX-415-16-42-B\nkode B (BAJA DAN WARNA GEAR BLACK+RANTAI GOLD)\nHarga gear set : gear depan, belakang dan rantai = Rp 385.000",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nDragrace ✅ | Roadrace ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Mx King 6 Holes"
+   ],
+   "berat": 1000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4713,
+     "sku": "GB-MX-KING-40-BLACK",
+     "nilai": "GB-MX-KING-40-BLACK",
+     "harga": 185000,
+     "harga_coret": 285000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-BLKNG-YAMAHA-MX-KING-TYPE-415-40-BLACK_WEBSITE.jpg",
+     "berat": 300,
+     "stok_ada": false
+    },
+    {
+     "id": 4714,
+     "sku": "GB-MX-KING-42-BLACK",
+     "nilai": "GB-MX-KING-42-BLACK",
+     "harga": 185000,
+     "harga_coret": 285000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-BLKNG-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg",
+     "berat": 300,
+     "stok_ada": false
+    },
+    {
+     "id": 4719,
+     "sku": "G-SETMX-415-12-40-B",
+     "nilai": "G-SETMX-415-12-40-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 4720,
+     "sku": "G-SETMX-415-13-40-B",
+     "nilai": "G-SETMX-415-13-40-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4721,
+     "sku": "G-SETMX-415-14-40-B",
+     "nilai": "G-SETMX-415-14-40-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4722,
+     "sku": "G-SETMX-415-15-40-B",
+     "nilai": "G-SETMX-415-15-40-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4723,
+     "sku": "G-SETMX-415-16-40-B",
+     "nilai": "G-SETMX-415-16-40-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-40-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 4724,
+     "sku": "G-SETMX-415-12-42-B",
+     "nilai": "G-SETMX-415-12-42-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 4725,
+     "sku": "G-SETMX-415-13-42-B",
+     "nilai": "G-SETMX-415-13-42-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 4726,
+     "sku": "G-SETMX-415-14-42-B",
+     "nilai": "G-SETMX-415-14-42-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 4727,
+     "sku": "G-SETMX-415-15-42-B",
+     "nilai": "G-SETMX-415-15-42-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 4728,
+     "sku": "G-SETMX-415-16-42-B",
+     "nilai": "G-SETMX-415-16-42-B",
+     "harga": 385000,
+     "harga_coret": 485000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-MX-KING-TYPE-415-42-BLACK_WEBSITE.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    }
+   ]
+  },
+  {
+   "id": 4706,
+   "nama": "Gear Set Yamaha WR155 Type 428 Black GNNK Racing",
+   "sku": "SET-WR-428-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-wr155-type-428-black-gnnk-racing/",
+   "harga": 285000,
+   "harga_coret": 350000,
+   "deskripsi": "Gear Set Yamaha WR155 Type 428 Black GNNK Racing\nDetail spesifikasi\nG-SETWR-428-14-52-B = Harga gear set : gear depan, belakang dan rantai = Rp 485.000\nGB-WR-428-52-BLACK = Harga gear belakang saja Rp 285.000",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-WR-155-TYPE-428-52-BLACK-MARKET-PLACE.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Supermoto Type 428 Gnnk Racing",
+    "Gear Set Yamaha Wr155 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 3000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4710,
+     "sku": "GB-WR-428-52-BLACK",
+     "nilai": "GB-WR-428-52-BLACK",
+     "harga": 285000,
+     "harga_coret": 350000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-BLKNG-YAMAHA-WR-155-TYPE-428-52-BLACK-MARKET-PLACE.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 4711,
+     "sku": "G-SETWR-428-14-52-B",
+     "nilai": "G-SETWR-428-14-52-B",
+     "harga": 485000,
+     "harga_coret": 650000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-YAMAHA-WR-155-TYPE-428-52-BLACK-MARKET-PLACE.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4683,
+   "nama": "Gear Set Yamaha WR155 Type 520 Blue Alloy Baja GNNK Racing Product",
+   "sku": "SET-WR-BLUE-ALLOY+BJA",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-wr155-type-520-blue-alloy-baja-gnnk-racing-product/",
+   "harga": 955000,
+   "harga_coret": 1250000,
+   "deskripsi": "Gear Set Yamaha Wr155 TYPE 520 Blue Alloy Baja – GNNK Racing Product\n🔥 HARGA PROMO LAUNCHING: Rp 955.000 / Set (Harga Normal: Rp 1.250.000 — Promo berlaku terbatas, setelah stok habis harga kembali normal)\nPILIHAN UKURAN & SPESIFIKASI:\nGear Depan:\n520-11T Black\n520-12T Black\n520-13T Black\nGear Belakang: 520-46T Warna Blue (Bahan Alloy & Baja)\nRantai: 520-130L Gold\nDETAIL KODE SPESIFIKASI SATU SET:\nSETWR-11-46AB-R\nSETWR-12-46AB-R\nSETWR-13-4AB-R (Keterangan Kode AB-R: Material ALLOY + BAJA dan Warna RED)\nKELEBIHAN PRODUK GNNK RACING:\nBahan Berkualitas: Menggunakan material Baja #1045 pilihan.\nDaya Tahan Tinggi: Awet dan tahan lama untuk pemakaian harian lebih dari 1 tahun.\nDesain Sporty: Tampilan menarik, presisi, dan stylish.\nTeruji Ekstrem: Ketahanan produk sudah teruji di berbagai kalangan pengguna, termasuk untuk kompetisi balap Motocross, Grasstrack, Enduro, hingga Freestyle.",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Yamaha Wr155 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 3000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": false,
+   "variasi": [
+    {
+     "id": 4695,
+     "sku": "SETWR13-46AB+BE",
+     "nilai": "SETWR13-46AB+BE",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4697,
+     "sku": "SETWR12-46AB+BE",
+     "nilai": "SETWR11-46AB+BE",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4698,
+     "sku": "SETWR11-46AB+BE",
+     "nilai": "SETWR12-46AB+BE",
+     "harga": 955000,
+     "harga_coret": 1250000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-WR-155-46-BLUE-KOMBINASI-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4223,
+   "nama": "Gear Set Yamaha Wr155 Red GNNK Racing Product",
+   "sku": "SET-WR155-RED",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-wr155-red-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Yamaha Wr155 Red GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Yamaha Wr155 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": false,
+   "variasi": [
+    {
+     "id": 4224,
+     "sku": "SETWR-11-44-R",
+     "nilai": "SETWR-11-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4225,
+     "sku": "SETWR-12-44-R",
+     "nilai": "SETWR-12-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4226,
+     "sku": "SETWR-13-44-R",
+     "nilai": "SETWR-13-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4227,
+     "sku": "SETWR-11-46-R",
+     "nilai": "SETWR-11-46-R",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4228,
+     "sku": "SETWR-12-46-R",
+     "nilai": "SETWR-12-46-R",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4229,
+     "sku": "SETWR-13-46-R",
+     "nilai": "SETWR-13-46-R",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    }
+   ]
+  },
+  {
+   "id": 4213,
+   "nama": "Gear Set Yamaha Wr155 Black GNNK Racing Product",
+   "sku": "SET-WR155-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-wr155-black-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Yamaha Wr155 Black GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Yamaha Wr155 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": false,
+   "variasi": [
+    {
+     "id": 4214,
+     "sku": "SETWR-11-44-B",
+     "nilai": "SETWR-11-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4215,
+     "sku": "SETWR-12-44-B",
+     "nilai": "SETWR-12-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4216,
+     "sku": "SETWR-13-44-B",
+     "nilai": "SETWR-13-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4217,
+     "sku": "SETWR-11-46-B",
+     "nilai": "SETWR-11-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4218,
+     "sku": "SETWR-12-46-B",
+     "nilai": "SETWR-12-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4219,
+     "sku": "SETWR-13-46-B",
+     "nilai": "SETWR-13-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLACK-1.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    }
+   ]
+  },
+  {
+   "id": 4206,
+   "nama": "Gear Set Yamaha Wr155 Blue GNNK Racing Product",
+   "sku": "SET-WR155-BLUE",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-wr155-blue-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Yamaha Wr155 Blue GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Yamaha Wr155 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 3000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4207,
+     "sku": "SETWR-11-44-BE",
+     "nilai": "SETWR-11-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": false
+    },
+    {
+     "id": 4208,
+     "sku": "SETWR-12-44-BE",
+     "nilai": "SETWR-12-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": false
+    },
+    {
+     "id": 4209,
+     "sku": "SETWR-13-44-BE",
+     "nilai": "SETWR-13-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": false
+    },
+    {
+     "id": 4210,
+     "sku": "G-SETWR-11-46-BE",
+     "nilai": "SETWR-11-46-BE",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4211,
+     "sku": "G-SETWR-12-46-BE",
+     "nilai": "SETWR-12-46-BE",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4212,
+     "sku": "G-SETWR-13-46-BE",
+     "nilai": "SETWR-13-46-BE",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4198,
+   "nama": "Gear Set Kawasaki Klx150 Red GNNK Racing Product",
+   "sku": "SET-KLX-RED",
+   "tautan": "https://gnnkracing.id/product/gear-set-kawasaki-klx150-red-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Kawasaki Klx150 Red GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Kawasaki Klx150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4199,
+     "sku": "SETKLX-11-44-R",
+     "nilai": "SETKLX-11-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4200,
+     "sku": "SETKLX-12-44-R",
+     "nilai": "SETKLX-12-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4201,
+     "sku": "SETKLX-13-44-R",
+     "nilai": "SETKLX-13-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4202,
+     "sku": "SETKLX-11-46-R",
+     "nilai": "SETKLX-11-46-R",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4203,
+     "sku": "SETKLX-12-46-R",
+     "nilai": "SETKLX-12-46-R",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4204,
+     "sku": "SETKLX-13-46-R",
+     "nilai": "SETKLX-13-46-R",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4191,
+   "nama": "Gear Set Kawasaki Klx150 Black GNNK Racing Product",
+   "sku": "SET-KLX-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-kawasaki-klx150-black-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Kawasaki Klx150 Black GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Kawasaki Klx150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4192,
+     "sku": "SETKLX-11-44-B",
+     "nilai": "SETKLX-11-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4193,
+     "sku": "SETKLX-12-44-B",
+     "nilai": "SETKLX-12-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4194,
+     "sku": "SETKLX-13-44-B",
+     "nilai": "SETKLX-13-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4195,
+     "sku": "SETKLX-11-46-B",
+     "nilai": "SETKLX-11-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4196,
+     "sku": "SETKLX-12-46-B",
+     "nilai": "SETKLX-12-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4197,
+     "sku": "SETKLX-13-46-B",
+     "nilai": "SETKLX-13-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    }
+   ]
+  },
+  {
+   "id": 4183,
+   "nama": "Gear Set Kawasaki Klx150 Blue GNNK Racing Product",
+   "sku": "SET-KLX-BLUE",
+   "tautan": "https://gnnkracing.id/product/gear-set-kawasaki-klx150-blue-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Kawasaki Klx150 Blue GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Kawasaki Klx150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4184,
+     "sku": "SETKLX-11-44-BE",
+     "nilai": "SETKLX-11-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4185,
+     "sku": "SETKLX-12-44-BE",
+     "nilai": "SETKLX-12-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4186,
+     "sku": "SETKLX-13-44-BE",
+     "nilai": "SETKLX-13-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4187,
+     "sku": "SETKLX-11-46-BE",
+     "nilai": "SETKLX-11-46-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4188,
+     "sku": "SETKLX-12-46-BE",
+     "nilai": "SETKLX-12-46-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4189,
+     "sku": "SETKLX-13-46-BE",
+     "nilai": "SETKLX-13-46-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-KLX-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4159,
+   "nama": "Gear Set Honda Crf150 Black GNNK Racing Product",
+   "sku": "SET-CRF-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-black-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Honda Crf150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4162,
+     "sku": "SETCRF-11-44-B",
+     "nilai": "SETCRF-11-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4163,
+     "sku": "SETCRF-12-44-B",
+     "nilai": "SETCRF-12-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4164,
+     "sku": "SETCRF-13-44-B",
+     "nilai": "SETCRF-13-44-B",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4165,
+     "sku": "SETCRF-11-46-B",
+     "nilai": "SETCRF-11-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4166,
+     "sku": "SETCRF-12-46-B",
+     "nilai": "SETCRF-12-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4167,
+     "sku": "SETCRF-13-46-B",
+     "nilai": "SETCRF-13-46-B",
+     "harga": 755000,
+     "harga_coret": 1000000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLACK.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 4151,
+   "nama": "Gear Set Honda Crf150 Blue GNNK Racing Product",
+   "sku": "SET-CRF-BLUE",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-blue-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Honda Crf150 Blue GNNK Racing Product",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Honda Crf150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4152,
+     "sku": "SETCRF-11-44-BE",
+     "nilai": "SETCRF-11-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4153,
+     "sku": "SETCRF-12-44-BE",
+     "nilai": "SETCRF-12-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4154,
+     "sku": "SETCRF-13-44-BE",
+     "nilai": "SETCRF-13-44-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4155,
+     "sku": "SETCRF-11-46-BE",
+     "nilai": "SETCRF-11-46-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4156,
+     "sku": "SETCRF-12-46-BE",
+     "nilai": "SETCRF-12-46-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4157,
+     "sku": "SETCRF-13-46-BE",
+     "nilai": "SETCRF-13-46-BE",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-BLUE.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    }
+   ]
+  },
+  {
+   "id": 4144,
+   "nama": "Gear Set Honda Crf150 Red GNNK Racing Product",
+   "sku": "SET-CRF-RED",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-red-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Honda Crf150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4145,
+     "sku": "SETCRF-11-44-R",
+     "nilai": "SETCRF-11-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg",
+     "berat": 3000,
+     "stok_ada": false
+    },
+    {
+     "id": 4146,
+     "sku": "SETCRF-12-44-R",
+     "nilai": "SETCRF-12-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4147,
+     "sku": "SETCRF-13-44-R",
+     "nilai": "SETCRF-13-44-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": false
+    },
+    {
+     "id": 4148,
+     "sku": "SETCRF-11-46-R",
+     "nilai": "SETCRF-11-46-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4149,
+     "sku": "SETCRF-12-46-R",
+     "nilai": "SETCRF-12-46-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    },
+    {
+     "id": 4150,
+     "sku": "SETCRF-13-46-R",
+     "nilai": "SETCRF-13-46-R",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-RED.jpg",
+     "berat": 5000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 3890,
+   "nama": "Gear Set Honda Crf150 Gold GNNK Racing Product",
+   "sku": "SET-CRF-GOLD",
+   "tautan": "https://gnnkracing.id/product/gear-set-honda-crf150-gold-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 855000,
+   "deskripsi": "Gear Set Honda CRF150 TYPE 520 Gold GNNK Racing Product\nGear Depan Tersedia Ukuran :\n# 520-12T Black\n# 520-13T Black\nGear Belakang Tersedia Ukuran :\n# 520-44T Warna Gold\n# 520-46T Warna Gold\nRantai 520-130L Gold\nSpesifikasi Kelebihan produk GNNK Racing\n# Menggunakan bahan Baja #1045\n# Kekuatan dan masa pemakaian untuk harian lebih dari 1 tahun\n# Desain menarik\n# Kekuatan produk ini sudah teruji di berbagai macam pengguna motor, Untuk berkompetisi di ajang balap motorcross / grasstrack / Enduro / Freestyle",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Set Honda Crf150 GNNK Racing",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 5000,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4138,
+     "sku": "SETCRF-11-44-G",
+     "nilai": "SETCRF-11-44-G",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4139,
+     "sku": "SETCRF-12-44-G",
+     "nilai": "SETCRF-12-44-G",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4140,
+     "sku": "SETCRF-13-44-G",
+     "nilai": "SETCRF-13-44-G",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4141,
+     "sku": "SETCRF-11-46-G",
+     "nilai": "SETCRF-11-46-G",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4142,
+     "sku": "SETCRF-12-46-G",
+     "nilai": "SETCRF-12-46-G",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4143,
+     "sku": "SETCRF-13-46-G",
+     "nilai": "SETCRF-13-46-G",
+     "harga": 655000,
+     "harga_coret": 855000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-CRF-150-GOLD.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 3570,
+   "nama": "Gear Set Supermoto GNNK Racing Product",
+   "sku": "GEAR-SET-SUPERMOTO",
+   "tautan": "https://gnnkracing.id/product/gear-set-supermoto-gnnk-racing-product/",
+   "harga": 655000,
+   "harga_coret": 655000,
+   "deskripsi": "Simple Contact FormPlease enable JavaScript in your browser to complete this form.Please enable JavaScript in your browser to complete this form.Nama *Single Line TeEmail *Single Line TextComment or Message *GET A FREE QUOTE",
+   "ringkas": "Gear Set GNNK Racing cocok digunakan :\nHarian ✅ | Touring ✅\nTrabas ✅ | Grasstrack ✅\nWheelie Wheelie ✅ | Kontes ✅\nPembayaran Bisa Menggunakan :\nCOD, Virtual Bca, Virtual Bri, Berbagai Macam Bank\nAlfamart, Indomart, Alfamidi\nQris, Ovo, Dana, ShopeePay\nSesuaikan Motor & Pilihan Ukuran Gear :",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product",
+    "Gear Supermoto Klx150 | Crf150 | Wr155"
+   ],
+   "berat": 3000,
+   "rating": 5.0,
+   "jumlah_ulasan": 4,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 4096,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4097,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4098,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4099,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4100,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4101,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4102,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4103,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4104,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4105,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4106,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4107,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4108,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4109,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4110,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4111,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4112,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4113,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4114,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4115,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4116,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 655000,
+     "harga_coret": 655000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4117,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4118,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4119,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4120,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4121,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4122,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4123,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4124,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4125,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4126,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4127,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4128,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4129,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4130,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4131,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4132,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4133,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4134,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4135,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4136,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    },
+    {
+     "id": 4137,
+     "sku": "GEAR-SET-SUPERMOTO",
+     "nilai": "GEAR-SET-SUPERMOTO",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/GEAR-SET-WR-155-BLUE-2.jpg",
+     "berat": 3000,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 3516,
+   "nama": "Gear Set Yamaha Fiz R Force 1 Rx King Alloy GNNK Racing Product",
+   "sku": "GEARSET-FIZ-ALLOY-ORANGE",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-fiz-r-force-1-rx-king-alloy-gnnk-racing-product/",
+   "harga": 415000,
+   "harga_coret": 515000,
+   "deskripsi": "Gear Set Yamaha Fiz R Force 1 Rx King GNNK Racing Product Set Fiz R 415\nDengan ukuran opsi pilihan\nG-415/12-36-Ornge+R\nG-415/13-36-Ornge+R\nG-415/14-36-Ornge+R\nG-415/15-36-Ornge+R\nG-415/16-36-Ornge+R\n________________\nG-415/12-37-Ornge+R ( kosong )\nG-415/13-37-Ornge+R ( kosong )\nG-415/14-37-Ornge+R ( kosong )\nG-415/15-37-Ornge+R ( kosong )\nG-415/16-37-Ornge+R ( kosong )\nG-415/12-40-Ornge+R\nG-415/13-40-Ornge+R\nG-415/14-40-Ornge+R\nG-415/15-40-Ornge+R\nG-415/16-40-Ornge+R\nUntuk Gear Belakang saja\nGb-415-36F-Ornge = 285.000\nGb-415-37F-Ornge = 285.000 ( kosong )\nGb-415-40F-Ornge = 305.000",
+   "ringkas": "Teruji untuk harian maupun balap road / drag race\nGear Set Sudah Teruji\nRingan\nBerkualitas",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-orange-alloy.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/12.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/9.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/13.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product"
+   ],
+   "berat": 1000,
+   "rating": 5.0,
+   "jumlah_ulasan": 1,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5397,
+     "sku": "G-415/12-36-Ornge+R",
+     "nilai": "G-415/12-36-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5398,
+     "sku": "G-415/13-36-Ornge+R",
+     "nilai": "G-415/13-36-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5399,
+     "sku": "G-415/14-36-Ornge+R",
+     "nilai": "G-415/14-36-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5400,
+     "sku": "G-415/15-36-Ornge+R",
+     "nilai": "G-415/15-36-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5401,
+     "sku": "G-415/16-36-Ornge+R",
+     "nilai": "G-415/16-36-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": true
+    },
+    {
+     "id": 5716,
+     "sku": "G-415/12-40-Ornge+R",
+     "nilai": "G-415/12-40-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/05/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 5717,
+     "sku": "G-415/13-40-Ornge+R",
+     "nilai": "G-415/13-40-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/05/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 5718,
+     "sku": "G-415/14-40-Ornge+R",
+     "nilai": "G-415/14-40-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/05/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 5719,
+     "sku": "G-415/15-40-Ornge+R",
+     "nilai": "G-415/15-40-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/05/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    },
+    {
+     "id": 5720,
+     "sku": "G-415/16-40-Ornge+R",
+     "nilai": "G-415/16-40-Ornge+R",
+     "harga": 415000,
+     "harga_coret": 515000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2026/05/gear-set-orange-alloy.jpg",
+     "berat": 1000,
+     "stok_ada": false
+    }
+   ]
+  },
+  {
+   "id": 3507,
+   "nama": "Gear Set Yamaha Fiz R Rx King Alloy Baja GNNK Racing Product",
+   "sku": "GEARSET-FIZ-ALLOY-BAJA",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-fiz-r-rx-king-alloy-baja-gnnk-racing-product/",
+   "harga": 405000,
+   "harga_coret": 505000,
+   "deskripsi": "Gear Set Yamaha Fiz R Rx King Alloy Baja GNNK Racing Product\nTersedia untuk motor Yamaha Fiz R / Rx king Jupiter z / Persamaan motor,\nUntuk Ukuran List Gear Bahan Kombinasi Alloy Baja Orange Black\nSet Fiz R / Rx King 415 GNNK Racing Product harga satu set (gear depan, belakang dan rantai Rp 399.000)\nDengan ukuran opsi pilihan\n415/13-35AB+R | 415/14-35AB+R | 415/15-35AB+R | 415/16-35AB+R\n415/13-36AB+R | 415/14-36AB+R | 415/15-36AB+R | 415/16-36AB+R\n415/13-37AB+R | 415/14-37AB+R | 415/15-37AB+R | 415/16-37AB+R\n415/13-38AB+R | 415/14-38AB+R | 415/15-38AB+R | 415/16-38AB+R\n415/13-39AB+R | 415/14-38AB+R | 415/15-39AB+R | 415/16-39AB+R\n415/13-40AB+R | 415/14-40AB+R | 415/15-40AB+R | 415/16-40AB+R\nGear belakang Bahan Kombinasi Alloy Baja Orange Black ( harga gear belakang saja Rp 285.000)\nGB-415-35-AB | GB-415-36-AB | GB-415-37-AB\nGB-415-38-AB | GB-415-39-AB | GB-415-40-AB\n__________________________________________\nKode Sku Varian = Gear Belakang Kombinasi Alloy+Baja Orange+Black",
+   "ringkas": "Gear Set Sudah Teruji\nRingan\nBerkualitas",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-kombinasi.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/12.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/13.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/3.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product"
+   ],
+   "berat": 1,
+   "rating": 0.0,
+   "jumlah_ulasan": 0,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 5407,
+     "sku": "G-415/12-36AB+R",
+     "nilai": "G-415/12-36AB+R",
+     "harga": 405000,
+     "harga_coret": 505000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-kombinasi.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 5408,
+     "sku": "G-415/13-36AB+R",
+     "nilai": "G-415/13-36AB+R",
+     "harga": 405000,
+     "harga_coret": 505000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-kombinasi.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 5409,
+     "sku": "G-415/14-36AB+R",
+     "nilai": "G-415/14-36AB+R",
+     "harga": 405000,
+     "harga_coret": 505000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-kombinasi.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 5410,
+     "sku": "G-415/15-36AB+R",
+     "nilai": "G-415/15-36AB+R",
+     "harga": 405000,
+     "harga_coret": 505000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-kombinasi.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 5411,
+     "sku": "G-415/16-36AB+R",
+     "nilai": "G-415/16-36AB+R",
+     "harga": 405000,
+     "harga_coret": 505000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-kombinasi.jpg",
+     "berat": 1,
+     "stok_ada": true
+    }
+   ]
+  },
+  {
+   "id": 3447,
+   "nama": "Gear Set Yamaha Fiz R Rx King Black GNNK Racing Product",
+   "sku": "GEARSET-FIZ-BAJA-BLACK",
+   "tautan": "https://gnnkracing.id/product/gear-set-yamaha-fiz-r-rx-king-black-gnnk-racing-product/",
+   "harga": 345000,
+   "harga_coret": 445000,
+   "deskripsi": "Gear Set Motor Yamaha Fiz R Rx King Black GNNK Racing Product\nGear Set Gms Racing Product untuk motor Yamaha Fiz R / Rx king Jupiter z / Persamaan motor,\nUntuk Ukuran List Gear Bahan Baja warna Black",
+   "ringkas": "Teruji untuk harian maupun balap road / drag race\nGear Set Sudah Teruji\nRingan\nBerkualitas",
+   "gambar": [
+    "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/12.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/6.jpg",
+    "https://gnnkracing.id/wp-content/uploads/2025/07/13.jpg"
+   ],
+   "kategori": [
+    "Gear GNNK Racing Product"
+   ],
+   "berat": 1,
+   "rating": 5.0,
+   "jumlah_ulasan": 2,
+   "stok_ada": true,
+   "variasi": [
+    {
+     "id": 3830,
+     "sku": "415/13-33Black+R",
+     "nilai": "G-415/12-33-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3831,
+     "sku": "415/14-33Black+R",
+     "nilai": "G-415/13-33-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3832,
+     "sku": "415/15-33Black+R",
+     "nilai": "G-415/14-33-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3833,
+     "sku": "415/16-33Black+R",
+     "nilai": "G-415/15-33-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3834,
+     "sku": "415/12-34Black+R",
+     "nilai": "G-415/16-33-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3835,
+     "sku": "415/13-34Black+R",
+     "nilai": "G-415/12-34-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3836,
+     "sku": "415/14-34Black+R",
+     "nilai": "G-415/13-34-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3837,
+     "sku": "415/15-34Black+R",
+     "nilai": "G-415/14-34-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3838,
+     "sku": "415/16-34Black+R",
+     "nilai": "G-415/15-34-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3839,
+     "sku": "415/12-35Black+R",
+     "nilai": "G-415/16-34-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3840,
+     "sku": "415/13-35Black+R",
+     "nilai": "G-415/12-35-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3841,
+     "sku": "415/14-35Black+R",
+     "nilai": "G-415/13-35-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3842,
+     "sku": "415/15-35Black+R",
+     "nilai": "G-415/14-35-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3843,
+     "sku": "415/16-35Black+R",
+     "nilai": "G-415/15-35-Black+R",
+     "harga": 345000,
+     "harga_coret": 445000,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/10/1.-gear-set-black.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3844,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/16-35-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3845,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/13-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3846,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/12-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3847,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/14-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3848,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/15-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3849,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/16-36-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3850,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/12-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3851,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/13-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3852,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/14-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3853,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/15-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3854,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/16-37-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3855,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/12-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3856,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/13-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3857,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/14-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3858,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/15-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3859,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/16-38-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3860,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/13-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3861,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/12-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3862,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/14-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3863,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/15-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3864,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/16-39-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3865,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/12-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3866,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/13-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3867,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/14-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 3868,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/15-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    },
+    {
+     "id": 5412,
+     "sku": "GEARSET-FIZ-BAJA-BLACK",
+     "nilai": "G-415/16-40-Black+R",
+     "harga": 0,
+     "harga_coret": 0,
+     "gambar": "https://gnnkracing.id/wp-content/uploads/2025/07/gear-set-black-1.jpg",
+     "berat": 1,
+     "stok_ada": true
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,65 @@
+[    0.9-    3.9] Oke, Assalamu'alaikum Warahmatullahi Wabarakatuh
+[    3.9-    9.9] Mas Wahid berikut untuk seperti ini ya
+[    9.9-   13.9] Di bagian PO
+[   13.9-   16.9] Ini sudah betul untuk irisan atas ya
+[   16.9-   20.9] Nah, tapi untuk kemarin yang saya input lagi
+[   20.9-   25.9] Contoh, saya order PO itu kan di awal September tanggal 1
+[   25.9-   28.9] Tanggal 1 masa produksi 1 bulan, 2 bulan
+[   28.9-   30.9] Mungkin bikin 1 bulan
+[   30.9-   34.9] Pengiriman ini kan ada biaya pengiriman dari luar
+[   34.9-   40.9] Itu tidak mungkin sama di inputnya di saat berbarengan
+[   40.9-   44.9] Apakah bisa nantinya dibuatnya itu terpisah
+[   44.9-   49.9] Di sini mas, di pengeluaran
+[   49.9-   51.9] Di bagian pengeluaran ini, sini
+[   51.9-   54.9] Itu biaya pengiriman dan transport
+[   54.9-   57.9] Tanggalnya, tanggal hari ini contohnya
+[   57.9-   60.9] Atau di nanti cashnya di tanggal berapa
+[   60.9-   63.9] Contoh, biaya pengiriman dari China ke Indonesia
+[   63.9-   66.9] Via container 3 juta
+[   66.9-   68.9] Di sini saya tarah pernah
+[   68.9-   74.9] Tapi, di sini itu auto atau bisa memilih dengan opsi si PO tersebut
+[   74.9-   85.6] PO awal September
+[   85.6-   88.9] Nah, di sini itu ada nomornya
+[   88.9-   93.9] Dan auto-clem ke si bagian si pembelian supplier
+[   93.9-   96.9] Yaitu nomor tujuan yang disitu
+[   96.9-  103.9] Jadi nanti ongkos kirimnya itu menambahkan dari si harga barang
+[  103.9-  107.9] Jadi HPP-nya itu bisa full HPP-nya
+[  107.9-  109.9] HPP si barangnya
+[  109.9-  116.9] Di sini biaya model per PO-nya
+[  116.9-  120.9] Di sini akan muncul satu persatunya itu akan beda
+[  120.9-  122.9] Seperti itu mas
+[  122.9-  124.9] Kalau di inputnya di sini berarti
+[  124.9-  128.9] Setiap kali harus ada proses pembayaran
+[  128.9-  130.9] Di sini yang diupdate ulang
+[  130.9-  132.9] Di sini totalnya dari sekian
+[  133.9-  144.9] Di sini ada biaya yang total dari si PO sama PO DP
+[  144.9-  146.9] Berapa persen
+[  146.9-  148.9] Terus selalu selesainya berapa persen
+[  148.9-  150.9] Di situ kemarin jalurnya belum ketemu
+[  150.9-  152.9] Karena harus dua kali clem
+[  152.9-  154.9] Seperti itu
+[  154.9-  156.9] Jadi mohon dibantu mas
+[  156.9-  157.9] Untuk prosesnya
+[  157.9-  159.9] Apakah bisa dibuatkan
+[  159.9-  162.9] Yaitu proses clem ongkos kirimnya
+[  162.9-  164.9] Dari biaya bertahapnya
+[  164.9-  167.9] Contoh dari China ke Indonesia
+[  167.9-  172.9] Terus dari Indonesia dari Gudang, Jakarta ke tempat saya
+[  172.9-  174.9] Itu kan butuh case lagi
+[  174.9-  176.9] Ada biaya juga packing
+[  176.9-  180.9] Tapi inputnya itu di bagian ini, pengeluaran
+[  180.9-  183.9] Tapi ngeclem kok sih
+[  184.9-  186.9] Bihayanya sih
+[  186.9-  188.9] Pembelian supplier
+[  188.9-  190.9] Atau awal barang
+[  190.9-  192.9] Jadi nanti HPP barangnya
+[  192.9-  194.9] Itu nanti terperinci
+[  194.9-  196.9] Secara otomatis
+[  198.9-  200.9] Dari biaya pengiriman
+[  201.9-  203.9] Sama biaya pengurusan lain-lain
+[  203.9-  205.9] Sama juga biaya packaging
+[  205.9-  207.9] Atau biaya pengemas
+[  207.9-  208.9] Seperti itu mas
+[  208.9-  211.9] Mohon dibantu mas untuk ngecekannya
+[  211.9-  214.9] Untuk fitur tersebut
+[  214.9-  216.9] Assalamu'alaikum warahmatullahi wabarakatuh

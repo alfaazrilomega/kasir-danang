@@ -1,0 +1,156 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Default accent (violet). Overridden at runtime by src/lib/accents.ts. */
+  :root {
+    --brand-50: 243 241 255;
+    --brand-100: 235 229 255;
+    --brand-200: 217 206 255;
+    --brand-300: 189 167 255;
+    --brand-400: 155 117 255;
+    --brand-500: 124 77 255;
+    --brand-600: 90 65 229;
+    --brand-700: 74 50 197;
+    --brand-800: 61 42 160;
+    --brand-900: 51 38 130;
+    --brand-950: 31 21 81;
+  }
+
+  html { font-size: 14px; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-ink-50 text-ink-800 antialiased;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-feature-settings: 'ss01', 'cv11';
+    letter-spacing: -0.005em;
+  }
+  .dark body { @apply bg-ink-950 text-ink-100; }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl bg-white shadow-card border border-ink-100;
+  }
+  .dark .card { @apply bg-ink-900 border-ink-800; }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all
+           disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand-500/40;
+  }
+  .btn-primary { @apply btn bg-brand-600 text-white hover:bg-brand-700; }
+  .btn-secondary {
+    @apply btn bg-ink-100 text-ink-800 hover:bg-ink-200;
+  }
+  .dark .btn-secondary { @apply bg-ink-800 text-ink-100 hover:bg-ink-700; }
+  .btn-ghost {
+    @apply btn bg-transparent text-ink-700 hover:bg-ink-100;
+  }
+  .dark .btn-ghost { @apply text-ink-200 hover:bg-ink-800; }
+  .btn-danger { @apply btn bg-red-500 text-white hover:bg-red-600; }
+
+  /*
+   * Tombol yang diletakkan di atas header berwarna (gradien brand).
+   * Warnanya SAMA di mode terang maupun gelap karena latarnya selalu ungu,
+   * bukan latar halaman.
+   *
+   * Kenapa perlu varian sendiri: sebelumnya tombol-tombol ini memakai
+   * `variant="secondary"` lalu ditimpa `className="bg-white ..."`. Aturan
+   * `.dark .btn-secondary` adalah selektor keturunan (spesifisitas 0,2,0)
+   * sehingga mengalahkan utility `bg-white` (0,1,0). Di mode gelap latarnya
+   * berubah jadi ink-800 sementara teksnya tetap gelap karena `!text-ink-900`
+   * — hasilnya gelap di atas gelap dan tidak terbaca.
+   */
+  .btn-on-brand { @apply btn bg-white text-ink-900 hover:bg-white/90; }
+  .dark .btn-on-brand { @apply bg-white text-ink-900 hover:bg-white/90; }
+  .btn-on-brand-soft { @apply btn bg-white/10 text-white hover:bg-white/20; }
+  .dark .btn-on-brand-soft { @apply bg-white/10 text-white hover:bg-white/20; }
+
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm
+           placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20
+           focus:outline-none transition;
+  }
+  /* Warna placeholder ditulis langsung (ink-500). Lewat
+     `@apply placeholder:text-ink-500` Tailwind menganggapnya bagian dari
+     definisi utility text-ink-500, dan aturan `.dark .text-ink-500` di bawah
+     jadi dependensi melingkar yang menggagalkan seluruh berkas. */
+  .dark .input { @apply border-ink-700 bg-ink-900 text-ink-100; }
+  .dark .input::placeholder { color: #5b6a82; }
+
+  .pill {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-ink-200 rounded-full;
+  }
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-ink-700; }
+
+  /* Bisa digulir tanpa bilah gulir yang terlihat. */
+  .tanpa-bilah { scrollbar-width: none; -ms-overflow-style: none; }
+  .tanpa-bilah::-webkit-scrollbar { display: none; }
+
+  /* Warna teks redup dan aksen di mode gelap.
+     Diukur pada 17 layar admin: text-ink-500 jatuh ke 2,33:1 di latar gelap,
+     text-ink-600 ke 2,33:1, text-brand-600 ke 2,8:1, dan text-brand-700 ke
+     2,1:1 - semuanya di bawah ambang keterbacaan 3:1. Dipakai di ratusan
+     tempat, jadi diperbaiki di sini, bukan satu per satu.
+
+     Aturan ini ada di layer components dan bernilai spesifisitas sama dengan
+     varian `dark:text-*`, yang keluar belakangan di layer utilities. Jadi
+     komponen yang sudah memilih warna gelapnya sendiri tetap menang, dan
+     yang belum memilih ikut aturan ini.
+
+     Nilainya ditulis langsung, bukan lewat @apply: `.dark .input` sudah
+     memakai `placeholder:text-ink-500`, jadi `@apply text-ink-400` di dalam
+     `.dark .text-ink-500` membuat Tailwind melihat dependensi melingkar dan
+     seluruh berkas gagal dikompilasi. */
+  .dark .text-ink-500 { color: #7d8aa0; }
+  .dark .text-ink-600 { color: #b0b8c6; }
+  .dark .text-brand-600 { color: rgb(var(--brand-300)); }
+  .dark .text-brand-700 { color: rgb(var(--brand-200)); }
+
+  /* Sebagian permukaan tetap putih walau mode gelap menyala: kartu masuk dan
+     daftar di toko online. Di sana teks justru harus tetap gelap, jadi
+     penandanya mengembalikan warna aslinya. Spesifisitasnya 0,3,0 sehingga
+     menang atas empat aturan di atas. */
+  .dark .permukaan-terang .text-ink-500 { color: #5b6a82; }
+  .dark .permukaan-terang .text-ink-600 { color: #475569; }
+  .dark .permukaan-terang .text-brand-600 { color: rgb(var(--brand-600)); }
+  .dark .permukaan-terang .text-brand-700 { color: rgb(var(--brand-700)); }
+}
+
+/* Bar progres karosel beranda: terisi dari kiri selama satu slide. */
+@keyframes isi-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Pop-up masuk: latar memudar masuk, kartu naik sedikit. */
+@keyframes latar-muncul { from { opacity: 0; } }
+@keyframes dialog-muncul { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+
+/* Halaman dengan bilah aksi menempel di bawah (checkout & detail produk di HP)
+   menandai dirinya lewat kelas di <body>, supaya kaki halaman tidak tertutup.
+   Ruangnya harus melewati bilah DAN tombol "Pesan" yang melayang di atasnya,
+   karena keduanya sama-sama menempel di tepi bawah layar. */
+@media (max-width: 1023px) {
+  body.ada-bilah-bawah .kaki-toko {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 122px);
+  }
+}
+
+/* Safari iOS memperbesar halaman saat kolom berhuruf < 16px difokuskan, dan
+   ukuran dasar aplikasi 14px. Pemilih memakai [class] supaya menang atas
+   utilitas text-sm bawaan Tailwind, bukan lewat !important. */
+@media (max-width: 767px) {
+  input[class]:not([type='checkbox']):not([type='radio']),
+  select[class],
+  textarea[class] {
+    font-size: max(16px, 1em);
+  }
+}
