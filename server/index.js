@@ -568,6 +568,31 @@ app.use(
   }),
 );
 
+// Laporan pelanggaran Content-Security-Policy dari browser (header CSP dipasang
+// nginx). Dicatat ringkas ke log supaya sumber yang terblokir terlihat sebelum
+// dan sesudah CSP ditegakkan. Dibatasi per IP: laporan bisa dikirim siapa saja.
+const laporanCsp = new Map();
+app.post(
+  '/api/csp-laporan',
+  express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }),
+  (req, res) => {
+    const ip = String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? '').split(',')[0].trim();
+    const kini = Date.now();
+    const catatan = (laporanCsp.get(ip) ?? []).filter((t) => kini - t < 10 * 60 * 1000);
+    if (catatan.length < 20) {
+      catatan.push(kini);
+      laporanCsp.set(ip, catatan);
+      const daftar = Array.isArray(req.body) ? req.body.map((r) => r?.body ?? r) : [req.body?.['csp-report'] ?? req.body];
+      for (const r of daftar.slice(0, 5)) {
+        const ambil = (k1, k2) => String(r?.[k1] ?? r?.[k2] ?? '').slice(0, 200);
+        console.warn(`[csp] ${ambil('effective-directive', 'effectiveDirective') || ambil('violated-directive', 'violatedDirective')} diblokir ${ambil('blocked-uri', 'blockedURL')} di ${ambil('document-uri', 'documentURL').replace(/\?.*$/, '')}${r?.disposition === 'report' || r?.disposition === undefined ? '' : ' [' + r.disposition + ']'}`);
+      }
+    }
+    if (laporanCsp.size > 5000) laporanCsp.clear();
+    res.status(204).end();
+  },
+);
+
 /**
  * Akun demo hanya hidup bila ALLOW_DEMO_ACCOUNTS=true (pengembangan tanpa
  * database). Di produksi akun ini pernah memberi sesi admin toko asli lewat
@@ -3047,8 +3072,11 @@ app.use(errorMiddleware);
 // hanya didengarkan saat dijalankan langsung (lokal / PM2).
 const DI_VERCEL = Boolean(process.env.VERCEL);
 if (!DI_VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`Kasir API listening on :${PORT}`);
+  // HOST=127.0.0.1 di produksi: hanya nginx di server yang sama yang bisa
+  // menjangkau Node. Tanpa HOST, perilaku lama (semua alamat) tetap untuk lokal.
+  const HOST = (process.env.HOST || '').trim() || undefined;
+  app.listen(PORT, HOST, () => {
+    console.log(`Kasir API listening on ${HOST ?? ''}:${PORT}`);
   });
   const jedaAntrean = Number(process.env.AFFILIATE_OUTBOX_INTERVAL_MS || 15000);
   let antreanJalan = false;

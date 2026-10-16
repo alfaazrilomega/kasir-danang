@@ -339,7 +339,15 @@ export function PublicShell({
       </main>
       <ModalMasuk />
 
-      {tanpaKaki && <div className="kaki-toko" aria-hidden="true" data-kaki-disembunyikan />}
+      {/* Di HP pilihan tema hanya ada di kaki halaman; checkout tanpa kaki tetap
+          menyediakannya di atas bilah bayar (temuan QC R2). Desktop memakai tombol di header. */}
+      {tanpaKaki && (
+        <div className="kaki-toko" data-kaki-disembunyikan>
+          <div className="flex justify-center pt-2 lg:hidden" data-tema-checkout>
+            <PilihTemaToko />
+          </div>
+        </div>
+      )}
       <footer className="kaki-toko text-[12px]" hidden={tanpaKaki}>
         <div className="border-t border-ink-100 bg-[#f5f5f5] py-6 dark:border-ink-800 dark:bg-ink-900">
           <div className={cn(LEBAR, 'grid gap-8 sm:grid-cols-2 lg:grid-cols-[297px_297px_1fr]')}>
@@ -474,29 +482,7 @@ export function PublicShell({
             </div>
             <div>
               <h3 className="mb-2 text-sm text-ink-800 dark:text-ink-100">Tampilan</h3>
-              <div role="group" aria-label="Tampilan toko" data-pilih-tema-toko className="inline-flex rounded-full bg-ink-100 p-1 dark:bg-ink-800">
-                {(
-                  [
-                    ['light', 'Terang', Sun],
-                    ['dark', 'Gelap', Moon],
-                  ] as const
-                ).map(([nilai, label, Ikon]) => (
-                  <button
-                    key={nilai}
-                    type="button"
-                    aria-pressed={themeToko === nilai}
-                    onClick={() => setThemeToko(nilai)}
-                    className={cn(
-                      'flex h-[44px] items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold transition-[color,background-color,transform] duration-200 ease-out active:scale-[0.97]',
-                      themeToko === nilai
-                        ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-700 dark:text-white'
-                        : 'text-ink-600 hover:text-ink-900 dark:text-ink-300 dark:hover:text-white',
-                    )}
-                  >
-                    <Ikon size={14} /> {label}
-                  </button>
-                ))}
-              </div>
+              <PilihTemaToko />
             </div>
           </div>
           <div className={cn(LEBAR, 'mt-8 flex items-center justify-between text-ink-600 dark:text-ink-300')}>
@@ -522,6 +508,37 @@ export function PublicShell({
           <MessageCircle size={18} className="text-brand-600" /> Pesan
         </a>
       )}
+    </div>
+  );
+}
+
+/** Pilihan tampilan terang/gelap toko, dipakai di kaki halaman dan di checkout HP. */
+function PilihTemaToko() {
+  const themeToko = useUI((s) => s.themeToko);
+  const setThemeToko = useUI((s) => s.setThemeToko);
+  return (
+    <div role="group" aria-label="Tampilan toko" data-pilih-tema-toko className="inline-flex rounded-full bg-ink-100 p-1 dark:bg-ink-800">
+      {(
+        [
+          ['light', 'Terang', Sun],
+          ['dark', 'Gelap', Moon],
+        ] as const
+      ).map(([nilai, label, Ikon]) => (
+        <button
+          key={nilai}
+          type="button"
+          aria-pressed={themeToko === nilai}
+          onClick={() => setThemeToko(nilai)}
+          className={cn(
+            'flex h-[44px] items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold transition-[color,background-color,transform] duration-200 ease-out active:scale-[0.97]',
+            themeToko === nilai
+              ? 'bg-white text-ink-900 shadow-sm dark:bg-ink-700 dark:text-white'
+              : 'text-ink-600 hover:text-ink-900 dark:text-ink-300 dark:hover:text-white',
+          )}
+        >
+          <Ikon size={14} /> {label}
+        </button>
+      ))}
     </div>
   );
 }

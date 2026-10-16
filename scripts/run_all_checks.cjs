@@ -43,6 +43,7 @@ const SUITES = [
   'verify_pintu_admin',
   'verify_mfa_staf',
   'verify_gelombang12',
+  'verify_qc_sisa',
 ];
 let pass = 0, total = 0, failed = [];
 for (const s of SUITES) {

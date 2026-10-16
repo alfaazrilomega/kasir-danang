@@ -468,6 +468,18 @@ export function PublicProductDetail() {
   const harga = itemFlash ? Number(itemFlash.flash_price) : Number(product.base_price);
   const coret = itemFlash ? Number(itemFlash.base_price) : Number(product.compare_at_price ?? 0);
   const diskon = coret > harga && harga > 0 ? Math.round((1 - harga / coret) * 100) : 0;
+  // Tinggi blok harga dijaga sama untuk semua varian sekelompok. Tanpa ini lencana
+  // Flash Sale dan baris harga coret muncul-hilang saat ganti varian, dan tombol
+  // varian serta tombol beli di bawahnya bergeser 46px (temuan QC R1).
+  const adaFlashKelompok = !!itemFlash || variants.some((v) => petaFlash.has(v.id));
+  const adaCoretKelompok =
+    diskon > 0 ||
+    variants.some((v) => {
+      const f = petaFlash.get(v.id);
+      const h = f ? Number(f.flash_price) : Number(v.base_price);
+      const c = f ? Number(f.base_price) : Number(v.compare_at_price ?? 0);
+      return c > h && h > 0;
+    });
   const namaAtribut = product.variant_label?.trim() || 'Variasi';
   const labelVarian = (v: { variant_name: string | null; sku: string | null }) => v.variant_name || v.sku || 'Standar';
   const variasi = [...variants].sort((a, b) =>
@@ -633,7 +645,7 @@ export function PublicProductDetail() {
               navigate(alamatProduk({ id: v.id, slug: v.slug ?? product.slug }, v.sku || v.id));
             }}
             className={cn(
-              'rounded-md border px-3 py-1.5 text-sm transition',
+              'min-h-[44px] rounded-md border px-3 py-1.5 text-sm transition lg:min-h-0',
               aktif
                 ? 'border-brand-500 text-brand-700 dark:text-brand-200'
                 : 'border-ink-200 hover:border-brand-400 dark:border-ink-700',
@@ -1119,14 +1131,20 @@ export function PublicProductDetail() {
               <img src={store.pdp_banner_url} alt="Promo toko" className="max-h-24 rounded-md object-contain" />
             )}
             <div>
-              {itemFlash && (
-                <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
+              {adaFlashKelompok && (
+                <span
+                  aria-hidden={!itemFlash}
+                  className={cn(
+                    'mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white',
+                    !itemFlash && 'invisible',
+                  )}
+                >
                   Flash Sale
                 </span>
               )}
               <div className="text-3xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
-              {diskon > 0 && (
-                <div className="mt-1 flex items-center gap-2 text-sm">
+              {adaCoretKelompok && (
+                <div aria-hidden={diskon <= 0} className={cn('mt-1 flex items-center gap-2 text-sm', diskon <= 0 && 'invisible')}>
                   <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
                   <span className="text-ink-700 dark:text-ink-200">-{diskon}%</span>
                 </div>
@@ -1186,14 +1204,20 @@ export function PublicProductDetail() {
           <div className="space-y-2 px-4 pb-4 lg:hidden">
             <div className="flex items-start justify-between gap-3">
               <div>
-                {itemFlash && (
-                  <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                {adaFlashKelompok && (
+                  <span
+                    aria-hidden={!itemFlash}
+                    className={cn(
+                      'mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white',
+                      !itemFlash && 'invisible',
+                    )}
+                  >
                     Flash Sale
                   </span>
                 )}
                 <div className="text-2xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
-                {diskon > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
+                {adaCoretKelompok && (
+                  <div aria-hidden={diskon <= 0} className={cn('flex items-center gap-2 text-xs', diskon <= 0 && 'invisible')}>
                     <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
                     <span>-{diskon}%</span>
                   </div>

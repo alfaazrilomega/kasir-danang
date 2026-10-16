@@ -126,7 +126,7 @@ export function KategoriPengeluaranPanel() {
         <div className="flex gap-2">
           <input
             id="kategori-pengeluaran-baru"
-            className="input min-w-0 flex-1"
+            className="input min-h-[44px] min-w-0 flex-1 sm:min-h-0"
             value={nama}
             maxLength={MAKS_PANJANG_KATEGORI}
             placeholder="cth. Ongkir Ekspedisi"
@@ -137,7 +137,7 @@ export function KategoriPengeluaranPanel() {
             aria-invalid={galat ? true : undefined}
             aria-describedby={galat ? 'kategori-pengeluaran-galat' : undefined}
           />
-          <Button type="submit" disabled={busy || !nama.trim()} className="shrink-0">
+          <Button type="submit" disabled={busy || !nama.trim()} className="min-h-[44px] shrink-0 sm:min-h-0">
             <Plus size={15} /> Tambah
           </Button>
         </div>
