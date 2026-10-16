@@ -25,12 +25,14 @@ const FIXTURE = import.meta.env.DEV ? new URLSearchParams(window.location.search
 const sedangDibuka = new Map<string, Promise<Hasil<{ redirect: string }>>>();
 
 const POLA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const POLA_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Jaringan putus atau galat server: gangguan sementara, bukan salah link. */
 const gangguanSementara = (r: Hasil<unknown>) => r.status === 0 || r.status >= 500;
 
 /**
- * Halaman pembuka link affiliate (`/aff/{KODE}`, `/aff/{KODE}/{id produk}`)
+ * Halaman pembuka link affiliate (`/aff/{KODE}`, `/aff/{KODE}/{slug produk}`,
+ * dan bentuk lama `/aff/{KODE}/{id produk}`)
  * dan undangan (`/aff/undangan/{token}`). Server yang memeriksa, mencatat klik,
  * dan memasang cookie; halaman ini hanya meneruskan pengunjung ke tujuan atau
  * menampilkan pesan galat Sejoli bila link tidak sah.
@@ -84,7 +86,13 @@ export function AffiliateOpen() {
       // salah link (jaringan, galat server, batas laju) tidak boleh menahannya
       // di layar galat: pengunjung tetap diantar, hanya kliknya yang tidak tercatat.
       if (gangguanSementara(r) || r.status === 429) {
-        const tujuan = undangan ? '/toko/masuk?tab=daftar' : POLA_UUID.test(bagian[1] ?? '') ? `/toko/produk?id=${bagian[1]}` : '/toko';
+        const tujuan = undangan
+          ? '/toko/masuk?tab=daftar'
+          : POLA_UUID.test(bagian[1] ?? '')
+            ? `/toko/produk?id=${bagian[1]}`
+            : POLA_SLUG.test(bagian[1] ?? '')
+              ? `/toko/produk/${bagian[1]}`
+              : '/toko';
         navigate(tujuan, { replace: true });
         return;
       }

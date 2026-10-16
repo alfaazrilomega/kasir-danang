@@ -220,6 +220,25 @@ berikut indeksnya.
 
 ---
 
+## Gelombang 12 — Daftar client 16 Okt (lewat user dan leader)
+
+| # | Permintaan (kutipan) | Status / letak |
+|---|---|---|
+| 21 | "Kiriminaja pengajuan domain baru store.gnnkracing.id" | Tindakan client/admin di akun KiriminAja. Dicatat. |
+| 22 | "integrasi payment gateway mayar.id" (leader: "Yang mayarnya ini sudah kemarin mas") | Dikerjakan leader (rilis VPS `20261015-mayar-inline`). |
+| 23 | "integrasi payment gateway doku.com" | Menunggu: kredensial merchant DOKU dan kode leader masuk git. |
+| 24 | "tingkatkan keamanan : URL login admin dibuat unik, 2FA" | Selesai 15-16 Okt: alamat masuk rahasia /pintu-…, gerbang API, batas percobaan, verifikasi dua langkah (TOTP). |
+| 25 | "footer di nonaktifkan ketika halaman checkout" | Selesai 16 Okt: `/toko/checkout` tanpa footer; di HP ruang di bawah bilah bayar tetap disisakan. Suite `verify_gelombang12`. |
+| 26 | "catatan pengeluaran di bagian kategori ada penambahan field untuk menambah jenis kategori di store setting" | Selesai 16 Okt: Pengaturan Toko > Kategori Pengeluaran (migrasi 056). Dipakai di Pengeluaran, saringan, biaya nota Pembelian, impor pengeluaran, dan Laba Rugi. Kategori yang dihapus tetap tampil di catatan lama. |
+| 27 | "aplikasi di install di 2 vps yang berbeda, untuk VPS satunya tanpa /toko" | Dicatat saja; maksudnya ditanyakan setelah semua butir selesai. |
+| 28 | Foto checkout: "bisa detail generate desa kecamatan juga ? dan ketika di lengkapi hanya rt rw dan patokan rumahnya" | Menunggu API wilayah/ongkir (KiriminAja). Dicatat. |
+| 29 | Foto affiliate: "untuk affiliasi pencarian produk ini per sku ? ( gear satria ada 3 sku barang) bisa dibuat per produk barang satria dan trus affiliasinya mengikuti penamaan barang tersebut (bukan per sku/varian produkny)" | Selesai 16 Okt: tab Link satu baris per produk (jumlah varian + rentang harga, SKU tetap bisa dicari); link `/aff/{KODE}/{nama-produk}` berlaku untuk semua varian, komisi tetap tercatat untuk varian mana pun; link lama berisi id tetap jalan. |
+| 30 | Foto halaman produk: "bagian tampilan ini - toko baru - pelanggan tetap dihilangkan saja" | Selesai 16 Okt: "Toko Baru" dan "Pelanggan Tetap" dihapus dari kartu toko. |
+| 31 | Leader: "coba via laptop ( mobile ) ketika klik ganti sku / varian geser nya gambar ngedip" | Selesai 16 Okt: ganti varian tanpa kerangka, gambar tidak digambar ulang, gulir tidak melompat, lembar Pilihan Produk HP tetap terbuka; "+ Keranjang" sesaat setelah memilih memasukkan varian yang baru dipilih. |
+| 32 | Video MasNanangvideo1: "Ketika klik kategori ... masuk langsung ke menu bawah ... Bisa diperbaiki stlh klik kategori tidak kebawah dlu tp stay ke deretan produk tujuan diatas" | Selesai 16 Okt: klik kategori dari beranda mendarat di deretan produk paling atas (HP dan desktop). |
+
+---
+
 ## Masih menunggu client
 
 | Hal | Yang ditunggu |

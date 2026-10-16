@@ -39,6 +39,8 @@ import {
 import { emailUndangan, emailUndanganAdmin } from './pekerja.js';
 
 const POLA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Bentuk slug produk (slug_dari_teks di migrasi 054). */
+const POLA_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const POLA_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PESAN = {
   kodeTidakAda: 'Affiliasi tidak terdaftar di database',
@@ -141,17 +143,35 @@ export function pasangRuteAffiliate(app, deps) {
     if (!batasBuka(clientIp(req))) throw galat(429, 'Terlalu banyak permintaan, coba lagi sebentar.');
     const storeId = String(req.body?.store_id ?? '').trim();
     const kode = String(req.body?.code ?? '').trim();
-    const productId = req.body?.product_id ? String(req.body.product_id) : null;
+    const rujukan = req.body?.product_id ? String(req.body.product_id).trim() : '';
     if (!POLA_UUID.test(storeId)) throw galat(400, 'store_id tidak valid.');
     const pengaturan = await muatPengaturan(pool, storeId);
-    // Link /aff/KODE/{id produk} tetap memakai id; pengunjung diantar ke alamat
-    // slug produk itu dengan varian yang sama (permintaan 20).
+    // Link produk berbentuk /aff/KODE/{slug produk}: satu link untuk satu produk
+    // beserta semua variannya (permintaan 29). Varian wakilnya yang dicatat di
+    // klik dan cookie; atribusi komisi sudah mencocokkan per kelompok varian.
+    // Link lama /aff/KODE/{id produk} tetap jalan dan mengantar ke varian itu.
+    let productId = null;
     let tujuanProduk = '/toko';
-    if (productId && POLA_UUID.test(productId)) {
+    if (rujukan && POLA_UUID.test(rujukan)) {
+      productId = rujukan;
       const p = (await pool.query('select slug, sku from public.products where id = $1 and store_id = $2', [productId, storeId])).rows[0];
       tujuanProduk = p?.slug
         ? `/toko/produk/${encodeURIComponent(p.slug)}?varian=${encodeURIComponent(p.sku || productId)}`
         : `/toko/produk?id=${productId}`;
+    } else if (rujukan) {
+      if (!POLA_SLUG.test(rujukan)) throw galat(404, PESAN.produkTidakAda);
+      const wakil = (
+        await pool.query(
+          `select id from public.products
+            where store_id = $1 and slug = $2 and is_active
+            order by affiliate_enabled desc, (track_stock and stock_qty <= 0), base_price, created_at
+            limit 1`,
+          [storeId, rujukan],
+        )
+      ).rows[0];
+      if (!wakil) throw galat(404, PESAN.produkTidakAda);
+      productId = wakil.id;
+      tujuanProduk = `/toko/produk/${encodeURIComponent(rujukan)}`;
     }
     if (!pengaturan.enabled) {
       res.json({ data: { redirect: tujuanProduk } });
@@ -302,7 +322,7 @@ export function pasangRuteAffiliate(app, deps) {
     // ?id= dipakai tombol "Bagikan & dapat komisi" di halaman satu produk.
     const satu = POLA_UUID.test(String(req.query.id ?? '')) ? String(req.query.id) : null;
     const r = await pool.query(
-      `select p.id, p.name, p.variant_label, p.sku, p.base_price::float8 as price,
+      `select p.id, p.name, p.variant_label, p.variant_name, p.sku, p.parent_sku, p.slug, p.base_price::float8 as price,
               (not p.affiliate_if_bought or exists (
                  select 1 from public.order_items i
                    join public.orders o on o.id = i.order_id

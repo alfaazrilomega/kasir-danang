@@ -51,9 +51,10 @@ import {
 import { useNavigate } from '@/lib/router';
 import { ALAMAT_SETELAH_KELUAR } from '@/lib/pintuAdmin';
 import { KeamananAkun } from '@/components/settings/KeamananAkun';
+import { KategoriPengeluaranPanel } from '@/components/settings/KategoriPengeluaranPanel';
 import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
-import { Globe } from 'lucide-react';
+import { Globe, Tags } from 'lucide-react';
 import { ACCENTS } from '@/lib/accents';
 import { hasCapability } from '@/lib/roles';
 import { POLA_ID_PIXEL } from '@/lib/pixelToko';
@@ -156,6 +157,7 @@ const SECTIONS: { id: string; label: string; icon: typeof SettingsIcon }[] = [
   { id: 'online', label: 'Toko Online', icon: Globe },
   { id: 'loyalty', label: 'Loyalitas', icon: Coins },
   { id: 'channels', label: 'Channel', icon: StoreIcon },
+  { id: 'expense-categories', label: 'Pengeluaran', icon: Tags },
   { id: 'integrations', label: 'Integrasi API', icon: Link2 },
   { id: 'security', label: 'Keamanan', icon: ShieldCheck },
   { id: 'display', label: 'Tampilan', icon: Monitor },
@@ -175,7 +177,7 @@ export function Settings() {
     () =>
       SECTIONS.filter(
         (section) =>
-          canManageStore || !['business', 'receipt', 'loyalty', 'integrations'].includes(section.id),
+          canManageStore || !['business', 'receipt', 'loyalty', 'integrations', 'expense-categories'].includes(section.id),
       ),
     [canManageStore],
   );
@@ -1140,6 +1142,15 @@ export function Settings() {
             description="Marketplace dan potongannya. Dipakai POS untuk memperkirakan penerimaan bersih dan jatuh tempo piutang."
           >
             <SalesChannelsPanel storeId={profile?.store_id ?? ''} />
+          </Section>
+
+          <Section
+            id="expense-categories"
+            icon={Tags}
+            title="Kategori Pengeluaran"
+            description="Tambah jenis kategori untuk catatan pengeluaran dan biaya nota pembelian."
+          >
+            <KategoriPengeluaranPanel />
           </Section>
         </>
       )}

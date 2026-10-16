@@ -23,6 +23,7 @@ import { PublicShell } from '@/components/layout/PublicShell';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { cn, formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { useCustomer } from '@/lib/customerAccount';
+import { kunciKelompok } from '@/lib/publicCatalog';
 import {
   affiliateApi,
   LABEL_STATUS_KOMISI,
@@ -689,20 +690,61 @@ function BarisLink({ id, label, link, pesanWa }: { id: string; label: string; li
   );
 }
 
+/** Satu produk beserta semua variannya, satu baris di pencarian tab Link. */
+interface ProdukAffiliate {
+  kunci: string;
+  name: string;
+  slug: string | null;
+  wakilId: string;
+  varian: number;
+  hargaMin: number;
+  hargaMax: number;
+  teksCari: string;
+}
+
+/**
+ * Klien meminta link affiliate per produk, bukan per SKU (permintaan 29): gear
+ * yang punya tiga SKU muncul sekali, dan link-nya memakai nama produk. Kelompok
+ * mengikuti kunci toko online, jadi satu link sama dengan satu halaman produk.
+ * Pencarian tetap menerima SKU atau nama varian.
+ */
+function kelompokkanProdukAffiliate(products: AffiliateProduct[]): ProdukAffiliate[] {
+  const peta = new Map<string, ProdukAffiliate>();
+  for (const p of products) {
+    if (!p.eligible) continue;
+    const k = kunciKelompok(p);
+    const teks = `${p.variant_label ?? ''} ${p.variant_name ?? ''} ${p.sku ?? ''}`.toLowerCase();
+    const ada = peta.get(k);
+    if (!ada) {
+      peta.set(k, { kunci: k, name: p.name, slug: p.slug, wakilId: p.id, varian: 1, hargaMin: p.price, hargaMax: p.price, teksCari: `${p.name.toLowerCase()} ${teks}` });
+      continue;
+    }
+    ada.varian += 1;
+    ada.hargaMin = Math.min(ada.hargaMin, p.price);
+    ada.hargaMax = Math.max(ada.hargaMax, p.price);
+    ada.slug = ada.slug || p.slug;
+    ada.teksCari += ` ${teks}`;
+  }
+  return [...peta.values()];
+}
+
+function teksHargaKelompok(p: ProdukAffiliate): string {
+  return p.hargaMax > p.hargaMin ? `${formatMoney(p.hargaMin)} - ${formatMoney(p.hargaMax)}` : formatMoney(p.hargaMin);
+}
+
 function TabLink({ code, me, products, gagal, onUlang }: { code: string; me: AffiliateMe; products: AffiliateProduct[] | null; gagal: boolean; onUlang: () => void }) {
   const [q, setQ] = useState('');
-  const [produk, setProduk] = useState<AffiliateProduct | null>(null);
+  const [produk, setProduk] = useState<ProdukAffiliate | null>(null);
   const [platform, setPlatform] = useState('');
   const [mediaId, setMediaId] = useState('');
   const [param, setParam] = useState<{ source?: string; media?: string }>({});
   const asal = asalToko();
+  const kelompok = useMemo(() => (products ? kelompokkanProdukAffiliate(products) : []), [products]);
   const hasil = useMemo(() => {
     const kata = q.trim().toLowerCase();
-    if (!products || !kata) return [];
-    return products
-      .filter((p) => p.eligible && `${p.name} ${p.variant_label ?? ''} ${p.sku ?? ''}`.toLowerCase().includes(kata))
-      .slice(0, 8);
-  }, [products, q]);
+    if (!kata) return [];
+    return kelompok.filter((p) => p.teksCari.includes(kata)).slice(0, 8);
+  }, [kelompok, q]);
   const hari = me.settings?.cookie_days ?? 30;
 
   return (
@@ -749,11 +791,11 @@ function TabLink({ code, me, products, gagal, onUlang }: { code: string; me: Aff
             <ul className="mt-2 divide-y divide-ink-100 overflow-hidden rounded-md border border-ink-100 dark:divide-ink-800 dark:border-ink-800" role="listbox" aria-label="Hasil pencarian produk">
               {hasil.length === 0 && <li className="px-3 py-3 text-sm text-ink-500">Produk tidak ditemukan atau tidak diaffiliasikan.</li>}
               {hasil.map((p) => (
-                <li key={p.id}>
+                <li key={p.kunci}>
                   <button
                     type="button"
                     role="option"
-                    aria-selected={produk?.id === p.id}
+                    aria-selected={produk?.kunci === p.kunci}
                     onClick={() => {
                       setProduk(p);
                       setQ('');
@@ -762,9 +804,9 @@ function TabLink({ code, me, products, gagal, onUlang }: { code: string; me: Aff
                   >
                     <span className="min-w-0">
                       <span className="line-clamp-2 text-ink-900 dark:text-ink-100">{p.name}</span>
-                      {p.variant_label && <span className="block truncate font-mono text-[11px] text-ink-500">{p.variant_label}</span>}
+                      {p.varian > 1 && <span className="block text-[11px] text-ink-500">{p.varian} varian</span>}
                     </span>
-                    <span className="shrink-0 text-xs font-semibold tabular-nums text-brand-600">{formatMoney(p.price)}</span>
+                    <span className="shrink-0 text-right text-xs font-semibold tabular-nums text-brand-600">{teksHargaKelompok(p)}</span>
                   </button>
                 </li>
               ))}
@@ -775,13 +817,13 @@ function TabLink({ code, me, products, gagal, onUlang }: { code: string; me: Aff
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0 text-sm font-medium text-ink-900 dark:text-ink-100">
                   <span className="line-clamp-2">{produk.name}</span>
-                  {produk.variant_label && <span className="block font-mono text-[11px] font-normal text-ink-500">{produk.variant_label}</span>}
+                  {produk.varian > 1 && <span className="block text-[11px] font-normal text-ink-500">Berlaku untuk semua {produk.varian} varian</span>}
                 </div>
                 <button type="button" onClick={() => setProduk(null)} className="min-h-[44px] shrink-0 px-2 text-xs font-medium text-ink-500 hover:text-ink-800">
                   Ganti
                 </button>
               </div>
-              <BarisLink id="link-produk" label="Link produk ini" link={linkAffiliate(asal, code, produk.id, param)} pesanWa={`${produk.name}:`} />
+              <BarisLink id="link-produk" label="Link produk ini" link={linkAffiliate(asal, code, produk.slug || produk.wakilId, param)} pesanWa={`${produk.name}:`} />
             </div>
           )}
         </div>

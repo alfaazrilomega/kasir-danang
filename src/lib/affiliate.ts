@@ -98,7 +98,11 @@ export interface AffiliateProduct {
   id: string;
   name: string;
   variant_label: string | null;
+  variant_name: string | null;
   sku: string | null;
+  parent_sku: string | null;
+  /** Alamat produk sekelompok varian (migrasi 054). */
+  slug: string | null;
   price: number;
   eligible: boolean;
 }
@@ -352,9 +356,13 @@ export function teksTarif(tier: CommissionTier[] | null | undefined): string | n
 /** Pilihan cepat tarif affiliate (Q-1, AS-3). */
 export const PRESET_TARIF = [5, 10, 15] as const;
 
-/** Link affiliate seluruh toko atau satu produk, dengan parameter akuisisi bila diisi. */
-export function linkAffiliate(origin: string, code: string, productId?: string | null, param?: { source?: string; media?: string }): string {
-  const path = productId ? `/aff/${encodeURIComponent(code)}/${encodeURIComponent(productId)}` : `/aff/${encodeURIComponent(code)}`;
+/**
+ * Link affiliate seluruh toko atau satu produk, dengan parameter akuisisi bila diisi.
+ * `produk` adalah slug produk (satu link untuk semua varian, permintaan 29); id
+ * produk hanya dipakai bila slug belum ada.
+ */
+export function linkAffiliate(origin: string, code: string, produk?: string | null, param?: { source?: string; media?: string }): string {
+  const path = produk ? `/aff/${encodeURIComponent(code)}/${encodeURIComponent(produk)}` : `/aff/${encodeURIComponent(code)}`;
   const q = new URLSearchParams();
   if (param?.source) q.set('utm_source', param.source);
   if (param?.media) q.set('utm_media', param.media);

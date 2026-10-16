@@ -25,7 +25,12 @@ const ubin = (teks, label) => (new RegExp(label + '\\s*\\n\\s*([^\\n]+)').exec(t
 (async () => {
   const toko = A.idToko();
   const asli = psql(`select affiliate_settings::text from public.stores where id = '${toko}'`);
-  const [P1] = A.produkUji(toko, 1);
+  // Link produk berlaku per kelompok varian dan membuka varian default (permintaan 29).
+  // Produk uji dipilih yang kelompoknya satu varian, supaya yang dibeli lewat link memang P1.
+  const P1 = A.produkUji(toko, 40).find(
+    (c) => psql(`select count(*) from public.products q join public.products p on q.store_id = p.store_id and q.slug = p.slug where p.id = '${c.id}' and q.is_active`) === '1',
+  );
+  if (!P1) throw new Error('Tidak ada produk uji satu varian');
   const sku = psql(`select sku from public.products where id = '${P1.id}'`);
   const browser = await chromium.launch();
 
@@ -100,8 +105,10 @@ const ubin = (teks, label) => (new RegExp(label + '\\s*\\n\\s*([^\\n]+)').exec(t
     record('Link seluruh toko berbentuk {toko}/aff/{KODE}', (await aff.locator('#link-toko').inputValue()) === `${BASE_URL}/aff/${kode}`, await aff.locator('#link-toko').inputValue());
     await aff.locator('#cari-produk-affiliate').fill(sku);
     await aff.getByRole('option').first().click();
-    const linkProduk = `${BASE_URL}/aff/${kode}/${P1.id}`;
-    record('Link produk berbentuk {toko}/aff/{KODE}/{id produk} (AC-10)', (await aff.locator('#link-produk').inputValue()) === linkProduk, await aff.locator('#link-produk').inputValue());
+    // Sejak permintaan 29 link produk memakai alamat (slug) produk, bukan id varian.
+    const slugP1 = psql(`select slug from public.products where id = '${P1.id}'`);
+    const linkProduk = `${BASE_URL}/aff/${kode}/${slugP1}`;
+    record('Link produk berbentuk {toko}/aff/{KODE}/{slug produk} (AC-10, permintaan 29)', (await aff.locator('#link-produk').inputValue()) === linkProduk, await aff.locator('#link-produk').inputValue());
     await aff.locator('#param-platform').selectOption('what');
     await aff.locator('#param-id').fill('grup 1');
     await aff.getByRole('button', { name: 'Tambahkan parameter' }).click();
@@ -120,11 +127,12 @@ const ubin = (teks, label) => (new RegExp(label + '\\s*\\n\\s*([^\\n]+)').exec(t
     const tamu = await tamuCtx.newPage();
     trackApi(tamu);
     await tamu.goto(linkParam, { waitUntil: 'networkidle' });
-    // Sejak permintaan 20 halaman produk beralamat /toko/produk/{slug}?varian={SKU}.
-    const [slugP1, varianP1] = psql(`select slug || '|' || coalesce(sku, id::text) from public.products where id = '${P1.id}'`).split('|');
-    await tamu.waitForURL((u) => u.pathname === `/toko/produk/${slugP1}` && u.searchParams.get('varian') === varianP1, { timeout: 15000 }).catch(() => {});
+    // Link slug membuka /toko/produk/{slug}; produk satu varian langsung tampil sebagai P1.
+    await tamu.waitForURL((u) => u.pathname === `/toko/produk/${slugP1}`, { timeout: 15000 }).catch(() => {});
     const tibaDi = new URL(tamu.url());
-    record('Link affiliate membawa pengunjung ke halaman produknya (AC-13)', tibaDi.pathname === `/toko/produk/${slugP1}` && tibaDi.searchParams.get('varian') === varianP1, tamu.url());
+    const namaP1 = psql(`select name from public.products where id = '${P1.id}'`);
+    const judulTiba = await tamu.locator('h1').first().innerText({ timeout: 15000 }).catch(() => '');
+    record('Link affiliate membawa pengunjung ke halaman produknya (AC-13)', tibaDi.pathname === `/toko/produk/${slugP1}` && judulTiba.trim() === namaP1.trim(), `${tamu.url()} · ${judulTiba}`);
     const kue = (await tamuCtx.cookies()).find((c) => c.name === 'gnnk_aff');
     const hariKue = kue ? (kue.expires - Date.now() / 1000) / 86400 : 0;
     record('Cookie affiliate terpasang: HttpOnly, SameSite Lax, umur 30 hari (AC-6, AC-13)', !!kue && kue.httpOnly && kue.sameSite === 'Lax' && hariKue > 29.9 && hariKue < 30.1, kue ? `httpOnly=${kue.httpOnly} sameSite=${kue.sameSite} ${hariKue.toFixed(2)} hari` : 'tidak ada');

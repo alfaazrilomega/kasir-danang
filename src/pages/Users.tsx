@@ -486,7 +486,10 @@ export function UsersPage() {
                         </td>
                         <td className="hidden py-3 pr-4 text-ink-500 sm:table-cell">{formatDateTime(user.created_at)}</td>
                         <td className="py-3">
-                          <div className="flex justify-end gap-1">
+                          {/* Tiga tombol aksi (tambah reset verifikasi dua langkah) membuat tabel
+                              340px di wadah 328px pada layar HP. Di layar sempit tombolnya
+                              disusun dua kolom, baris user sudah cukup tinggi untuk dua deret. */}
+                          <div className="grid grid-cols-2 justify-items-end gap-1 sm:flex sm:justify-end">
                             <button
                               onClick={() => startEdit(user)}
                               className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"

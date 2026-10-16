@@ -25,9 +25,11 @@ import {
   runExpenseImport,
   type ExpenseImportPlan,
 } from '@/lib/expenseImport';
+import { kategoriTambahanToko } from '@/lib/expenseCategories';
 
 export function ImporPengeluaran({ storeId, onSelesai, onBatal }: { storeId: string; onSelesai: () => void; onBatal: () => void }) {
   const profile = useAuth((s) => s.profile);
+  const store = useAuth((s) => s.store);
   const daftar = useLiveQuery(() => db.expenses.where('store_id').equals(storeId).toArray(), [storeId]) ?? [];
   const [plan, setPlan] = useState<ExpenseImportPlan | null>(null);
   const [fileName, setFileName] = useState('');
@@ -40,7 +42,7 @@ export function ImporPengeluaran({ storeId, onSelesai, onBatal }: { storeId: str
   async function pickFile(file: File) {
     setBusy(true);
     try {
-      const hasil = await planExpenseImportFromFile(file);
+      const hasil = await planExpenseImportFromFile(file, kategoriTambahanToko(store));
       setPlan(hasil);
       setFileName(file.name);
       if (!hasil.rows.length) toast.error('Tidak ada baris yang bisa diimpor dari berkas ini.');

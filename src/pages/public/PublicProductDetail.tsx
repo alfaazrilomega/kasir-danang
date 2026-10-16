@@ -193,18 +193,28 @@ export function PublicProductDetail() {
       setLoading(false);
       return;
     }
+    // Ganti varian di produk yang sama: halaman tetap tampil dan data varian
+    // ditukar diam-diam. Dulu seluruh halaman diganti kerangka lalu digambar
+    // ulang dari atas, sehingga gambar berkedip (permintaan 31). Lembar pilihan
+    // varian di HP juga tetap terbuka.
+    const gantiVarian = !!data && (slugUrl ? slugUrl === data.product.slug : data.variants.some((v) => v.id === idUrl));
     let alive = true;
-    setLoading(true);
-    setGaleri(0);
+    if (!gantiVarian) {
+      setLoading(true);
+      setGaleri(0);
+      setHalaman(1);
+      setLembar(null);
+      setDeskripsiTerbentang(false);
+      window.scrollTo({ top: 0 });
+    }
     setQty(1);
     setQtyText('1');
-    setHalaman(1);
-    setLembar(null);
-    setDeskripsiTerbentang(false);
-    window.scrollTo({ top: 0 });
+    const gambarDari = (p: PublicProductDetailData['product']) => JSON.stringify([p.image_url, p.video_url, p.images]);
     fetchPublicProduct(PUBLIC_STORE_ID, slugUrl ? { slug: slugUrl, varian: varianUrl } : { id: idUrl })
       .then((d) => {
         if (!alive) return;
+        // Galeri kembali ke foto pertama hanya bila foto varian baru memang berbeda.
+        if (gantiVarian && data && gambarDari(d.product) !== gambarDari(data.product)) setGaleri(0);
         setData(d);
         if (!slugUrl && d.product.slug) {
           // Parameter lain (utm iklan, dll.) ikut dibawa ke alamat baru.
@@ -216,7 +226,8 @@ export function PublicProductDetail() {
           navigate(`${awalanSlug}${encodeURIComponent(d.product.slug)}?${sisa.toString()}`, { replace: true });
         }
       })
-      .catch(() => alive && setData(null))
+      // Gagal memuat rincian varian: halaman tetap memakai data varian yang sudah tampil.
+      .catch(() => alive && !gantiVarian && setData(null))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -237,7 +248,8 @@ export function PublicProductDetail() {
       const kode = saya.data?.eligible ? saya.data.profile?.code : null;
       if (!kode || !hidup) return;
       const p = await affiliateApi.products(token, productId);
-      if (hidup && p.data?.[0]?.eligible) setLinkKomisi(linkAffiliate(window.location.origin, kode, productId));
+      const ini = p.data?.[0];
+      if (hidup && ini?.eligible) setLinkKomisi(linkAffiliate(window.location.origin, kode, ini.slug || productId));
     })();
     return () => {
       hidup = false;
@@ -530,7 +542,6 @@ export function PublicProductDetail() {
 
   // ---- Penjual ----
   const nilaiToko = store.rating_count ? Math.round((store.positive_count / store.rating_count) * 100) : null;
-  const umurTahun = Math.floor((Date.now() - new Date(store.created_at).getTime()) / (365.25 * 86400000));
 
   function aturQty(n: number) {
     const bersih = Math.min(maxQty, Math.max(1, Math.floor(n) || 1));
@@ -597,7 +608,30 @@ export function PublicProductDetail() {
           <button
             key={v.id}
             type="button"
-            onClick={() => !aktif && navigate(alamatProduk({ id: v.id, slug: v.slug ?? product.slug }, v.sku || v.id))}
+            onClick={() => {
+              if (aktif) return;
+              // Varian baru langsung dipakai harga, stok, dan tombol beli sebelum
+              // rinciannya selesai dimuat. Tanpa ini "+ Keranjang" yang diketuk
+              // sesaat setelah memilih varian memasukkan varian lama.
+              setData((d) =>
+                d && {
+                  ...d,
+                  product: {
+                    ...d.product,
+                    id: v.id,
+                    sku: v.sku,
+                    variant_name: v.variant_name,
+                    base_price: v.base_price,
+                    compare_at_price: v.compare_at_price,
+                    track_stock: v.track_stock,
+                    stock_qty: v.stock_qty,
+                    image_url: v.image_url,
+                    slug: v.slug ?? d.product.slug,
+                  },
+                },
+              );
+              navigate(alamatProduk({ id: v.id, slug: v.slug ?? product.slug }, v.sku || v.id));
+            }}
             className={cn(
               'rounded-md border px-3 py-1.5 text-sm transition',
               aktif
@@ -1259,12 +1293,12 @@ export function PublicProductDetail() {
               <Store size={20} />
             </span>
             )}
+            {/* Label umur toko ("Toko Baru") dihapus atas permintaan client (permintaan 30). */}
             <div className="min-w-0">
               <div className="truncate font-semibold">{store.name}</div>
-              <div className="truncate text-xs text-ink-500">{umurTahun >= 1 ? `Toko ${umurTahun}-Tahun` : 'Toko Baru'}</div>
             </div>
           </div>
-          <div className="grid w-full grid-cols-3 gap-4 text-center text-xs sm:w-auto lg:flex lg:gap-6 lg:text-left">
+          <div className="grid w-full grid-cols-2 gap-4 text-center text-xs sm:w-auto lg:flex lg:gap-6 lg:text-left">
             <div>
               <div className="font-semibold text-ink-800 dark:text-ink-100">{nilaiToko === null ? '-' : `${nilaiToko}%`}</div>
               <div className="text-ink-500">Nilai Toko</div>
@@ -1272,10 +1306,6 @@ export function PublicProductDetail() {
             <div>
               <div className="font-semibold text-ink-800 dark:text-ink-100">{formatNumber(store.total_sold)}</div>
               <div className="text-ink-500">Terjual oleh Toko</div>
-            </div>
-            <div>
-              <div className="font-semibold text-ink-800 dark:text-ink-100">{formatNumber(store.repeat_customers)}</div>
-              <div className="text-ink-500">Pelanggan Tetap</div>
             </div>
           </div>
           <div className="flex w-full gap-2 lg:w-auto">

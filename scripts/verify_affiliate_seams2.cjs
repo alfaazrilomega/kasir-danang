@@ -52,16 +52,19 @@ const komisi = (orderId) => psql(`select coalesce(string_agg(trunc(base_amount) 
     };
     const json = (status, error) => (r) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ error }) });
     const POLA_KLIK = '**/api/public/affiliate/click';
+    // Sejak permintaan 20 alamat /toko/produk?id= dialihkan ke /toko/produk/{slug}?varian={SKU}.
+    const [slugP1, skuP1] = psql(`select slug || '|' || coalesce(sku, id::text) from public.products where id = '${P1.id}'`).split('|');
+    const diProdukP1 = (r) => r.jalur === `/toko/produk/${slugP1}` && new URLSearchParams(r.cari).get('varian') === skuP1;
 
     const r429 = await bukaDengan(`/aff/${kode}/${P1.id}`, POLA_KLIK, json(429, 'Terlalu banyak permintaan, coba lagi sebentar.'));
     record('Batas laju (429) saat membuka link produk: pengunjung tetap tiba di halaman produk itu, tanpa layar galat (AC-67)',
-      r429.jalur === '/toko/produk' && r429.cari === `?id=${P1.id}` && r429.galat === 0, JSON.stringify(r429));
+      diProdukP1(r429) && r429.galat === 0, JSON.stringify(r429));
     const r500 = await bukaDengan(`/aff/${kode}/${P1.id}`, POLA_KLIK, json(500, 'Terjadi kesalahan server.'));
     record('Galat server (500) saat membuka link produk: pengunjung tetap tiba di halaman produk itu (AC-67)',
-      r500.jalur === '/toko/produk' && r500.cari === `?id=${P1.id}` && r500.galat === 0, JSON.stringify(r500));
+      diProdukP1(r500) && r500.galat === 0, JSON.stringify(r500));
     const rPutus = await bukaDengan(`/aff/${kode}/${P1.id}`, POLA_KLIK, (r) => r.abort('failed'));
     record('Jaringan putus saat membuka link produk: pengunjung tetap tiba di halaman produk itu (AC-67)',
-      rPutus.jalur === '/toko/produk' && rPutus.cari === `?id=${P1.id}` && rPutus.galat === 0, JSON.stringify(rPutus));
+      diProdukP1(rPutus) && rPutus.galat === 0, JSON.stringify(rPutus));
     const rToko = await bukaDengan(`/aff/${kode}`, POLA_KLIK, json(429, 'Terlalu banyak permintaan, coba lagi sebentar.'));
     record('Batas laju saat membuka link seluruh toko: pengunjung tiba di toko (AC-67)', rToko.jalur === '/toko' && rToko.galat === 0, JSON.stringify(rToko));
     const rUnd = await bukaDengan('/aff/undangan/tokenuji123', '**/api/public/affiliate/invitation', json(500, 'Terjadi kesalahan server.'));
@@ -76,11 +79,11 @@ const komisi = (orderId) => psql(`select coalesce(string_agg(trunc(base_amount) 
     });
     const klikSebelum = Number(psql(`select count(*) from public.affiliate_clicks where affiliate_id = '${Af.id}'`));
     await page.goto(BASE_URL + `/aff/${kode}/${P1.id}?utm_source=what&utm_media=ulang`, { waitUntil: 'domcontentloaded' });
-    await page.waitForURL((u) => u.pathname === '/toko/produk', { timeout: 10000 }).catch(() => {});
+    await page.waitForURL((u) => u.pathname === `/toko/produk/${slugP1}`, { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(600);
     const klikSesudah = Number(psql(`select count(*) from public.affiliate_clicks where affiliate_id = '${Af.id}' and media = 'ulang'`));
     record('Jaringan putus sesaat: satu percobaan ulang menyelamatkan klik, tercatat tepat sekali dan cookie terpasang (AC-67)',
-      panggilanKlik === 2 && klikSesudah === 1 && new URL(page.url()).pathname === '/toko/produk' && (await ctx.cookies(BASE_URL)).some((c) => c.name === 'gnnk_aff'),
+      panggilanKlik === 2 && klikSesudah === 1 && new URL(page.url()).pathname === `/toko/produk/${slugP1}` && (await ctx.cookies(BASE_URL)).some((c) => c.name === 'gnnk_aff'),
       `${panggilanKlik} panggilan, ${klikSesudah} klik (sebelumnya ${klikSebelum}), tiba di ${new URL(page.url()).pathname}`);
 
     await page.unrouteAll({ behavior: 'ignoreErrors' });

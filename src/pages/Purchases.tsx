@@ -46,7 +46,7 @@ import {
 } from '@/lib/purchaseImport';
 import { cn, errorMessage, formatDate, formatDateTime, formatMoney, formatNumber, uuid, isUuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
-import { EXPENSE_CATEGORIES } from '@/lib/expenseCategories';
+import { daftarKategoriPengeluaran, kategoriTambahanToko, opsiDenganNilai } from '@/lib/expenseCategories';
 import type {
   Expense,
   ExpenseCategory,
@@ -1653,7 +1653,7 @@ export function Purchases() {
                     setForm({ ...form, other_cost_category: e.target.value as ExpenseCategory })
                   }
                 >
-                  {EXPENSE_CATEGORIES.map((c) => (
+                  {opsiDenganNilai(daftarKategoriPengeluaran(kategoriTambahanToko(store)), form.other_cost_category).map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>
@@ -1697,7 +1697,7 @@ export function Purchases() {
                     setForm({ ...form, extra_cost_category: e.target.value as ExpenseCategory })
                   }
                 >
-                  {EXPENSE_CATEGORIES.map((c) => (
+                  {opsiDenganNilai(daftarKategoriPengeluaran(kategoriTambahanToko(store)), form.extra_cost_category).map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>

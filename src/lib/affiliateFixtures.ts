@@ -52,10 +52,11 @@ const SETTINGS = {
 };
 
 const PRODUK: AffiliateProduct[] = [
-  { id: 'b9a1d3f0-0000-4000-8000-000000000001', name: 'Gear Set Honda Crf150 Red GNNK Racing Product', variant_label: 'SETCRF-12-46-R', sku: 'SETCRF-12-46-R', price: 655000, eligible: true },
-  { id: 'b9a1d3f0-0000-4000-8000-000000000002', name: 'Gear Set Kawasaki Klx150 Blue GNNK Racing Product', variant_label: null, sku: 'SETKLX-13-42-B', price: 655000, eligible: true },
-  { id: 'b9a1d3f0-0000-4000-8000-000000000003', name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', variant_label: 'Gb-415-33F-Black', sku: 'Gb-415-33F-Black', price: 175000, eligible: true },
-  { id: 'b9a1d3f0-0000-4000-8000-000000000004', name: 'Gear Depan Yamaha Fiz R Rx King GNNK Racing Product', variant_label: 'Gd-415-13-FIZ', sku: 'Gd-415-13-FIZ', price: 50000, eligible: true },
+  { id: 'b9a1d3f0-0000-4000-8000-000000000001', name: 'Gear Set Honda Crf150 Red GNNK Racing Product', variant_label: 'SETCRF-12-46-R', variant_name: null, sku: 'SETCRF-12-46-R', parent_sku: null, slug: 'gear-set-honda-crf150-red-gnnk-racing-product', price: 655000, eligible: true },
+  { id: 'b9a1d3f0-0000-4000-8000-000000000002', name: 'Gear Set Kawasaki Klx150 Blue GNNK Racing Product', variant_label: null, variant_name: null, sku: 'SETKLX-13-42-B', parent_sku: null, slug: 'gear-set-kawasaki-klx150-blue-gnnk-racing-product', price: 655000, eligible: true },
+  { id: 'b9a1d3f0-0000-4000-8000-000000000003', name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', variant_label: 'Gb-415-33F-Black', variant_name: '33T', sku: 'Gb-415-33F-Black', parent_sku: 'GEAR-BLKNG-FIZR-BLAC', slug: 'gear-belakang-yamaha-fiz-r-rx-king-black-gnnk-racing-product', price: 175000, eligible: true },
+  { id: 'b9a1d3f0-0000-4000-8000-000000000005', name: 'Gear Belakang Yamaha Fiz R Rx King Black GNNK Racing Product', variant_label: 'Gb-415-35F-Black', variant_name: '35T', sku: 'Gb-415-35F-Black', parent_sku: 'GEAR-BLKNG-FIZR-BLAC', slug: 'gear-belakang-yamaha-fiz-r-rx-king-black-gnnk-racing-product', price: 185000, eligible: true },
+  { id: 'b9a1d3f0-0000-4000-8000-000000000004', name: 'Gear Depan Yamaha Fiz R Rx King GNNK Racing Product', variant_label: 'Gd-415-13-FIZ', variant_name: null, sku: 'Gd-415-13-FIZ', parent_sku: null, slug: 'gear-depan-yamaha-fiz-r-rx-king-gnnk-racing-product', price: 50000, eligible: true },
 ];
 
 export const FIXTURE_AFFILIATE: Record<string, AffiliateFixture> = {

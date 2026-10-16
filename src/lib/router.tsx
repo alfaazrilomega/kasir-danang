@@ -26,6 +26,18 @@ interface NavigateOptions {
 
 type NavigateFn = (to: string | number, options?: NavigateOptions) => void;
 
+/**
+ * Cara pindah alamat terakhir: klik tautan (push/replace) atau tombol Back/Forward
+ * (pop). Halaman yang dipakai ulang untuk banyak alamat (katalog toko) memakainya
+ * untuk naik ke atas saat diklik, tetapi membiarkan browser memulihkan posisi
+ * gulir saat Back.
+ */
+export type JenisNavigasi = 'awal' | 'push' | 'replace' | 'pop';
+let jenisNavigasi: JenisNavigasi = 'awal';
+export function jenisNavigasiTerakhir(): JenisNavigasi {
+  return jenisNavigasi;
+}
+
 interface RouterValue {
   location: AppLocation;
   navigate: NavigateFn;
@@ -42,7 +54,10 @@ export function BrowserRouter({ children }: { children: ReactNode }) {
   const [location, setLocation] = useState(readLocation);
 
   useEffect(() => {
-    const onPopState = () => setLocation(readLocation());
+    const onPopState = () => {
+      jenisNavigasi = 'pop';
+      setLocation(readLocation());
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -54,6 +69,7 @@ export function BrowserRouter({ children }: { children: ReactNode }) {
     }
     const nextUrl = to || '/';
     const method = options.replace ? 'replaceState' : 'pushState';
+    jenisNavigasi = options.replace ? 'replace' : 'push';
     window.history[method]({ usr: options.state ?? null }, '', nextUrl);
     setLocation(readLocation());
   }, []);

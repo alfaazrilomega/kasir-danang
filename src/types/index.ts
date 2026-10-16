@@ -50,6 +50,8 @@ export interface Store {
   social_youtube?: string | null;
   /** Tautan artikel "Jelajahi" di footer toko online, urutan array = urutan tampil. */
   footer_links?: { label: string; url: string }[] | null;
+  /** Kategori pengeluaran tambahan dari Pengaturan Toko (permintaan 26). */
+  expense_categories?: string[] | null;
   /** Tombol chat penjual di toko online bisa dimatikan tanpa menghapus nomor WhatsApp-nya. */
   chat_enabled?: boolean;
   /** ID pelacakan iklan toko online; kosong berarti platform itu tidak dipakai. */
@@ -419,7 +421,9 @@ export type ExpenseCategory =
   | 'biaya_admin'
   /** Pembayaran komisi affiliate yang dicentang "catat sebagai pengeluaran". */
   | 'komisi_affiliate'
-  | 'lainnya';
+  | 'lainnya'
+  /** Kategori tambahan buatan toko, disimpan sebagai labelnya sendiri. */
+  | (string & Record<never, never>);
 
 export type ExpensePaymentMethod = 'cash' | 'transfer' | 'card' | 'ewallet' | 'other';
 

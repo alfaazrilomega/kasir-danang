@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import { PublicShell } from '@/components/layout/PublicShell';
 import { KartuProduk } from '@/components/public/KartuProduk';
 import { Bintang } from '@/components/public/Bintang';
-import { Link, useLocation } from '@/lib/router';
+import { Link, jenisNavigasiTerakhir, useLocation } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
   alamatProduk,
@@ -124,6 +124,15 @@ export function PublicCatalog() {
   const kategoriUrl = params.get('kategori') ?? '';
   const urutUrl = params.get('urut') ?? '';
   const modeCari = !!(q || merekUrl || kategoriUrl || urutUrl || params.get('semua'));
+  const kunciTampilan = `${q}|${merekUrl}|${kategoriUrl}|${urutUrl}|${params.get('semua') ?? ''}`;
+
+  // Beranda dan halaman kategori/pencarian adalah komponen yang sama. Tanpa ini
+  // posisi gulir beranda (bagian Kategori ada jauh di bawah) terbawa dan pembeli
+  // mendarat di footer (permintaan 32). Saat Back, browser memulihkan posisi lama.
+  useEffect(() => {
+    const jenis = jenisNavigasiTerakhir();
+    if (jenis === 'push' || jenis === 'replace') window.scrollTo({ top: 0 });
+  }, [kunciTampilan]);
 
   const [catalog, setCatalog] = useState<PublicCatalogData>(EMPTY);
   const [loading, setLoading] = useState(true);

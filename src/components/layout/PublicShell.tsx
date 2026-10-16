@@ -154,6 +154,10 @@ export function PublicShell({
   // Tautan atas yang menunjuk halaman yang sedang dibuka diberi warna tema.
   // Di halaman akun, tab Pesanan = "Lacak Pesanan"; tab lain = "Akun".
   const diAkun = pathname === '/toko/akun';
+  // Checkout tanpa kaki halaman (permintaan 25): pembeli di langkah bayar tidak
+  // perlu tautan keluar. Ruang di bawah bilah bayar HP tetap disisakan lewat
+  // kelas kaki-toko yang sama, supaya baris terakhir tidak tertimbun bilah itu.
+  const tanpaKaki = pathname === '/toko/checkout';
   const tabAkun = new URLSearchParams(search).get('tab') ?? 'pesanan';
   const aktifLacak = diAkun && tabAkun === 'pesanan';
   const aktifAkun = diAkun && tabAkun !== 'pesanan';
@@ -335,7 +339,8 @@ export function PublicShell({
       </main>
       <ModalMasuk />
 
-      <footer className="kaki-toko text-[12px]">
+      {tanpaKaki && <div className="kaki-toko" aria-hidden="true" data-kaki-disembunyikan />}
+      <footer className="kaki-toko text-[12px]" hidden={tanpaKaki}>
         <div className="border-t border-ink-100 bg-[#f5f5f5] py-6 dark:border-ink-800 dark:bg-ink-900">
           <div className={cn(LEBAR, 'grid gap-8 sm:grid-cols-2 lg:grid-cols-[297px_297px_1fr]')}>
             <div>

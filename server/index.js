@@ -79,6 +79,7 @@ const TABLES = {
       'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
       'footer_links', 'chat_enabled',
       'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+      'expense_categories',
     ],
     kind: 'store',
   },
