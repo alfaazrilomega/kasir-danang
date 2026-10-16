@@ -82,7 +82,44 @@ const LOG_API = process.env.KASIR_API_LOG || 'C:/Users/ASUS/AppData/Local/Temp/c
       await p.waitForTimeout(400);
       const y1 = await atas();
       record('R1 HP: baris Pilihan Produk tidak bergeser saat ganti ke varian flash', y0 === y1, `${y0} -> ${y1}`);
+
+      // C5: ikon hati dan bagikan sejajar dengan harga, juga di varian tanpa lencana.
+      await p.goto(`${BASE_URL}/toko/produk/${slug}?varian=${INDUK}-B`, { waitUntil: 'networkidle' });
+      await p.locator('button[aria-label="Favorit"]:visible').first().waitFor({ timeout: 15000 });
+      const selisih = await p.evaluate(() => {
+        const hati = [...document.querySelectorAll('button[aria-label="Favorit"]')].find((b) => b.getBoundingClientRect().height > 0);
+        const harga = [...document.querySelectorAll('div.text-2xl')].find((d) => d.getBoundingClientRect().height > 0);
+        if (!hati || !harga) return null;
+        const t = (r) => r.top + r.height / 2;
+        return Math.round(Math.abs(t(hati.getBoundingClientRect()) - t(harga.getBoundingClientRect())));
+      });
+      record('C5 HP: ikon hati sejajar dengan baris harga (selisih tengah maksimal 4px)', selisih !== null && selisih <= 4, `${selisih}px`);
       await ctx.close();
+    }
+
+    // ---------- C1: lembar varian dengan puluhan varian, tombol beli tetap terlihat ----------
+    {
+      const INDUK2 = `${INDUK}-BANYAK`;
+      const nilai = Array.from({ length: 30 }, (_, i) => `('${toko}', '${NAMA} Banyak', ${100000 + i * 1000}, '${INDUK2}', '${INDUK2}-${i}', 'Gb-415-${30 + i}F-Black', 'Ukuran', true, true, 30, '/apple-touch-icon.png')`).join(',');
+      psql(`insert into public.products (store_id, name, base_price, parent_sku, sku, variant_name, variant_label, is_active, track_stock, stock_qty, image_url) values ${nilai}`);
+      const slug2 = psql(`select min(slug) from public.products where parent_sku = '${INDUK2}'`);
+      const ctx = await browser.newContext(HP);
+      const p = await ctx.newPage();
+      await p.goto(`${BASE_URL}/toko/produk/${slug2}`, { waitUntil: 'networkidle' });
+      await p.getByText('Pilihan Produk').first().click();
+      const tombol = p.locator('[data-tombol-beli-lembar]');
+      await tombol.waitFor({ timeout: 10000 });
+      const ukur = await tombol.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const b = [...el.querySelectorAll('button')].map((x) => Math.round(x.getBoundingClientRect().height));
+        const lembar = el.parentElement;
+        return { atas: Math.round(r.top), bawah: Math.round(r.bottom), layar: window.innerHeight, tombol: b, isi: lembar.scrollHeight, tampak: lembar.clientHeight };
+      });
+      record('C1 HP: 30 varian, tombol Beli Sekarang dan + Keranjang terlihat di dasar lembar (44px)',
+        ukur.isi > ukur.tampak && ukur.atas >= 0 && ukur.bawah <= ukur.layar && ukur.tombol.length === 2 && ukur.tombol.every((h) => h >= 44), JSON.stringify(ukur));
+      await p.screenshot({ path: path.join(path.dirname(LOG_API), 'qcs_lembar_30_varian.png') });
+      await ctx.close();
+      psql(`delete from public.products where parent_sku = '${INDUK2}'`);
     }
 
     // ---------- R2: pilihan tema di checkout HP ----------
@@ -115,6 +152,8 @@ const LOG_API = process.env.KASIR_API_LOG || 'C:/Users/ASUS/AppData/Local/Temp/c
         });
         record('R2 HP: checkout punya pilihan tema 44px dan "Gelap" mengubah tampilan',
           tinggi.length === 2 && tinggi.every((h) => h >= 44) && gelap && !ukur.geser, `tinggi ${tinggi.join(',')} gelap=${gelap}`);
+        record('C10 HP: pilihan tema checkout berlabel "Tampilan" dan jalurnya bergaris tepi',
+          (await tema.getByText('Tampilan', { exact: true }).count()) === 1 && /ring-1/.test((await tema.locator('[data-pilih-tema-toko]').getAttribute('class')) || ''));
         record('R2 HP: pilihan tema tidak tertutup bilah bayar saat digulir ke bawah',
           diBawah.atasBilah !== null && diBawah.bawahTema <= diBawah.atasBilah, `bawah tema ${diBawah.bawahTema}, atas bilah ${diBawah.atasBilah}`);
         await tema.getByRole('button', { name: /Terang/ }).click();
@@ -169,6 +208,22 @@ const LOG_API = process.env.KASIR_API_LOG || 'C:/Users/ASUS/AppData/Local/Temp/c
     const log = fs.existsSync(LOG_API) ? fs.readFileSync(LOG_API, 'utf8') : '';
     const baris = log.split(/\r?\n/).find((l) => l.includes(tanda)) || '';
     record('A17: laporan CSP diterima (204) dan dicatat tanpa query string halaman', r.status === 204 && baris.includes('[csp] script-src-elem diblokir') && !baris.includes('rahasia=1'), `${r.status} | ${baris.slice(0, 140)}`);
+
+    // C3/C4: isi laporan tidak bisa memalsukan baris log, badan rusak dijawab rapi.
+    const palsu = `PALSU-${CAP}`;
+    const kirim = (body, type = 'application/csp-report') => fetch(`${BASE_URL}/api/csp-laporan`, { method: 'POST', headers: { 'Content-Type': type, 'X-Forwarded-For': `198.18.77.${CAP % 200}` }, body });
+    const rBaris = await kirim(JSON.stringify({ 'csp-report': { 'effective-directive': 'img-src', 'blocked-uri': `https://a.contoh\n[auth] admin masuk ${palsu}`, 'document-uri': BASE_URL } }));
+    const rObjek = await kirim(JSON.stringify({ 'csp-report': { 'effective-directive': { x: 1 }, 'blocked-uri': ['a'], 'document-uri': 5 } }));
+    const rBesar = await kirim(JSON.stringify({ 'csp-report': { 'blocked-uri': 'x'.repeat(20000) } }));
+    const rRusak = await kirim('{bukan json');
+    await new Promise((s) => setTimeout(s, 500));
+    const log2 = fs.existsSync(LOG_API) ? fs.readFileSync(LOG_API, 'utf8') : '';
+    const barisPalsu = log2.split(/\r?\n/).filter((l) => l.includes(palsu));
+    const masihHidup = (await fetch(`${BASE_URL}/api/public/flash-sale?store_id=${toko}`)).status;
+    record('C3: baris baru di laporan tidak membuat baris log palsu', rBaris.status === 204 && barisPalsu.length === 1 && barisPalsu[0].includes('[csp]'), barisPalsu.map((l) => l.slice(0, 120)).join(' || '));
+    record('C4: field objek 204, badan >16KB 413, JSON rusak 400, server tetap menjawab',
+      rObjek.status === 204 && rBesar.status === 413 && rRusak.status === 400 && masihHidup === 200 && !/PayloadTooLargeError/.test(log2.slice(-4000)),
+      `${rObjek.status}/${rBesar.status}/${rRusak.status} lalu ${masihHidup}`);
   } catch (e) {
     record('Suite berjalan sampai selesai', false, e.stack || e.message);
   } finally {

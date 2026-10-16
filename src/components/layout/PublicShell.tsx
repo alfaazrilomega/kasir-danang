@@ -343,8 +343,9 @@ export function PublicShell({
           menyediakannya di atas bilah bayar (temuan QC R2). Desktop memakai tombol di header. */}
       {tanpaKaki && (
         <div className="kaki-toko" data-kaki-disembunyikan>
-          <div className="flex justify-center pt-2 lg:hidden" data-tema-checkout>
-            <PilihTemaToko />
+          <div className="flex flex-col items-center gap-1.5 pt-2 lg:hidden" data-tema-checkout>
+            <span className="text-xs font-medium text-ink-500 dark:text-ink-400">Tampilan</span>
+            <PilihTemaToko bergaris />
           </div>
         </div>
       )}
@@ -513,11 +514,17 @@ export function PublicShell({
 }
 
 /** Pilihan tampilan terang/gelap toko, dipakai di kaki halaman dan di checkout HP. */
-function PilihTemaToko() {
+function PilihTemaToko({ bergaris = false }: { bergaris?: boolean }) {
   const themeToko = useUI((s) => s.themeToko);
   const setThemeToko = useUI((s) => s.setThemeToko);
   return (
-    <div role="group" aria-label="Tampilan toko" data-pilih-tema-toko className="inline-flex rounded-full bg-ink-100 p-1 dark:bg-ink-800">
+    <div
+      role="group"
+      aria-label="Tampilan toko"
+      data-pilih-tema-toko
+      // Di checkout latarnya sewarna jalur ini, jadi diberi garis tepi supaya tetap terbaca sebagai satu kontrol.
+      className={cn('inline-flex rounded-full bg-ink-100 p-1 dark:bg-ink-800', bergaris && 'ring-1 ring-ink-300 dark:ring-ink-600')}
+    >
       {(
         [
           ['light', 'Terang', Sun],

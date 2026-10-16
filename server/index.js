@@ -572,6 +572,9 @@ app.use(
 // nginx). Dicatat ringkas ke log supaya sumber yang terblokir terlihat sebelum
 // dan sesudah CSP ditegakkan. Dibatasi per IP: laporan bisa dikirim siapa saja.
 const laporanCsp = new Map();
+// Hanya teks sederhana yang masuk log: karakter kontrol (baris baru dll.) dibuang
+// supaya isi laporan tidak bisa memalsukan baris log lain.
+const teksLaporan = (v) => (typeof v === 'string' ? v : '').replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 200);
 app.post(
   '/api/csp-laporan',
   express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }),
@@ -584,12 +587,18 @@ app.post(
       laporanCsp.set(ip, catatan);
       const daftar = Array.isArray(req.body) ? req.body.map((r) => r?.body ?? r) : [req.body?.['csp-report'] ?? req.body];
       for (const r of daftar.slice(0, 5)) {
-        const ambil = (k1, k2) => String(r?.[k1] ?? r?.[k2] ?? '').slice(0, 200);
-        console.warn(`[csp] ${ambil('effective-directive', 'effectiveDirective') || ambil('violated-directive', 'violatedDirective')} diblokir ${ambil('blocked-uri', 'blockedURL')} di ${ambil('document-uri', 'documentURL').replace(/\?.*$/, '')}${r?.disposition === 'report' || r?.disposition === undefined ? '' : ' [' + r.disposition + ']'}`);
+        if (!r || typeof r !== 'object') continue;
+        const ambil = (k1, k2) => teksLaporan(r[k1] ?? r[k2]);
+        const sikap = typeof r.disposition === 'string' && r.disposition !== 'report' ? ` [${teksLaporan(r.disposition)}]` : '';
+        console.warn(`[csp] ${ambil('effective-directive', 'effectiveDirective') || ambil('violated-directive', 'violatedDirective')} diblokir ${ambil('blocked-uri', 'blockedURL')} di ${ambil('document-uri', 'documentURL').replace(/\?.*$/, '')}${sikap}`);
       }
     }
     if (laporanCsp.size > 5000) laporanCsp.clear();
     res.status(204).end();
+  },
+  // Badan rusak atau terlalu besar dijawab singkat, tanpa jejak galat di log.
+  (err, _req, res, _next) => {
+    res.status(err?.type === 'entity.too.large' ? 413 : 400).end();
   },
 );
 

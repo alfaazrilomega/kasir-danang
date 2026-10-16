@@ -645,7 +645,7 @@ export function PublicProductDetail() {
               navigate(alamatProduk({ id: v.id, slug: v.slug ?? product.slug }, v.sku || v.id));
             }}
             className={cn(
-              'min-h-[44px] rounded-md border px-3 py-1.5 text-sm transition lg:min-h-0',
+              'min-h-[44px] min-w-[44px] rounded-md border px-3 py-1.5 text-sm transition lg:min-h-0 lg:min-w-0',
               aktif
                 ? 'border-brand-500 text-brand-700 dark:text-brand-200'
                 : 'border-ink-200 hover:border-brand-400 dark:border-ink-700',
@@ -665,7 +665,7 @@ export function PublicProductDetail() {
       <div className="flex items-center rounded-md border border-ink-200 dark:border-ink-700">
         <button
           type="button"
-          className="grid h-9 w-9 place-items-center hover:bg-ink-50 disabled:opacity-40 dark:hover:bg-ink-800"
+          className="grid h-[44px] w-[44px] place-items-center hover:bg-ink-50 disabled:opacity-40 lg:h-9 lg:w-9 dark:hover:bg-ink-800"
           onClick={() => aturQty(qty - 1)}
           disabled={qty <= 1}
           aria-label="Kurangi"
@@ -675,7 +675,7 @@ export function PublicProductDetail() {
         <input
           aria-label="Jumlah"
           inputMode="numeric"
-          className="h-9 w-14 border-x border-ink-200 bg-transparent text-center text-sm focus:outline-none dark:border-ink-700"
+          className="h-[44px] w-14 border-x border-ink-200 bg-transparent text-center text-sm focus:outline-none lg:h-9 dark:border-ink-700"
           value={qtyText}
           onFocus={(e) => e.target.select()}
           onChange={(e) => setQtyText(e.target.value.replace(/\D/g, ''))}
@@ -683,7 +683,7 @@ export function PublicProductDetail() {
         />
         <button
           type="button"
-          className="grid h-9 w-9 place-items-center hover:bg-ink-50 disabled:opacity-40 dark:hover:bg-ink-800"
+          className="grid h-[44px] w-[44px] place-items-center hover:bg-ink-50 disabled:opacity-40 lg:h-9 lg:w-9 dark:hover:bg-ink-800"
           onClick={() => aturQty(qty + 1)}
           disabled={qty >= maxQty}
           aria-label="Tambah"
@@ -1202,28 +1202,23 @@ export function PublicProductDetail() {
 
           {/* ----- Info (HP) ----- */}
           <div className="space-y-2 px-4 pb-4 lg:hidden">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                {adaFlashKelompok && (
-                  <span
-                    aria-hidden={!itemFlash}
-                    className={cn(
-                      'mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white',
-                      !itemFlash && 'invisible',
-                    )}
-                  >
-                    Flash Sale
-                  </span>
-                )}
-                <div className="text-2xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
-                {adaCoretKelompok && (
-                  <div aria-hidden={diskon <= 0} className={cn('flex items-center gap-2 text-xs', diskon <= 0 && 'invisible')}>
-                    <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
-                    <span>-{diskon}%</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-3 pt-1 text-ink-500">
+            {/* Ikon hati dan bagikan sejajar dengan baris harga, bukan dengan slot
+                lencana Flash Sale yang disisakan untuk varian lain (temuan QC C5). */}
+            <div>
+              {adaFlashKelompok && (
+                <span
+                  aria-hidden={!itemFlash}
+                  className={cn(
+                    'mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white',
+                    !itemFlash && 'invisible',
+                  )}
+                >
+                  Flash Sale
+                </span>
+              )}
+              <div className="flex items-center justify-between gap-3">
+              <div className="text-2xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
+              <div className="flex gap-3 text-ink-500">
                 <button
                   type="button"
                   onClick={() => toast.success(toggleFavorit(product.id) ? 'Masuk ke Favorit.' : 'Dihapus dari Favorit.')}
@@ -1236,6 +1231,13 @@ export function PublicProductDetail() {
                   <Share2 size={20} />
                 </button>
               </div>
+              </div>
+              {adaCoretKelompok && (
+                <div aria-hidden={diskon <= 0} className={cn('flex items-center gap-2 text-xs', diskon <= 0 && 'invisible')}>
+                  <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
+                  <span>-{diskon}%</span>
+                </div>
+              )}
             </div>
             {store.pdp_banner_url && <img src={store.pdp_banner_url} alt="Promo toko" className="max-h-28 w-full rounded-md object-contain" />}
             <h1 className="text-base leading-snug">{product.name}</h1>
@@ -1601,14 +1603,19 @@ export function PublicProductDetail() {
               <span className="font-semibold">
                 {lembar === 'variasi' ? 'Pilihan Produk' : lembar === 'spesifikasi' ? 'Spesifikasi' : 'Layanan'}
               </span>
-              <button type="button" onClick={() => setLembar(null)} aria-label="Tutup">
+              <button
+                type="button"
+                onClick={() => setLembar(null)}
+                aria-label="Tutup"
+                className="-mr-3 grid h-[44px] w-[44px] place-items-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
                 <X size={18} />
               </button>
             </div>
             {lembar === 'variasi' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="h-16 w-16 overflow-hidden rounded-md bg-white ring-1 ring-ink-100 dark:ring-ink-800">
+                  <span className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-white ring-1 ring-ink-100 dark:ring-ink-800">
                     {product.image_url && <img src={product.image_url} alt="" className="h-full w-full object-contain" />}
                   </span>
                   <div>
@@ -1626,11 +1633,14 @@ export function PublicProductDetail() {
                   <div className="text-sm text-ink-500">Kuantitas</div>
                   {pengatur}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="secondary" className="border border-brand-500 text-brand-600" disabled={habis} onClick={beliSekarang}>
+                {/* Disematkan di dasar lembar: produk berisi puluhan varian dulu
+                    mendorong tombol beli ratusan piksel di bawah layar (temuan QC C1). */}
+                <div className="sticky -bottom-4 -mx-4 -mb-4 grid grid-cols-2 gap-2 border-t border-ink-100 bg-white px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 dark:border-ink-800 dark:bg-ink-900" data-tombol-beli-lembar>
+                  <Button variant="secondary" className="min-h-[44px] border border-brand-500 text-brand-600" disabled={habis} onClick={beliSekarang}>
                     Beli Sekarang
                   </Button>
                   <Button
+                    className="min-h-[44px]"
                     disabled={habis}
                     onClick={() => {
                       tambahKeranjang();
