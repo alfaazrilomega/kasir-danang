@@ -16,12 +16,13 @@ function berkasSumber(dir: string): string[] {
   return readdirSync(dir).flatMap((nama) => {
     const jalur = join(dir, nama);
     if (statSync(jalur).isDirectory()) return nama === '__tests__' ? [] : berkasSumber(jalur);
-    return /\.(ts|tsx)$/.test(nama) ? [jalur] : [];
+    return /\.(ts|tsx|js)$/.test(nama) ? [jalur] : [];
   });
 }
 
 // Template literal JavaScript mengubah CRLF menjadi LF, jadi teks saat berjalan selalu LF.
-const skripInline = berkasSumber(join(akar, 'src')).flatMap((berkas) =>
+// Kode server ikut dipindai: halaman masuk staf disisipi penanda <script> oleh server/index.js.
+const skripInline = [...berkasSumber(join(akar, 'src')), ...berkasSumber(join(akar, 'server'))].flatMap((berkas) =>
   [...readFileSync(berkas, 'utf8').replace(/\r\n/g, '\n').matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => ({
     berkas: berkas.slice(akar.length + 1),
     isi: m[1],
@@ -29,8 +30,9 @@ const skripInline = berkasSumber(join(akar, 'src')).flatMap((berkas) =>
 );
 
 describe('CSP dan skrip cetak inline', () => {
-  it('menemukan skrip cetak (struk, faktur, label kirim, label barcode, laporan shift)', () => {
-    expect(skripInline.length).toBeGreaterThanOrEqual(5);
+  it('menemukan skrip cetak (struk, faktur, label kirim, label barcode, laporan shift) dan penanda halaman masuk staf', () => {
+    expect(skripInline.length).toBeGreaterThanOrEqual(6);
+    expect(skripInline.some((s) => s.isi === 'window.KASIR_PINTU_ADMIN=true')).toBe(true);
   });
 
   it.each(skripInline)('skrip di $berkas statis dan hash-nya terdaftar di CSP', ({ isi }) => {
