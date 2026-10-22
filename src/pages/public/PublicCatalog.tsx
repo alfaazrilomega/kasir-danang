@@ -24,11 +24,14 @@ import { toast } from 'sonner';
 import { PublicShell } from '@/components/layout/PublicShell';
 import { KartuProduk } from '@/components/public/KartuProduk';
 import { Bintang } from '@/components/public/Bintang';
-import { Link, useLocation } from '@/lib/router';
+import { Link, jenisNavigasiTerakhir, useLocation } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
+  alamatGambarBanner,
+  alamatProduk,
   fetchPublicCatalog,
   fetchPublicFlashSale,
+  flashSatuPerKelompok,
   flashUntukKelompok,
   itemFlashAktif,
   kelompokkanVarian,
@@ -36,6 +39,7 @@ import {
   petaFlashAktif,
   type FlashKartuInfo,
   type KelompokProduk,
+  type PublicBanner,
   type PublicCatalogData,
   type PublicCatalogStore,
   type PublicFlashSale,
@@ -122,7 +126,17 @@ export function PublicCatalog() {
   const merekUrl = params.get('merek') ?? '';
   const kategoriUrl = params.get('kategori') ?? '';
   const urutUrl = params.get('urut') ?? '';
-  const modeCari = !!(q || merekUrl || kategoriUrl || urutUrl || params.get('semua'));
+  const flashUrl = params.get('flash') === '1';
+  const modeCari = !!(q || merekUrl || kategoriUrl || urutUrl || flashUrl || params.get('semua'));
+  const kunciTampilan = `${q}|${merekUrl}|${kategoriUrl}|${urutUrl}|${flashUrl}|${params.get('semua') ?? ''}`;
+
+  // Beranda dan halaman kategori/pencarian adalah komponen yang sama. Tanpa ini
+  // posisi gulir beranda (bagian Kategori ada jauh di bawah) terbawa dan pembeli
+  // mendarat di footer (permintaan 32). Saat Back, browser memulihkan posisi lama.
+  useEffect(() => {
+    const jenis = jenisNavigasiTerakhir();
+    if (jenis === 'push' || jenis === 'replace') window.scrollTo({ top: 0 });
+  }, [kunciTampilan]);
 
   const [catalog, setCatalog] = useState<PublicCatalogData>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -141,16 +155,27 @@ export function PublicCatalog() {
   }, []);
 
   // Sesi flash sale diambil terpisah dan tanpa cache: waktunya berubah sendiri,
-  // jadi harus segar tiap kali halaman toko dibuka.
+  // jadi harus segar tiap kali halaman toko dibuka, dan diambil lagi begitu
+  // hitung mundurnya habis (sesi berakhir, atau sesi berikutnya dimulai).
+  const [ulangFlash, setUlangFlash] = useState(0);
+  const [flashMemuat, setFlashMemuat] = useState(true);
+  // Selisih jam server dikurangi jam perangkat. Jam HP yang maju beberapa detik
+  // membuat hitung mundur habis sebelum server berganti sesi.
+  const [selisihJamMs, setSelisihJamMs] = useState(0);
   useEffect(() => {
     let alive = true;
     fetchPublicFlashSale(PUBLIC_STORE_ID)
-      .then((data) => alive && setFlash(data))
-      .catch(() => {});
+      .then((data) => {
+        if (!alive) return;
+        if (data.server_time) setSelisihJamMs(Date.parse(data.server_time) - Date.now());
+        setFlash(data);
+      })
+      .catch(() => {})
+      .finally(() => alive && setFlashMemuat(false));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [ulangFlash]);
 
   const kelompok = useMemo(() => kelompokkanVarian(catalog.products), [catalog.products]);
   const petaFlash = useMemo(() => petaFlashAktif(flash.items), [flash.items]);
@@ -162,11 +187,12 @@ export function PublicCatalog() {
           key={search}
           data={catalog}
           kelompok={kelompok}
-          loading={loading}
+          loading={loading || (flashUrl && flashMemuat)}
           q={q}
           merekUrl={merekUrl}
           kategoriUrl={kategoriUrl}
           urutUrl={urutUrl}
+          flashSaja={flashUrl}
           petaFlash={petaFlash}
         />
       ) : (
@@ -176,6 +202,9 @@ export function PublicCatalog() {
           loading={loading}
           flashSale={flash.flash_sale}
           flashItems={flash.items}
+          berikutnya={flash.berikutnya ?? null}
+          selisihJamMs={selisihJamMs}
+          onFlashBerubah={() => setUlangFlash((n) => n + 1)}
           petaFlash={petaFlash}
         />
       )}
@@ -193,6 +222,9 @@ function Beranda({
   loading,
   flashSale,
   flashItems,
+  berikutnya,
+  selisihJamMs,
+  onFlashBerubah,
   petaFlash,
 }: {
   data: PublicCatalogData;
@@ -200,9 +232,13 @@ function Beranda({
   loading: boolean;
   flashSale: PublicFlashSale | null;
   flashItems: PublicFlashSaleItem[];
+  berikutnya: PublicFlashSaleData['berikutnya'];
+  selisihJamMs: number;
+  onFlashBerubah: () => void;
   petaFlash: Map<string, PublicFlashSaleItem>;
 }) {
   const { store, categories } = data;
+  const banners = useMemo(() => data.banners ?? [], [data.banners]);
   const token = useCustomer((s) => s.token);
   const klikMasuk = useKlikMasuk();
   const [jfy, setJfy] = useState(JFY_LANGKAH);
@@ -240,6 +276,8 @@ function Beranda({
   const untukmu = useMemo(() => [...kelompok].sort((a, b) => Number(a.habis) - Number(b.habis)), [kelompok]);
 
   const slides = useMemo(() => {
+    // Banner dari menu Banner Toko menggantikan isi karosel (spec 0003, AC-4).
+    if (banners.length) return banners.map((b, i) => <SlideGambar key={b.id} banner={b} pertama={i === 0} />);
     const s: ReactNode[] = [];
     if (store?.pdp_banner_url) {
       s.push(<SlideBanner src={store.pdp_banner_url} store={store} />);
@@ -247,7 +285,7 @@ function Beranda({
     terlaris.slice(0, 4).forEach((k, i) => s.push(<SlideProduk k={k} nomor={i + 1} currency={store?.currency} />));
     if (!s.length) s.push(<SlideSambutan store={store} />);
     return s;
-  }, [store, terlaris]);
+  }, [store, terlaris, banners]);
 
   if (loading) {
     return (
@@ -322,7 +360,11 @@ function Beranda({
       </div>
 
       {/* ---------- Flash Sale ---------- */}
-      {flashSale && <BlokFlashSale flashSale={flashSale} items={flashItems} currency={store?.currency} />}
+      {flashSale ? (
+        <BlokFlashSale mode="berjalan" flashSale={flashSale} items={flashSatuPerKelompok(flashItems, data.products)} currency={store?.currency} selisihJamMs={selisihJamMs} onSelesai={onFlashBerubah} />
+      ) : berikutnya ? (
+        <BlokFlashSale mode="segera" flashSale={berikutnya.flash_sale} items={flashSatuPerKelompok(berikutnya.items, data.products, true)} currency={store?.currency} selisihJamMs={selisihJamMs} onSelesai={onFlashBerubah} />
+      ) : null}
 
       {/* ---------- Terlaris ---------- */}
       {terlaris.length > 0 && (
@@ -434,60 +476,123 @@ function JudulBagian({ children }: { children: ReactNode }) {
   return <h2 className="pb-3 pt-6 text-[22px] leading-7 text-ink-700 dark:text-ink-200">{children}</h2>;
 }
 
+/** "Mulai pukul 19.00", "Mulai besok 19.00", atau "Mulai Selasa, 21 Okt 19.00". */
+function labelMulai(iso: string): string {
+  const d = new Date(iso);
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const hari = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const selisih = Math.round((hari(d) - hari(new Date())) / 86_400_000);
+  if (selisih <= 0) return `Mulai pukul ${jam}`;
+  if (selisih === 1) return `Mulai besok ${jam}`;
+  return `Mulai ${d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })} ${jam}`;
+}
+
+/** Kartu yang tampil di blok beranda; sisanya lewat "Belanja Semua Produk". */
+const MAKS_KARTU_FLASH = 12;
+
 /**
- * Blok Flash Sale di beranda: satu kartu per PRODUK (bukan per kelompok
- * varian) karena harga & kuota melekat pada satu SKU — menggabung varian ke
- * satu kartu akan menyembunyikan kuota mana yang sudah habis.
+ * Blok Flash Sale di beranda, mengikuti referensi Lazada yang client tunjuk
+ * (docs/permintaan-client/2026-09-25_13.png): label "Dijual Sekarang",
+ * "Berakhir dalam" dengan tiga kotak merah, dan tombol "Belanja Semua Produk".
+ * Satu kartu per PRODUK (bukan per kelompok varian) karena harga dan kuota
+ * melekat pada satu SKU.
  *
- * Hitung mundur pakai SATU interval 1 detik untuk seluruh blok (bukan per
- * kartu), dihitung dari selisih ke Date.now() supaya tidak tergantung zona
- * waktu string ISO. Begitu waktunya lewat, blok menghilang sendiri dan
- * intervalnya dimatikan, tanpa perlu muat ulang halaman.
+ * mode "segera": belum ada sesi berjalan tetapi ada sesi yang dimulai dalam
+ * 7 hari; kartunya bertanda "Segera" dan hitung mundurnya ke waktu mulai.
+ * Hitung mundur memakai satu interval 1 detik untuk seluruh blok dan dihitung
+ * dari selisih ke Date.now(). Begitu habis, onSelesai meminta data flash sale
+ * baru, jadi blok berganti sendiri tanpa muat ulang halaman.
  */
 function BlokFlashSale({
+  mode,
   flashSale,
   items,
   currency,
+  selisihJamMs,
+  onSelesai,
 }: {
+  mode: 'berjalan' | 'segera';
   flashSale: PublicFlashSale;
   items: PublicFlashSaleItem[];
   currency?: string;
+  selisihJamMs: number;
+  onSelesai: () => void;
 }) {
-  const hitungSisa = () => new Date(flashSale.ends_at).getTime() - Date.now();
+  const sasaran = mode === 'berjalan' ? flashSale.ends_at : flashSale.starts_at;
+  const hitungSisa = () => new Date(sasaran).getTime() - (Date.now() + selisihJamMs);
   const [sisaMs, setSisaMs] = useState(hitungSisa);
+  const selesaiRef = useRef(onSelesai);
+  selesaiRef.current = onSelesai;
 
   useEffect(() => {
     setSisaMs(hitungSisa());
+    // Setelah habis, minta data baru tiap 5 detik sampai server ikut berganti.
+    // Sekali minta saja tidak cukup: bila server masih mengirim sesi yang sama,
+    // sasarannya tidak berubah dan blok hilang sampai halaman dimuat ulang.
+    let terakhirMinta = 0;
     const timer = window.setInterval(() => {
       const sisa = hitungSisa();
       setSisaMs(sisa);
-      if (sisa <= 0) window.clearInterval(timer);
+      if (sisa <= 0 && Date.now() - terakhirMinta >= 5000) {
+        terakhirMinta = Date.now();
+        selesaiRef.current();
+      }
     }, 1000);
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flashSale.ends_at]);
+  }, [sasaran, selisihJamMs]);
 
   if (sisaMs <= 0 || items.length === 0) return null;
 
   const totalDetik = Math.max(0, Math.floor(sisaMs / 1000));
+  const hari = Math.floor(totalDetik / 86400);
   const dua = (n: number) => String(n).padStart(2, '0');
-  const jam = dua(Math.floor(totalDetik / 3600));
+  const jam = dua(Math.floor((totalDetik % 86400) / 3600) + (mode === 'berjalan' ? hari * 24 : 0));
   const menit = dua(Math.floor((totalDetik % 3600) / 60));
   const detik = dua(totalDetik % 60);
+  const segera = mode === 'segera';
+  const kotak = cn(
+    'grid h-8 min-w-8 place-items-center rounded-[3px] px-1 text-[15px] font-bold leading-none tabular-nums text-white',
+    segera ? 'bg-ink-800 dark:bg-ink-700' : 'bg-rose-600',
+  );
 
   return (
-    <section id="flash-sale" className="scroll-mt-24">
+    <section id="flash-sale" className="scroll-mt-24" data-flash-sale={mode}>
       <JudulBagian>Flash Sale</JudulBagian>
       <div className="bg-white dark:bg-ink-900">
-        <div className="flex h-[53px] items-center justify-between border-b border-ink-100 px-4 dark:border-ink-800">
-          <span className="truncate pr-3 text-sm text-brand-600">{flashSale.name}</span>
-          <span className="flex shrink-0 items-center gap-1.5 rounded-sm bg-ink-800 px-2.5 py-1 text-sm font-semibold tabular-nums text-white dark:bg-ink-700">
-            {jam}:{menit}:{detik}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-ink-100 px-4 py-3 dark:border-ink-800">
+          <span className={cn('text-[15px] font-semibold', segera ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>
+            {segera ? 'Segera Dimulai' : 'Dijual Sekarang'}
           </span>
+          <span className="flex items-center gap-2 text-sm text-ink-600 dark:text-ink-300" role="timer" aria-live="off" data-hitung-mundur>
+            {segera ? 'Mulai dalam' : 'Berakhir dalam'}
+            {segera && hari > 0 && <span className="font-semibold text-ink-800 dark:text-ink-100">{hari} hari</span>}
+            <span className="flex items-center gap-1" aria-label={`${segera && hari > 0 ? `${hari} hari ` : ''}${jam} jam ${menit} menit ${detik} detik`}>
+              <span className={kotak}>{jam}</span>
+              <span aria-hidden className="font-bold text-ink-400">:</span>
+              <span className={kotak}>{menit}</span>
+              <span aria-hidden className="font-bold text-ink-400">:</span>
+              <span className={kotak}>{detik}</span>
+            </span>
+          </span>
+          <span className="hidden min-w-0 flex-1 truncate text-sm text-ink-500 lg:block">{flashSale.name}</span>
+          <Link
+            to={segera ? '#flash-sale' : '/toko?flash=1'}
+            onClick={segera ? (e) => e.preventDefault() : undefined}
+            aria-disabled={segera || undefined}
+            className={cn(
+              'flex min-h-[44px] w-full items-center justify-center border px-4 text-[13px] uppercase transition-colors duration-200 sm:ml-auto sm:min-h-0 sm:h-8 sm:w-auto',
+              segera
+                ? 'cursor-default border-ink-200 text-ink-400 dark:border-ink-700'
+                : 'border-rose-600 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10',
+            )}
+          >
+            {segera ? labelMulai(flashSale.starts_at) : 'Belanja Semua Produk'}
+          </Link>
         </div>
         <div className="grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 lg:grid-cols-6">
-          {items.map((item) => (
-            <KartuFlash key={item.product_id} item={item} currency={currency} />
+          {items.slice(0, MAKS_KARTU_FLASH).map((item) => (
+            <KartuFlash key={item.product_id} item={item} currency={currency} segera={segera} />
           ))}
         </div>
       </div>
@@ -500,8 +605,9 @@ function BlokFlashSale({
  * tampil (tidak dihilangkan dari daftar) tapi kembali ke harga normal tanpa
  * badge — pembeli sudah terlanjur melihatnya di daftar ini.
  */
-function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: string }) {
-  const aktif = itemFlashAktif(item);
+function KartuFlash({ item, currency, segera = false }: { item: PublicFlashSaleItem; currency?: string; segera?: boolean }) {
+  // Sesi yang belum mulai: harga flash diperlihatkan sebagai janji, tanpa bar kuota.
+  const aktif = segera || itemFlashAktif(item);
   const harga = aktif ? Number(item.flash_price) : Number(item.base_price);
   const coret = Number(item.base_price);
   const diskon = aktif && coret > harga && harga > 0 ? Math.round((1 - harga / coret) * 100) : 0;
@@ -511,7 +617,7 @@ function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: 
 
   return (
     <Link
-      to={`/toko/produk?id=${item.product_id}`}
+      to={alamatProduk({ id: item.product_id, slug: item.slug }, item.product_id)}
       data-kartu-produk=""
       className="flex h-full flex-col overflow-hidden bg-white hover:shadow-[0_2px_12px_rgba(0,0,0,0.16)] dark:bg-ink-900"
     >
@@ -523,7 +629,11 @@ function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: 
             <ShoppingBag size={30} />
           </div>
         )}
-        {aktif ? (
+        {segera ? (
+          <span className="absolute left-1.5 top-1.5 rounded-sm bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+            Segera
+          </span>
+        ) : aktif ? (
           <span className="absolute left-1.5 top-1.5 rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
             Flash Sale
           </span>
@@ -550,7 +660,7 @@ function KartuFlash({ item, currency }: { item: PublicFlashSaleItem; currency?: 
             <span className="ml-1 text-ink-700 dark:text-ink-300">-{diskon}%</span>
           </span>
         )}
-        {aktif && kuotaAda && (
+        {aktif && !segera && kuotaAda && (
           <div className="mt-1.5 space-y-1">
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-ink-100 dark:bg-ink-800">
               <div className="h-full rounded-full bg-rose-500" style={{ width: `${persenTerjual}%` }} />
@@ -645,7 +755,10 @@ function Karosel({ slides }: { slides: ReactNode[] }) {
       ref={bingkai}
       className="relative h-full touch-pan-y overflow-hidden"
       onMouseEnter={() => setJeda(true)}
-      onMouseLeave={() => setJeda(false)}
+      onMouseLeave={(e) => setJeda(e.currentTarget.querySelector(':focus-visible') !== null)}
+      // Fokus keyboard juga menghentikan putaran, supaya titik yang dipilih tidak langsung berganti.
+      onFocus={(e) => (e.target as HTMLElement).matches(':focus-visible') && setJeda(true)}
+      onBlur={(e) => !e.currentTarget.contains(e.relatedTarget as Node | null) && setJeda(false)}
       // Hanya sentuhan/pena: seret mouse di desktop akan bentrok dengan klik tautan di slide.
       onPointerDown={(e) => {
         if (n < 2 || e.pointerType === 'mouse') return;
@@ -678,7 +791,74 @@ function Karosel({ slides }: { slides: ReactNode[] }) {
           </div>
         ))}
       </div>
+      {n > 1 && (
+        <>
+          {/* HP: penanda saja (geser dengan jari). Desktop: titik bisa diklik. */}
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-2.5 flex justify-center gap-1.5 sm:hidden">
+            {slides.map((_, i) => (
+              <span
+                key={i}
+                className={cn('h-1.5 rounded-full transition-[width,background-color] duration-200 ease-out', i === aktif ? 'w-4 bg-white' : 'w-1.5 bg-white/50')}
+              />
+            ))}
+          </div>
+          <div className="absolute inset-x-0 bottom-3 hidden justify-center gap-1 sm:flex" data-titik-karosel>
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Banner ${i + 1} dari ${n}`}
+                aria-current={i === aktif || undefined}
+                onClick={() => setAktif(i)}
+                className="group grid h-6 w-6 place-items-center"
+              >
+                <span
+                  className={cn(
+                    'h-2 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,0.12)] transition-[width,background-color] duration-200 ease-out',
+                    i === aktif ? 'w-5 bg-white' : 'w-2 bg-white/55 group-hover:bg-white/80',
+                  )}
+                />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Slide banner dari menu Banner Toko (spec 0003). Gambar dilayani dari alamat
+ * sendiri yang bisa disimpan lama di cache; gambar HP dipakai di bawah 640px
+ * bila admin mengunggahnya. Tautan "/..." tetap di toko, "https://" tab baru.
+ */
+function SlideGambar({ banner, pertama }: { banner: PublicBanner; pertama: boolean }) {
+  const gambar = (
+    <picture>
+      {banner.ada_hp && <source media="(max-width: 639px)" srcSet={alamatGambarBanner(banner, 'hp')} />}
+      <img
+        src={alamatGambarBanner(banner, 'desktop')}
+        alt={banner.title || 'Banner promo'}
+        loading={pertama ? 'eager' : 'lazy'}
+        decoding="async"
+        draggable={false}
+        className="h-full w-full select-none object-cover"
+      />
+    </picture>
+  );
+  const kelas = 'block h-full w-full bg-[#141417]';
+  if (!banner.link_url) return <div className={kelas} data-slide-banner>{gambar}</div>;
+  if (banner.link_url.startsWith('/')) {
+    return (
+      <Link to={banner.link_url} className={kelas} data-slide-banner draggable={false}>
+        {gambar}
+      </Link>
+    );
+  }
+  return (
+    <a href={banner.link_url} target="_blank" rel="noopener noreferrer" className={kelas} data-slide-banner draggable={false}>
+      {gambar}
+    </a>
   );
 }
 
@@ -741,7 +921,7 @@ function SlideProduk({ k, nomor, currency }: { k: KelompokProduk; nomor: number;
   const judul = p.name.replace(/\s*GNNK Racing( Product)?\s*$/i, '').trim() || p.name;
   const coret = Number(p.compare_at_price ?? 0);
   const diskon = coret > k.hargaMin && k.hargaMin > 0 ? Math.round((1 - k.hargaMin / coret) * 100) : 0;
-  const tautan = `/toko/produk?id=${p.id}`;
+  const tautan = alamatProduk(p);
   // Rating dengan ulasan sedikit ("4,8 (4 ulasan)") justru mengurangi kepercayaan.
   const tampilRating = k.ratingCount >= 10;
   const bentukMiring = '[clip-path:polygon(14%_0,100%_0,100%_100%,0_100%)]';
@@ -877,6 +1057,7 @@ function HasilCari({
   merekUrl,
   kategoriUrl,
   urutUrl,
+  flashSaja = false,
   petaFlash,
 }: {
   data: PublicCatalogData;
@@ -886,6 +1067,8 @@ function HasilCari({
   merekUrl: string;
   kategoriUrl: string;
   urutUrl: string;
+  /** ?flash=1 dari tombol "Belanja Semua Produk" di blok Flash Sale. */
+  flashSaja?: boolean;
   petaFlash: Map<string, PublicFlashSaleItem>;
 }) {
   const { store, categories } = data;
@@ -940,20 +1123,23 @@ function HasilCari({
       // harga yang benar-benar tertulis di kartu, bukan harga normalnya.
       const hargaEfektif = hargaUrut(k, petaFlash);
       const sedangFlash = flashUntukKelompok(k, petaFlash) !== null;
+      if (flashSaja && !sedangFlash) return false;
       if (diskonSaja && !sedangFlash && !(Number(p.compare_at_price ?? 0) > k.hargaMin)) return false;
       if (minRating && k.ratingAvg < minRating) return false;
       if (rentang && (hargaEfektif < rentang[0] || hargaEfektif > rentang[1])) return false;
       return true;
     });
     return urutkan(list, sort, petaFlash);
-  }, [dasar, kategori, merek, stokAda, diskonSaja, minRating, rentang, sort, petaFlash]);
+  }, [dasar, kategori, merek, stokAda, diskonSaja, minRating, rentang, sort, petaFlash, flashSaja]);
 
   useEffect(() => setHalaman(1), [kategori, merek, stokAda, diskonSaja, minRating, rentang, sort]);
 
   const totalHalaman = Math.max(1, Math.ceil(shown.length / PER_HALAMAN));
   const potongan = shown.slice((halaman - 1) * PER_HALAMAN, halaman * PER_HALAMAN);
 
-  const judul = q
+  const judul = flashSaja
+    ? 'Flash Sale'
+    : q
     ? q.replace(/\b\p{L}/gu, (h) => h.toUpperCase())
     : kategoriUrl
       ? (namaKategori.get(kategoriUrl) ?? 'Kategori')
@@ -1202,9 +1388,15 @@ function HasilCari({
             <span className="grid h-16 w-16 place-items-center rounded-full bg-ink-100 text-ink-400 dark:bg-ink-800">
               <Search size={28} />
             </span>
-            <p className="mt-4 text-lg text-ink-700 dark:text-ink-200">Produk tidak ditemukan</p>
+            <p className="mt-4 text-lg text-ink-700 dark:text-ink-200">
+              {flashSaja && petaFlash.size === 0 ? 'Belum ada flash sale yang berjalan' : 'Produk tidak ditemukan'}
+            </p>
             <p className="mt-1 text-sm text-ink-500">
-              {q ? `Tidak ada produk yang cocok dengan "${q}". Coba kata kunci lain.` : 'Coba longgarkan filternya.'}
+              {flashSaja && petaFlash.size === 0
+                ? 'Sesi berikutnya diumumkan di beranda toko.'
+                : q
+                  ? `Tidak ada produk yang cocok dengan "${q}". Coba kata kunci lain.`
+                  : 'Coba longgarkan filternya.'}
             </p>
             {chip.length > 0 && (
               <button
@@ -1329,7 +1521,7 @@ function BarisDaftar({
   const harga = flash ? flash.hargaFlash : k.hargaMin;
   return (
     <Link
-      to={`/toko/produk?id=${p.id}`}
+      to={alamatProduk(p)}
       data-kartu-produk=""
       className="flex gap-4 bg-white py-4 transition-shadow duration-300 hover:shadow-[0_2px_12px_rgba(0,0,0,0.12)] dark:bg-ink-900"
     >

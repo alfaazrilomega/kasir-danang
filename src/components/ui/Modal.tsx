@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/format';
 
@@ -18,6 +18,7 @@ const sizeClass = {
 };
 
 export function Modal({ open, onClose, title, children, size = 'md' }: Props) {
+  const idJudul = useId();
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -29,13 +30,24 @@ export function Modal({ open, onClose, title, children, size = 'md' }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className={cn('w-full card max-h-[90vh] overflow-y-auto scrollbar-thin', sizeClass[size])}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? idJudul : undefined}
+        className={cn('w-full card max-h-[90vh] overflow-y-auto scrollbar-thin max-sm:[&_:is(.btn-primary,.btn-secondary,.btn-ghost,.btn-danger)]:min-h-[44px]', sizeClass[size])}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-ink-100 dark:border-ink-800 p-4">
-            <h3 className="font-semibold">{title}</h3>
-            <button onClick={onClose} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800">
+          <div className="flex items-center justify-between gap-2 border-b border-ink-100 dark:border-ink-800 py-2 pl-4 pr-2">
+            <h3 id={idJudul} className="font-semibold">
+              {title}
+            </h3>
+            {/* 44 px: target sentuh di HP. Huruf dasar 14 px, jadi ukurannya ditulis dalam piksel. */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Tutup"
+              className="grid h-[44px] w-[44px] shrink-0 place-items-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800"
+            >
               <X size={18} />
             </button>
           </div>

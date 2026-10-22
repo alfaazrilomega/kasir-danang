@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@/lib/router';
+import { ALAMAT_SETELAH_KELUAR } from '@/lib/pintuAdmin';
 import { Delete, Lock, LogOut, Store } from 'lucide-react';
 import { cn } from '@/lib/format';
 import { useAuth } from '@/stores/auth';
@@ -69,7 +70,7 @@ export function PinLockScreen() {
     if (!ok) return;
     disablePin();
     await signOut();
-    navigate('/login', { replace: true });
+    navigate(ALAMAT_SETELAH_KELUAR, { replace: true });
   }
 
   const initial = (profile?.full_name ?? profile?.email ?? 'U').charAt(0).toUpperCase();
@@ -144,7 +145,7 @@ export function PinLockScreen() {
           <button
             onClick={async () => {
               await signOut();
-              navigate('/login', { replace: true });
+              navigate(ALAMAT_SETELAH_KELUAR, { replace: true });
             }}
             className="inline-flex items-center gap-1 font-semibold text-ink-500 hover:text-rose-500"
           >

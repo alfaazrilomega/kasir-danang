@@ -63,7 +63,10 @@ import {
 } from '@/lib/receipt';
 import { skuMapFor } from '@/lib/printSupport';
 import { hitungStokSet } from '@/components/products/ProductSetSection';
+import { InfoAffiliatePesanan } from '@/components/orders/InfoAffiliatePesanan';
 
+
+const NAMA_GATEWAY: Record<string, string> = { tripay: 'Tripay', mayar: 'Mayar', doku: 'DOKU' };
 type StatusFilter = 'all' | 'done' | 'pending' | 'canceled' | 'awaiting_confirmation';
 type PaymentFilter = 'all' | PaymentMethod;
 type OrderTypeFilter = 'all' | OrderType;
@@ -1287,6 +1290,13 @@ export function Orders() {
               <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs dark:border-sky-500/30 dark:bg-sky-500/10">
                 <div className="font-semibold uppercase text-sky-700 dark:text-sky-300">Alamat Kirim</div>
                 <p className="mt-1 text-ink-700 dark:text-ink-200">{selected.delivery_address}</p>
+                {selected.shipping_service && (
+                  <p className="mt-1.5 font-medium text-ink-700 dark:text-ink-200" data-kurir-pesanan>
+                    Kurir: {selected.shipping_service_name || selected.shipping_courier?.toUpperCase()} {selected.shipping_service}
+                    {selected.shipping_etd ? ` · ${selected.shipping_etd}` : ''}
+                    {selected.shipping_weight_gram ? ` · ${(selected.shipping_weight_gram / 1000).toLocaleString('id-ID')} kg` : ''}
+                  </p>
+                )}
               </div>
             )}
             <div className="border-t border-ink-100 dark:border-ink-800 pt-3">
@@ -1318,6 +1328,12 @@ export function Orders() {
                 <Row label="Ongkir" value={formatMoney(Number(selected.shipping_cost), store?.currency)} />
               )}
               <Row label="Total" value={formatMoney(selected.total, store?.currency)} bold />
+              {selected.payment_provider && (
+                <Row
+                  label="Pembayaran online"
+                  value={`${NAMA_GATEWAY[selected.payment_provider] ?? selected.payment_provider}${selected.payment_failover_from ? ` (cadangan, ${NAMA_GATEWAY[selected.payment_failover_from] ?? selected.payment_failover_from} gagal)` : ''}`}
+                />
+              )}
               {selected.payment_method === 'cash' && selected.received_amount != null && (
                 <>
                   <Row label="Diterima" value={formatMoney(Number(selected.received_amount), store?.currency)} />
@@ -1419,6 +1435,11 @@ export function Orders() {
                   </ul>
                 )}
               </div>
+            )}
+
+            {/* Hanya pesanan toko online yang bisa membawa affiliate. */}
+            {selected.sales_channel === 'website' && hasCapability(profile?.role, 'manageStoreSettings') && (
+              <InfoAffiliatePesanan orderId={selected.id} currency={store?.currency} />
             )}
 
             <div className="flex flex-wrap justify-end gap-2 border-t border-ink-100 pt-2 dark:border-ink-800">
@@ -1592,15 +1613,25 @@ function ConfirmWebOrderModal({
           </div>
         )}
 
-        <Input
-          name="shipping_cost"
-          label="Ongkos Kirim"
-          type="number"
-          min="0"
-          value={ongkir}
-          onChange={(e) => setOngkir(e.target.value)}
-          hint="Isi 0 kalau diambil sendiri atau ongkirnya ditanggung toko."
-        />
+        {order.shipping_service ? (
+          // Ongkir KiriminAja sudah dibayar pembeli bersama pesanan (spec 0002, AC-13).
+          <div className="rounded-xl border border-ink-200 p-3 text-xs dark:border-ink-700" data-ongkir-terkunci>
+            <div className="font-semibold">Ongkir: {formatMoney(Number(order.shipping_cost ?? 0), currency)}</div>
+            <p className="mt-1 text-ink-500">
+              Dipilih pembeli di checkout ({order.shipping_service_name || order.shipping_courier?.toUpperCase()} {order.shipping_service}) dan sudah termasuk di total. Tidak bisa diubah.
+            </p>
+          </div>
+        ) : (
+          <Input
+            name="shipping_cost"
+            label="Ongkos Kirim"
+            type="number"
+            min="0"
+            value={ongkir}
+            onChange={(e) => setOngkir(e.target.value)}
+            hint="Isi 0 kalau diambil sendiri atau ongkirnya ditanggung toko."
+          />
+        )}
 
         <div className="space-y-1 border-t border-ink-100 pt-3 dark:border-ink-800">
           <Row label="Barang" value={formatMoney(barang, currency)} />

@@ -16,7 +16,8 @@ export interface ProcessedImage {
 
 export async function resizeImageToDataUrl(
   file: File,
-  opts: { maxDim?: number; quality?: number } = {},
+  /** jpeg: selalu JPEG berlatar putih (banner foto lebar, supaya ukurannya tetap kecil). */
+  opts: { maxDim?: number; quality?: number; jpeg?: boolean } = {},
 ): Promise<ProcessedImage> {
   if (!file.type.startsWith('image/')) {
     throw new Error('File yang dipilih bukan gambar.');
@@ -35,10 +36,14 @@ export async function resizeImageToDataUrl(
     canvas.height = height;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas tidak tersedia.');
+    if (opts.jpeg) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+    }
     ctx.drawImage(bitmap, 0, 0, width, height);
     // Pick output format: PNG with transparency only if input is PNG/webp with
     // alpha; otherwise JPEG which is far smaller for photos.
-    const mime = /png|webp/i.test(file.type) ? 'image/png' : 'image/jpeg';
+    const mime = !opts.jpeg && /png|webp/i.test(file.type) ? 'image/png' : 'image/jpeg';
     const dataUrl = canvas.toDataURL(mime, quality);
     return {
       dataUrl,

@@ -44,6 +44,9 @@ export default defineConfig({
         // Bundel utama sudah di atas batas bawaan 2 MiB; tanpa ini build gagal.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: '/index.html',
+        // Halaman masuk staf (/pintu-...) wajib dari server: hanya server yang
+        // memasang cookie gerbang dan penanda halamannya.
+        navigateFallbackDenylist: [/^\/api\//, /^\/pintu-/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname === '/kasir-config.js',

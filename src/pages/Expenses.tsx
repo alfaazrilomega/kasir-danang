@@ -34,7 +34,9 @@ import { getBackendClient } from '@/lib/api';
 import { pullExpenses, pullPurchases, pullShifts, pullSuppliers, writeThrough } from '@/lib/sync';
 import { cn, formatDate, formatMoney, isUuid, uuid, errorMessage } from '@/lib/format';
 import {
-  EXPENSE_CATEGORIES,
+  daftarKategoriPengeluaran,
+  kategoriTambahanToko,
+  opsiDenganNilai,
   EXPENSE_METHODS,
   expenseCategoryLabel,
   expenseMethodLabel,
@@ -139,6 +141,14 @@ export function Expenses() {
   const notaTerpilih = form.purchaseId ? notaById.get(form.purchaseId) ?? null : null;
 
   const activeShift = useMemo(() => shifts.find((s) => !s.closed_at) ?? null, [shifts]);
+
+  const kategori = useMemo(() => daftarKategoriPengeluaran(kategoriTambahanToko(store)), [store]);
+  // Saringan juga menawarkan kategori yang masih dipakai catatan lama walau
+  // sudah dihapus dari Pengaturan Toko.
+  const kategoriSaringan = useMemo(
+    () => opsiDenganNilai(kategori, ...new Set(expenses.map((e) => e.category))),
+    [kategori, expenses],
+  );
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -378,7 +388,7 @@ export function Expenses() {
             onChange={(e) => setCategoryFilter(e.target.value as 'all' | ExpenseCategory)}
           >
             <option value="all">Semua kategori</option>
-            {EXPENSE_CATEGORIES.map((c) => (
+            {kategoriSaringan.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
@@ -537,7 +547,7 @@ export function Expenses() {
                   setForm({ ...form, category: e.target.value as ExpenseCategory })
                 }
               >
-                {EXPENSE_CATEGORIES.map((c) => (
+                {opsiDenganNilai(kategori, form.category).map((c) => (
                   <option key={c.value} value={c.value}>
                     {c.label}
                   </option>

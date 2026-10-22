@@ -38,12 +38,14 @@ export function decryptConfig(value, context) {
 }
 
 export function assertProvider(provider) {
-  if (!['tripay', 'kiriminaja', 'onesender', 'meta_whatsapp'].includes(provider)) throw new IntegrationError('Integrasi tidak dikenal.');
+  if (!['tripay', 'mayar', 'doku', 'kiriminaja', 'onesender', 'meta_whatsapp'].includes(provider)) throw new IntegrationError('Integrasi tidak dikenal.');
 }
 
 export function defaults(provider) {
   assertProvider(provider);
   if (provider === 'meta_whatsapp') return { wabaId: '', phoneNumberId: '', apiVersion: '', accessToken: '' };
+  if (provider === 'mayar') return { enabled: false, mode: 'sandbox', apiKey: '' };
+  if (provider === 'doku') return { enabled: false, mode: 'sandbox', clientId: '', secretKey: '' };
   if (provider === 'onesender') return { phoneNumber: '', apiUrl: '', apiKey: '' };
   if (provider === 'tripay') return {
     ...tripay.konfigurasi(), enabled: tripay.tripayAktif(),
@@ -77,11 +79,13 @@ export function publicConfig(provider, config) {
     phoneNumber: config.phoneNumber, apiUrl: config.apiUrl, hasApiKey: !!config.apiKey,
   };
   const common = { enabled: config.enabled, mode: config.mode };
+  if (provider === 'mayar') return { ...common, hasApiKey: !!config.apiKey };
+  if (provider === 'doku') return { ...common, clientId: config.clientId, hasSecretKey: !!config.secretKey };
   if (provider === 'tripay') return {
     ...common, merchantCode: config.merchantCode, callbackUrl: config.callbackUrl,
     returnUrl: config.returnUrl, hasApiKey: !!config.apiKey, hasPrivateKey: !!config.privateKey,
   };
-  return { ...common, hasToken: !!config.token, originDistrict: config.originDistrict, originSubdistrict: config.originSubdistrict };
+  return { ...common, hasToken: !!config.token, originDistrict: config.originDistrict, originSubdistrict: config.originSubdistrict, originLabel: config.originLabel || '' };
 }
 
 export function validateConfig(provider, body, previous) {
@@ -96,10 +100,10 @@ export function validateConfig(provider, body, previous) {
   if (provider !== 'onesender' && !['sandbox', 'production'].includes(body.mode)) throw new IntegrationError('Mode harus sandbox atau production.');
   if (provider !== 'onesender') config.enabled = body.enabled;
   if (provider !== 'onesender') config.mode = body.mode;
-  const secrets = provider === 'onesender' ? ['apiKey'] : provider === 'tripay' ? ['apiKey', 'privateKey'] : ['token'];
-  const fields = provider === 'onesender' ? ['phoneNumber', 'apiUrl', ...secrets] : provider === 'tripay'
+  const secrets = ['onesender', 'mayar'].includes(provider) ? ['apiKey'] : provider === 'tripay' ? ['apiKey', 'privateKey'] : provider === 'doku' ? ['secretKey'] : ['token'];
+  const fields = provider === 'mayar' ? secrets : provider === 'doku' ? ['clientId', ...secrets] : provider === 'onesender' ? ['phoneNumber', 'apiUrl', ...secrets] : provider === 'tripay'
     ? ['merchantCode', 'callbackUrl', 'returnUrl', ...secrets]
-    : ['originDistrict', 'originSubdistrict', ...secrets];
+    : ['originDistrict', 'originSubdistrict', 'originLabel', ...secrets];
   for (const field of fields) {
     if (!(field in body)) continue;
     const value = body[field];
@@ -138,7 +142,8 @@ export function validateConfig(provider, body, previous) {
       throw new IntegrationError('Isi ulang API Key saat mengganti API URL OneSender.');
     }
   }
-  const required = provider === 'onesender' ? ['phoneNumber', 'apiUrl', ...secrets]
+  if (provider === 'doku' && config.clientId && !/^[A-Za-z0-9-_]{4,64}$/.test(config.clientId)) throw new IntegrationError('Client ID DOKU tidak valid.');
+  const required = provider === 'mayar' ? secrets : provider === 'doku' ? ['clientId', ...secrets] : provider === 'onesender' ? ['phoneNumber', 'apiUrl', ...secrets]
     : provider === 'tripay' ? ['merchantCode', ...secrets] : [...secrets, 'originDistrict', 'originSubdistrict'];
   if ((config.enabled || provider === 'onesender') && required.some((field) => !config[field])) throw new IntegrationError('Lengkapi kredensial dan isian wajib integrasi.');
   delete config.base;

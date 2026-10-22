@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { setCapabilityOverrides } from '@/lib/roles';
 import { isUuid } from '@/lib/format';
 import { pullRolePermissions } from '@/lib/sync';
+import { mfaApi, simpanTokenSesi } from '@/lib/mfa';
 
 /**
  * Kolom toko yang diambil ulang tiap menit oleh refreshStore. Empat kolom
@@ -19,6 +20,7 @@ const KOLOM_TOKO_RINGAN = [
   'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
   'footer_links', 'chat_enabled',
   'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+  'expense_categories',
 ].join(',');
 
 interface AuthState {
@@ -30,7 +32,9 @@ interface AuthState {
   profile: Profile | null;
   store: Store | null;
   init: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
+  /** mfaToken terisi bila akun memakai verifikasi dua langkah: lanjutkan dengan verifyMfa. */
+  signIn: (email: string, password: string) => Promise<{ error?: string; mfaToken?: string }>;
+  verifyMfa: (mfaToken: string, code: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   /** Ambil ulang baris toko (pajak, struk, fitur) tanpa memuat ulang profil. */
@@ -213,61 +217,28 @@ export const useAuth = create<AuthState>((set, get) => ({
     const api = getBackendClient();
     try {
       const { data, error } = await api.auth.signInWithPassword({ email, password });
+      const mfa = data as unknown as { mfa_required?: boolean; mfa_token?: string } | null;
+      if (!error && mfa?.mfa_required && mfa.mfa_token) return { mfaToken: mfa.mfa_token };
       if (!error && data?.user) {
         set({ userId: data.user.id, sessionStoreId: data.user.store_id ?? null });
         await get().refreshProfile();
         return {};
       }
+      // Ditolak server: tampilkan alasannya. Dulu jalur ini masuk sebagai admin
+      // lokal berisi data demo (atau data toko dari cache perangkat) untuk email
+      // dan sandi apa pun, sehingga /login tampak bisa dibobol (15 Okt 2026).
+      return { error: error?.message || 'Email atau password salah.' };
     } catch {
-      // fallback to offline local accounts
+      return { error: 'Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.' };
     }
+  },
 
-    // Demo / Offline fallback accounts for all 4 roles
-    const normalized = email.trim().toLowerCase();
-    const demoRoles: Record<string, { role: 'admin' | 'warehouse' | 'cashier' | 'customer'; name: string; id: string }> = {
-      'admin@example.com': { role: 'admin', name: 'Admin Kasir', id: 'usr-admin-001' },
-      'gudang@example.com': { role: 'warehouse', name: 'Staff Gudang', id: 'usr-warehouse-001' },
-      'kasir@example.com': { role: 'cashier', name: 'Kasir Toko', id: 'usr-cashier-001' },
-      'customer@example.com': { role: 'customer', name: 'Pelanggan Toko', id: 'usr-customer-001' },
-    };
-
-    const demo = demoRoles[normalized] ?? {
-      role: 'admin' as const,
-      name: normalized.split('@')[0] || 'User Kasir',
-      id: 'usr-' + (normalized.split('@')[0] || 'admin'),
-    };
-
-    let store: Store | undefined = await db.stores.toCollection().first();
-    if (!store) {
-      const newStore: Store = {
-        id: 'store-default-001',
-        name: 'TokoKu',
-        currency: 'IDR',
-        tax_rate: 10,
-        points_per_amount: 0.01,
-        low_stock_threshold: 10,
-        created_at: new Date().toISOString(),
-      };
-      await db.stores.put(newStore);
-      store = newStore;
-    }
-
-    const prodCount = await db.products.count();
-    if (prodCount < 20) {
-      const { generate1000Data } = await import('@/lib/seed1000');
-      await generate1000Data(store.id, demo.id);
-      store = (await db.stores.toCollection().first()) ?? store;
-    }
-
-    const profile: Profile = {
-      id: demo.id,
-      store_id: store.id,
-      full_name: demo.name,
-      email: normalized,
-      role: demo.role,
-    };
-
-    set({ userId: demo.id, sessionStoreId: store.id, profile, store });
+  async verifyMfa(mfaToken, code) {
+    const { data, error } = await mfaApi.verify(mfaToken, code);
+    if (error || !data?.session?.access_token) return { error: error || 'Kode verifikasi salah.' };
+    simpanTokenSesi(data.session.access_token);
+    set({ userId: data.user.id, sessionStoreId: data.user.store_id ?? null });
+    await get().refreshProfile();
     return {};
   },
 

@@ -1,5 +1,12 @@
 import { loadConfig } from './config';
 import type { UserRole } from '@/types';
+import type { KanalBayar, KanalBayarResponse } from './publicPayments';
+
+export interface IntegrationTestResult {
+  message: string;
+  channels?: KanalBayar[];
+  mode?: 'sandbox' | 'production';
+}
 
 const TOKEN_KEY = 'kasir.auth.token.v1';
 
@@ -87,11 +94,33 @@ export interface TripaySettings {
   privateKey?: string;
 }
 
+export type PaymentGateway = 'tripay' | 'mayar' | 'doku' | 'manual';
+export interface MayarSettings {
+  enabled: boolean;
+  mode: 'sandbox' | 'production';
+  hasApiKey: boolean;
+  apiKey?: string;
+  /** Hasil pendaftaran webhook otomatis saat kunci aktif disimpan (spec 0002). */
+  webhook?: { ok: boolean; message: string };
+}
+
+export interface DokuSettings {
+  enabled: boolean;
+  mode: 'sandbox' | 'production';
+  clientId: string;
+  hasSecretKey: boolean;
+  secretKey?: string;
+  /** Alamat yang ditempel di DOKU Back Office > Settings > Notification. */
+  notificationUrl?: string;
+}
+
 export interface KiriminAjaSettings {
   enabled: boolean;
   mode: 'sandbox' | 'production';
   originDistrict: string;
   originSubdistrict: string;
+  /** Nama wilayah asal untuk tampilan, mis. "Sidoarjo, Waru, Kepuhkiriman". */
+  originLabel?: string;
   hasToken: boolean;
   token?: string;
 }
@@ -112,6 +141,8 @@ export interface MetaWhatsAppSettings {
 }
 
 export interface IntegrationSettings {
+  mayar: MayarSettings;
+  doku: DokuSettings;
   meta_whatsapp: MetaWhatsAppSettings;
   onesender: OneSenderSettings;
   tripay: TripaySettings;
@@ -242,6 +273,29 @@ export class KasirApiClient {
   };
 
   admin = {
+    getPaymentGateway: async (): Promise<QueryResult<{ provider: PaymentGateway }>> => {
+      const { data, error } = await requestJson<{ data: { provider: PaymentGateway } }>(this.apiBaseUrl, '/api/admin/payment-gateway', { method: 'GET' });
+      return { data: data?.data ?? null, error };
+    },
+    setPaymentGateway: async (provider: PaymentGateway): Promise<QueryResult<{ provider: PaymentGateway }>> => {
+      const { data, error } = await requestJson<{ data: { provider: PaymentGateway } }>(this.apiBaseUrl, '/api/admin/payment-gateway', { method: 'PUT', body: { provider } });
+      return { data: data?.data ?? null, error };
+    },
+    registerMayarWebhook: async (): Promise<QueryResult<{ message: string }>> => {
+      const { data, error } = await requestJson<{ data: { message: string } }>(this.apiBaseUrl, '/api/admin/integrations/mayar/webhook', { method: 'POST' });
+      return { data: data?.data ?? null, error };
+    },
+    mayarChannels: async (): Promise<QueryResult<KanalBayarResponse>> => {
+      const { data, error } = await requestJson<{ data: KanalBayarResponse }>(this.apiBaseUrl, '/api/admin/integrations/mayar/channels', { method: 'GET' });
+      return { data: data?.data ?? null, error };
+    },
+    kiriminajaWilayah: async (level: 'provinsi' | 'kota' | 'kecamatan' | 'kelurahan', induk?: number | null): Promise<QueryResult<{ id: number; nama: string }[]>> => {
+      const qs = new URLSearchParams({ level, ...(induk ? { induk: String(induk) } : {}) });
+      const { data, error } = await requestJson<{ data: { id: number; nama: string }[] }>(
+        this.apiBaseUrl, `/api/admin/integrations/kiriminaja/wilayah?${qs}`, { method: 'GET' },
+      );
+      return { data: data?.data ?? null, error };
+    },
     getIntegrations: async (): Promise<QueryResult<IntegrationSettings>> => {
       const { data, error } = await requestJson<{ data: IntegrationSettings }>(
         this.apiBaseUrl, '/api/admin/integrations', { method: 'GET' },
@@ -256,8 +310,15 @@ export class KasirApiClient {
       return { data: data?.data ?? null, error };
     },
 
-    testIntegration: async (provider: keyof IntegrationSettings): Promise<QueryResult<{ message: string }>> => {
-      const { data, error } = await requestJson<{ data: { message: string } }>(
+    tripayChannels: async (): Promise<QueryResult<KanalBayarResponse>> => {
+      const { data, error } = await requestJson<{ data: KanalBayarResponse }>(
+        this.apiBaseUrl, '/api/admin/integrations/tripay/channels', { method: 'GET' },
+      );
+      return { data: data?.data ?? null, error };
+    },
+
+    testIntegration: async (provider: keyof IntegrationSettings): Promise<QueryResult<IntegrationTestResult>> => {
+      const { data, error } = await requestJson<{ data: IntegrationTestResult }>(
         this.apiBaseUrl, `/api/admin/integrations/${provider}/test`, { method: 'POST' },
       );
       return { data: data?.data ?? null, error };
@@ -346,6 +407,12 @@ export class KasirApiClient {
       `/api/rpc/${encodeURIComponent(name)}`,
       { method: 'POST', body: args },
     );
+    return { data: data?.data ?? null, error };
+  }
+
+  /** Endpoint khusus di luar /api/query dan /api/rpc, misalnya /api/admin/affiliate/... */
+  async request<T = unknown>(path: string, options: { method?: string; body?: unknown } = {}): Promise<QueryResult<T>> {
+    const { data, error } = await requestJson<{ data: T }>(this.apiBaseUrl, path, options);
     return { data: data?.data ?? null, error };
   }
 

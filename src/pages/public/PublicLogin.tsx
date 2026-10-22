@@ -17,6 +17,8 @@ export function PublicLogin() {
   const params = useMemo(() => new URLSearchParams(search), [search]);
   const next = tujuanAman(params.get('next'));
   const mode = params.get('tab') === 'daftar' ? 'daftar' : 'masuk';
+  // Undangan affiliate membuka halaman daftar dengan email penerima sudah terisi.
+  const emailAwal = (params.get('email') ?? '').slice(0, 200);
   const lebar = useLayarLebar();
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export function PublicLogin() {
     navigate(`/toko/masuk${q ? `?${q}` : ''}`, { replace: true });
   }
 
-  const form = <FormMasuk mode={mode} onMode={gantiMode} next={next} onBerhasil={() => navigate(next)} />;
+  const form = <FormMasuk mode={mode} onMode={gantiMode} next={next} emailAwal={emailAwal} onBerhasil={() => navigate(next)} />;
 
   if (lebar) {
     return (

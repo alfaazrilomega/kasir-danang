@@ -17,6 +17,8 @@ export interface CustomerMe {
   /** Provinsi & kota alamat utama; dipakai checkout dan perhitungan ongkir. */
   province?: string | null;
   city?: string | null;
+  /** Wilayah KiriminAja terakhir yang dipakai checkout (spec 0002). */
+  wilayah?: { provinsi_id: number; provinsi: string; kota_id: number; kota: string; kecamatan_id: number; kecamatan: string; kelurahan_id: number; kelurahan: string } | null;
 }
 
 export interface CustomerOrderItem {
@@ -31,8 +33,15 @@ export interface CustomerOrder {
   created_at: string;
   order_status: string;
   payment_status: string;
+  payment_channel?: string | null;
+  payment_reference?: string | null;
+  payment_provider?: 'tripay' | 'mayar' | 'doku' | null;
+  payment_url?: string | null;
   total: number;
   shipping_cost: number;
+  /** Potongan voucher; 0 bila tanpa voucher. */
+  discount?: number;
+  promo_code?: string | null;
   delivery_address: string | null;
   items: CustomerOrderItem[];
 }
@@ -54,9 +63,9 @@ function simpanToken(token: string | null) {
   }
 }
 
-type Hasil<T> = { data: T | null; error: string | null; status: number };
+export type Hasil<T> = { data: T | null; error: string | null; status: number };
 
-async function panggil<T>(
+export async function panggil<T>(
   path: string,
   opts: { method?: string; body?: unknown; token?: string | null } = {},
 ): Promise<Hasil<T>> {
@@ -164,7 +173,7 @@ export function fetchCustomerConfig() {
 
 export function updateCustomerMe(
   token: string,
-  input: { name: string; phone: string; address: string; province?: string; city?: string },
+  input: { name: string; phone: string; address: string; province?: string; city?: string; wilayah?: CustomerMe['wilayah'] },
 ) {
   return panggil<CustomerMe>('/api/customer/me', { method: 'PATCH', body: input, token });
 }

@@ -28,6 +28,24 @@ export interface PublicCatalogProduct {
   compare_at_price?: number;
   rating_avg?: number;
   rating_count?: number;
+  /** Alamat halaman produk, sama untuk semua varian sekelompok (permintaan 20). */
+  slug?: string | null;
+}
+
+/**
+ * Alamat halaman produk: /toko/produk/{slug}, dengan ?varian= bila yang dituju
+ * satu varian tertentu. Tanpa slug (data yang belum memuatnya, misalnya isi
+ * keranjang atau riwayat pesanan) jatuh ke alamat lama ?id=, yang dialihkan
+ * halaman produk ke alamat slug.
+ */
+/** Sama dengan public.slug_dari_teks di migrasi 054: "Gear Set / RX King" -> "gear-set-rx-king". */
+export function slugDariTeks(teks: string): string {
+  return teks.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'produk';
+}
+
+export function alamatProduk(p: { id: string; slug?: string | null }, varian?: string | null): string {
+  if (!p.slug) return `/toko/produk?id=${encodeURIComponent(p.id)}`;
+  return `/toko/produk/${encodeURIComponent(p.slug)}${varian ? `?varian=${encodeURIComponent(varian)}` : ''}`;
 }
 
 export interface PublicCatalogCategory {
@@ -59,15 +77,36 @@ export interface PublicCatalogStore {
   google_ads_purchase_label?: string | null;
 }
 
+/** Banner beranda yang sedang berlaku (spec 0003). Gambarnya diambil lewat alamatGambarBanner. */
+export interface PublicBanner {
+  id: string;
+  title: string | null;
+  link_url: string | null;
+  /** Versi gambar (potongan md5 isinya), supaya banner yang diganti tidak tertahan di cache. */
+  v: string;
+  ada_hp: boolean;
+}
+
 export interface PublicCatalogData {
   store: PublicCatalogStore | null;
   categories: PublicCatalogCategory[];
   products: PublicCatalogProduct[];
+  banners?: PublicBanner[];
+}
+
+export function alamatGambarBanner(b: Pick<PublicBanner, 'id' | 'v'>, jenis: 'desktop' | 'hp'): string {
+  const { apiBaseUrl } = loadConfig();
+  return `${apiBaseUrl}/api/public/banners/${encodeURIComponent(b.id)}/gambar?jenis=${jenis}&v=${b.v}`;
 }
 
 const EMPTY: PublicCatalogData = { store: null, categories: [], products: [] };
 
 let cached: { storeId: string; promise: Promise<PublicCatalogData> } | null = null;
+
+/** Pengaturan toko berubah: kunjungan storefront berikutnya mengambil identitas terbaru. */
+export function invalidatePublicCatalog() {
+  cached = null;
+}
 
 /** Dipanggil dari beberapa komponen (shell + halaman); permintaan dibagi lewat cache modul sederhana. */
 export function fetchPublicCatalog(storeId: string): Promise<PublicCatalogData> {
@@ -213,6 +252,7 @@ export interface PublicVariant {
   track_stock: boolean;
   stock_qty: number;
   image_url: string | null;
+  slug?: string | null;
 }
 
 export interface PublicReview {
@@ -261,6 +301,7 @@ export interface PublicProductDetailData {
     license_type: string | null;
     license_code: string | null;
     video_url: string | null;
+    slug: string | null;
   };
   variants: PublicVariant[];
   /** Isi paket untuk produk set. */
@@ -268,11 +309,17 @@ export interface PublicProductDetailData {
   reviews: PublicReview[];
 }
 
-export async function fetchPublicProduct(storeId: string, id: string): Promise<PublicProductDetailData> {
+/** Produk dibuka lewat id (alamat lama) atau slug + varian (alamat baru). */
+export async function fetchPublicProduct(
+  storeId: string,
+  sasaran: { id: string } | { slug: string; varian?: string | null },
+): Promise<PublicProductDetailData> {
   const { apiBaseUrl } = loadConfig();
-  const response = await fetch(
-    `${apiBaseUrl}/api/public/product?store_id=${encodeURIComponent(storeId)}&id=${encodeURIComponent(id)}`,
-  );
+  const kunci =
+    'slug' in sasaran
+      ? `slug=${encodeURIComponent(sasaran.slug)}${sasaran.varian ? `&varian=${encodeURIComponent(sasaran.varian)}` : ''}`
+      : `id=${encodeURIComponent(sasaran.id)}`;
+  const response = await fetch(`${apiBaseUrl}/api/public/product?store_id=${encodeURIComponent(storeId)}&${kunci}`);
   const text = await response.text();
   const payload = text ? (JSON.parse(text) as { data?: PublicProductDetailData; error?: string }) : null;
   if (!response.ok || !payload?.data) throw new Error(payload?.error || 'Gagal memuat produk.');
@@ -311,11 +358,16 @@ export interface PublicFlashSaleItem {
   image_url: string | null;
   base_price: number;
   stock_qty: number;
+  slug?: string | null;
 }
 
 export interface PublicFlashSaleData {
   flash_sale: PublicFlashSale | null;
   items: PublicFlashSaleItem[];
+  /** Sesi aktif terdekat yang dimulai dalam 7 hari, saat belum ada yang berjalan (spec 0003). */
+  berikutnya?: { flash_sale: PublicFlashSale; items: PublicFlashSaleItem[] } | null;
+  /** Jam server saat respons dibuat; hitung mundur memakainya, bukan jam HP pembeli. */
+  server_time?: string;
 }
 
 const FLASH_SALE_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
@@ -333,6 +385,34 @@ export async function fetchPublicFlashSale(storeId: string): Promise<PublicFlash
   const payload = text ? (JSON.parse(text) as { data?: PublicFlashSaleData; error?: string }) : null;
   if (!response.ok) throw new Error(payload?.error || 'Gagal memuat flash sale.');
   return payload?.data ?? FLASH_SALE_KOSONG;
+}
+
+/**
+ * Satu item flash per kelompok varian (kunci sama dengan `kelompokkanVarian`), supaya blok
+ * beranda dan daftar `/toko?flash=1` menghitung produk yang sama. Yang dipilih: item yang
+ * kuotanya masih ada, lalu harga flash termurah. Urutan kemunculan pertama dipertahankan.
+ */
+export function flashSatuPerKelompok(
+  items: PublicFlashSaleItem[],
+  products: Pick<PublicCatalogProduct, 'id' | 'name' | 'parent_sku'>[],
+  semuaAktif = false,
+): PublicFlashSaleItem[] {
+  const produk = new Map(products.map((p) => [p.id, p]));
+  const pilih = new Map<string, PublicFlashSaleItem>();
+  const lebihBaik = (a: PublicFlashSaleItem, b: PublicFlashSaleItem) => {
+    const aktifA = semuaAktif || itemFlashAktif(a);
+    const aktifB = semuaAktif || itemFlashAktif(b);
+    if (aktifA !== aktifB) return aktifA;
+    return Number(a.flash_price) < Number(b.flash_price);
+  };
+  for (const item of items) {
+    const p = produk.get(item.product_id);
+    const k = p ? kunciKelompok(p) : kunciKelompok({ name: item.name });
+    const lama = pilih.get(k);
+    if (!lama || lebihBaik(item, lama)) pilih.set(k, item);
+  }
+  const terpilih = new Set(pilih.values());
+  return items.filter((item) => terpilih.has(item));
 }
 
 /**

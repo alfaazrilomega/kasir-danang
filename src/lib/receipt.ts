@@ -389,7 +389,7 @@ export function buildShippingLabelHTML({ store, order, items, target, channelNam
   <div class="label">
     <div class="kepala">
       <div class="toko">${escapeHtml(store.name)}</div>
-      <div class="nomor"><b>${escapeHtml(order.order_number)}</b>${formatDate(order.created_at)}${channelName ? ` · ${escapeHtml(channelName)}` : ''}</div>
+      <div class="nomor"><b>${escapeHtml(order.order_number)}</b>${formatDate(order.created_at)}${channelName ? ` · ${escapeHtml(channelName)}` : ''}${order.shipping_service ? ` · <b>${escapeHtml(`${(order.shipping_courier || '').toUpperCase()} ${order.shipping_service}`.trim())}</b>` : ''}</div>
     </div>
     <div class="bagian penerima">
       <div class="judul">Penerima</div>

@@ -5,6 +5,13 @@ import { PublicShell, tautanWhatsApp } from '@/components/layout/PublicShell';
 import { useTokoPublik } from '@/components/public/KerangkaAuth';
 import { useLocation, useNavigate } from '@/lib/router';
 
+// Ongkir KiriminAja sudah dihitung dan ditagih di checkout (spec 0002).
+const LANGKAH_BERONGKIR: Record<string, string> = {
+  cash: 'Siapkan uang pas sebesar total pesanan. Kurir menagih saat barang tiba.',
+  transfer: 'Transfer total pesanan (sudah termasuk ongkir) ke rekening toko, lalu kirim bukti bayarnya.',
+  qris: 'Pindai QRIS toko sebesar total pesanan (sudah termasuk ongkir), lalu kirim bukti bayarnya.',
+};
+
 const LANGKAH: Record<string, string> = {
   cash: 'Siapkan uang pas. Kurir menagih saat barang tiba, termasuk ongkirnya.',
   transfer: 'Transfer ke rekening toko setelah admin mengabari total akhir berikut ongkir, lalu kirim bukti bayarnya.',
@@ -18,6 +25,8 @@ export function PublicOrderDone() {
   const params = new URLSearchParams(search);
   const orderNumber = params.get('order');
   const bayar = params.get('bayar') ?? '';
+  const gatewayFailed = params.get('gateway') === 'failed';
+  const berongkir = params.get('ongkir') === '1';
   const toko = useTokoPublik();
   const wa = tautanWhatsApp(
     toko?.shop_phone,
@@ -60,11 +69,19 @@ export function PublicOrderDone() {
         )}
 
         <ol className="mt-5 space-y-3 text-sm">
-          <Langkah nomor={1} judul="Toko menghitung ongkir">
-            Ongkir menyesuaikan alamat dan berat paket, lalu dikabari lewat WhatsApp berikut total akhirnya.
-          </Langkah>
+          {berongkir ? (
+            <Langkah nomor={1} judul="Toko memeriksa pesanan">
+              Ongkir sudah termasuk di total pesanan. Toko mengonfirmasi stok lalu menyiapkan paket.
+            </Langkah>
+          ) : (
+            <Langkah nomor={1} judul="Toko menghitung ongkir">
+              Ongkir menyesuaikan alamat dan berat paket, lalu dikabari lewat WhatsApp berikut total akhirnya.
+            </Langkah>
+          )}
           <Langkah nomor={2} judul="Pembayaran">
-            {LANGKAH[bayar] ?? 'Admin menghubungi Anda untuk menyelesaikan pembayaran.'}
+            {gatewayFailed
+              ? 'Pembayaran online belum dapat disiapkan. Pesanan sudah tersimpan. Hubungi admin untuk memeriksa transaksi sebelum membayar atau membuat pesanan baru.'
+              : (berongkir ? LANGKAH_BERONGKIR[bayar] : LANGKAH[bayar]) ?? 'Admin menghubungi Anda untuk menyelesaikan pembayaran.'}
           </Langkah>
           <Langkah nomor={3} judul="Pesanan dikirim">
             Status pesanan bisa dipantau kapan saja di menu Pesanan Saya.

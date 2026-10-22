@@ -36,6 +36,7 @@ import { PinSetupModal } from '@/components/pin/PinSetupModal';
 import { IntegrationsPanel } from '@/components/settings/IntegrationsPanel';
 import { SalesChannelsPanel } from '@/components/settings/SalesChannelsPanel';
 import { loadConfig, resetConfig } from '@/lib/config';
+import { invalidatePublicCatalog } from '@/lib/publicCatalog';
 import { resetBackendClient, getBackendClient } from '@/lib/api';
 import { clearLocalCache, db } from '@/lib/db';
 import { usePwaInstall } from '@/lib/pwaInstall';
@@ -49,9 +50,12 @@ import {
   pendingCount,
 } from '@/lib/sync';
 import { useNavigate } from '@/lib/router';
+import { ALAMAT_SETELAH_KELUAR } from '@/lib/pintuAdmin';
+import { KeamananAkun } from '@/components/settings/KeamananAkun';
+import { KategoriPengeluaranPanel } from '@/components/settings/KategoriPengeluaranPanel';
 import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl, formatBytes } from '@/lib/imageUpload';
-import { Globe } from 'lucide-react';
+import { Globe, Tags } from 'lucide-react';
 import { ACCENTS } from '@/lib/accents';
 import { hasCapability } from '@/lib/roles';
 import { POLA_ID_PIXEL } from '@/lib/pixelToko';
@@ -154,6 +158,7 @@ const SECTIONS: { id: string; label: string; icon: typeof SettingsIcon }[] = [
   { id: 'online', label: 'Toko Online', icon: Globe },
   { id: 'loyalty', label: 'Loyalitas', icon: Coins },
   { id: 'channels', label: 'Channel', icon: StoreIcon },
+  { id: 'expense-categories', label: 'Pengeluaran', icon: Tags },
   { id: 'integrations', label: 'Integrasi API', icon: Link2 },
   { id: 'security', label: 'Keamanan', icon: ShieldCheck },
   { id: 'display', label: 'Tampilan', icon: Monitor },
@@ -173,7 +178,7 @@ export function Settings() {
     () =>
       SECTIONS.filter(
         (section) =>
-          canManageStore || !['business', 'receipt', 'loyalty', 'integrations'].includes(section.id),
+          canManageStore || !['business', 'receipt', 'loyalty', 'integrations', 'expense-categories'].includes(section.id),
       ),
     [canManageStore],
   );
@@ -275,6 +280,10 @@ export function Settings() {
 
   async function saveStore() {
     if (!store || !canManageStore) return;
+    if (!form.storeName.trim()) {
+      toast.error('Nama toko wajib diisi.');
+      return;
+    }
 
     // Validasi URL seadanya: kolom kosong sah (berarti tidak dipakai), yang
     // diisi wajib berskema http/https supaya ikon/tautan di toko online tidak
@@ -338,7 +347,7 @@ export function Settings() {
     }
 
     const payload = {
-      name: form.storeName,
+      name: form.storeName.trim(),
       address: form.address,
       currency: form.currency,
       tax_rate: form.taxRate,
@@ -382,6 +391,7 @@ export function Settings() {
       }
     }
     await db.stores.put({ ...store, ...payload });
+    invalidatePublicCatalog();
     baruMenyimpanRef.current = true;
     await refreshProfile();
     setBusy(false);
@@ -466,7 +476,7 @@ export function Settings() {
     resetBackendClient();
     await clearLocalCache();
     await signOut();
-    navigate('/login', { replace: true });
+    navigate(ALAMAT_SETELAH_KELUAR, { replace: true });
   }
 
   async function installDesktopApp() {
@@ -516,7 +526,7 @@ export function Settings() {
         </div>
       </div>
 
-      <Section id="profile" icon={Building2} title="Profil Toko" description="Identitas yang muncul di struk dan dashboard.">
+      <Section id="profile" icon={Building2} title="Profil Toko" description="Identitas yang muncul di judul tab browser, toko online, struk, dan dashboard.">
         <div className="flex flex-col gap-5 md:flex-row">
           {canManageStore && (
             <div className="flex shrink-0 flex-col items-center gap-2">
@@ -575,7 +585,7 @@ export function Settings() {
             <Input label="Email Akun" value={profile?.email ?? ''} disabled />
             {canManageStore && (
               <>
-                <Input label="Nama Toko" value={form.storeName} onChange={(e) => patch('storeName', e.target.value)} />
+                <Input id="store-name" label="Nama Toko / Judul Tab" value={form.storeName} onChange={(e) => patch('storeName', e.target.value)} placeholder="Contoh: GNNK Racing Store" hint="Mengganti judul tab browser serta nama toko di website, dashboard, dan struk. Klik Simpan untuk menerapkan." />
                 <Input label="Alamat" value={form.address} onChange={(e) => patch('address', e.target.value)} />
                 <div>
                   <label className="block text-sm font-medium mb-1.5">Mata Uang</label>
@@ -1139,11 +1149,20 @@ export function Settings() {
           >
             <SalesChannelsPanel storeId={profile?.store_id ?? ''} />
           </Section>
+
+          <Section
+            id="expense-categories"
+            icon={Tags}
+            title="Kategori Pengeluaran"
+            description="Tambah jenis kategori untuk catatan pengeluaran dan biaya nota pembelian."
+          >
+            <KategoriPengeluaranPanel />
+          </Section>
         </>
       )}
 
       {canManageStore && (
-        <Section id="integrations" icon={Link2} title="Integrasi API" description="Atur koneksi Tripay, KiriminAja, OneSender, dan WhatsApp resmi Meta untuk toko ini.">
+        <Section id="integrations" icon={Link2} title="Integrasi API" description="Kelola pembayaran, pengiriman, WhatsApp, dan email toko dalam satu tempat.">
           <IntegrationsPanel key={profile?.store_id} />
         </Section>
       )}
@@ -1233,6 +1252,8 @@ export function Settings() {
           onClose={() => setPinModal(null)}
         />
       </Section>
+
+      <KeamananAkun />
 
       <Section id="display" icon={Monitor} title="Tampilan" description="Skema warna aplikasi.">
         <div className="text-sm font-semibold mb-2">Mode</div>
@@ -1347,7 +1368,7 @@ export function Settings() {
           <Button
             onClick={async () => {
               await signOut();
-              navigate('/login');
+              navigate(ALAMAT_SETELAH_KELUAR);
             }}
             variant="danger"
           >

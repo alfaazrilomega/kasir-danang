@@ -154,3 +154,16 @@
     font-size: max(16px, 1em);
   }
 }
+
+/* Tiptap: format email tetap terlihat tanpa bergantung pada reset Tailwind. */
+.email-editor-content { min-height: 280px; padding: 1rem; outline: none; overflow-wrap: anywhere; }
+.email-editor-content p { margin: 0.65em 0; }
+.email-editor-content h1 { font-size: 1.75em; font-weight: 700; margin: 0.7em 0; }
+.email-editor-content h2 { font-size: 1.4em; font-weight: 700; margin: 0.7em 0; }
+.email-editor-content h3 { font-size: 1.15em; font-weight: 700; margin: 0.7em 0; }
+.email-editor-content ul { list-style-type: disc; padding-left: 1.5em; }
+.email-editor-content ol { list-style-type: decimal; padding-left: 1.5em; }
+.email-editor-content blockquote { border-left: 3px solid #a3a3b5; padding-left: 1em; }
+.email-editor-content a { color: #5b3fd5; text-decoration: underline; }
+.email-editor-content hr { margin: 1em 0; border-top: 1px solid #d4d4de; }
+.email-editor-content:focus { box-shadow: inset 0 0 0 2px #a696f3; }

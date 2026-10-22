@@ -14,7 +14,7 @@ import { getBackendClient } from './api';
 import { readSpreadsheet } from './spreadsheet';
 import { buildCsv, csvFilename, date as fmtDate, downloadCsv, text } from './csvFormat';
 import { uuid } from './format';
-import { EXPENSE_CATEGORIES } from './expenseCategories';
+import { EXPENSE_CATEGORIES, daftarKategoriPengeluaran } from './expenseCategories';
 import type { Expense, ExpenseCategory, ExpensePaymentMethod } from '@/types';
 
 export const EXPENSE_COLUMNS = ['Tanggal', 'Kategori', 'Keterangan', 'Jumlah', 'Metode Bayar'] as const;
@@ -53,10 +53,10 @@ export function bacaTanggal(v: string): string | null {
   return Number.isNaN(tanggal.getTime()) ? null : tanggal.toISOString().slice(0, 10);
 }
 
-function bacaKategori(v: string): ExpenseCategory | null {
+function bacaKategori(v: string, tambahan: readonly string[] = []): ExpenseCategory | null {
   const s = String(v ?? '').trim().toLowerCase();
   if (!s) return null;
-  const cocok = EXPENSE_CATEGORIES.find(
+  const cocok = daftarKategoriPengeluaran(tambahan).find(
     (c) => c.value === s || c.label.toLowerCase() === s || c.label.toLowerCase().replace(/[^a-z]/g, '') === s.replace(/[^a-z]/g, ''),
   );
   return cocok?.value ?? null;
@@ -89,7 +89,7 @@ export interface ExpenseImportPlan {
   total: number;
 }
 
-export function planExpenseImport(fileRows: string[][]): ExpenseImportPlan {
+export function planExpenseImport(fileRows: string[][], kategoriTambahan: readonly string[] = []): ExpenseImportPlan {
   const kosong: ExpenseImportPlan = { rows: [], issues: [], totalRows: 0, total: 0 };
   if (fileRows.length < 2) {
     return { ...kosong, issues: [{ row: 0, message: 'Berkas kosong.' }] };
@@ -129,7 +129,7 @@ export function planExpenseImport(fileRows: string[][]): ExpenseImportPlan {
     }
 
     const kategoriMentah = idxKategori >= 0 ? String(line[idxKategori] ?? '') : '';
-    const category = bacaKategori(kategoriMentah);
+    const category = bacaKategori(kategoriMentah, kategoriTambahan);
     if (kategoriMentah.trim() && !category) {
       issues.push({ row: nomorBaris, message: `Kategori "${kategoriMentah.trim()}" tidak dikenal, dicatat sebagai Lainnya.` });
     }
@@ -153,8 +153,8 @@ export function planExpenseImport(fileRows: string[][]): ExpenseImportPlan {
   return { rows, issues, totalRows, total };
 }
 
-export async function planExpenseImportFromFile(file: File): Promise<ExpenseImportPlan> {
-  return planExpenseImport(await readSpreadsheet(file));
+export async function planExpenseImportFromFile(file: File, kategoriTambahan: readonly string[] = []): Promise<ExpenseImportPlan> {
+  return planExpenseImport(await readSpreadsheet(file), kategoriTambahan);
 }
 
 export interface ExpenseImportResult {

@@ -2,15 +2,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
+import { setDefaultResultOrder } from 'node:dns';
 import { promisify } from 'node:util';
 import express from 'express';
 import nodemailer from 'nodemailer';
 import pg from 'pg';
 import notificationsHandler from '../api/notifications.js';
 import { describePgError, isConnectionError } from './pgErrors.js';
+import { pasangRuteAffiliate } from './affiliate/rute.js';
+import { catatAtribusiPesanan, catatReferralDaftar, segarkanBonus } from './affiliate/layanan.js';
+import { barisTagihanTripay, bolehCekVoucher, cariVoucher, diskonVoucher } from './voucherToko.js';
+import { prosesOutbox } from './affiliate/pekerja.js';
 
 loadEnvFile('.env');
 loadEnvFile('.env.local');
+
+// Merchant whitelists use the VPS IPv4 address. Prefer it over an unlisted
+// IPv6 address while retaining Node's connection fallback when needed.
+setDefaultResultOrder('ipv4first');
 
 const { Pool, types } = pg;
 const scrypt = promisify(crypto.scrypt);
@@ -57,11 +66,22 @@ pool.on('error', (err) => {
 });
 
 import * as tripay from './integrasi/tripay.js';
+import * as mayar from './integrasi/mayar.js';
+import { customerPayment } from './integrasi/customerPayment.js';
+import { selectedGateway, selectGateway, reconcilePayments, handleMayarWebhook, syncPayment } from './integrasi/payments.js';
+import * as doku from './integrasi/doku.js';
+import { SYARAT_BANNER_BERLAKU, bacaGambarBanner, bannerPublik } from './bannerToko.js';
+import { fotoPembeli } from './fotoToko.js';
+import { rantaiGateway, kanalDariRantai, kanalSetara, buatPembayaran, NAMA_GATEWAY } from './integrasi/gatewayCadangan.js';
+import { konfigurasiKirim, beratPesanan, bacaWilayah, opsiOngkir, bolehPerIp } from './integrasi/ongkirToko.js';
 import { IntegrationError, loadIntegration, saveIntegration, publicConfig, assertProvider } from './integrasi/settings.js';
 import * as kiriminaja from './integrasi/kiriminaja.js';
 import * as onesender from './integrasi/onesender.js';
+import { enqueueReminders, processReminders } from './integrasi/whatsappReminders.js';
 import * as metaWhatsapp from './integrasi/metaWhatsapp.js';
-import { mailketingAktif, kirimEmailMailketing } from './integrasi/mailketing.js';
+import * as whatsapp from './integrasi/whatsappNotifications.js';
+import * as emailSettings from './integrasi/emailSettings.js';
+import { mailketingAktif, kirimEmailMailketing, MailketingError } from './integrasi/mailketing.js';
 
 const authSecret = AUTH_SECRET || 'dev-only-change-me';
 
@@ -76,6 +96,7 @@ const TABLES = {
       'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
       'footer_links', 'chat_enabled',
       'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+      'expense_categories',
     ],
     kind: 'store',
   },
@@ -95,6 +116,7 @@ const TABLES = {
       'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
       'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
       'highlights', 'license_type', 'license_code', 'video_url',
+      'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission', 'slug',
     ],
     tenantColumn: 'store_id',
   },
@@ -126,6 +148,15 @@ const TABLES = {
     columns: [
       'id', 'store_id', 'flash_sale_id', 'product_id', 'flash_price',
       'quota_qty', 'sold_qty', 'created_at',
+    ],
+    tenantColumn: 'store_id',
+  },
+  // Banner beranda toko online (spec 0003). Pembeli membaca lewat
+  // /api/public/catalog dan /api/public/banners/:id/gambar, bukan jalur ini.
+  store_banners: {
+    columns: [
+      'id', 'store_id', 'title', 'image_data', 'image_mobile_data', 'link_url',
+      'sort_order', 'is_active', 'starts_at', 'ends_at', 'created_at', 'updated_at',
     ],
     tenantColumn: 'store_id',
   },
@@ -167,6 +198,9 @@ const TABLES = {
       'delivery_address', 'shipping_cost', 'tax_inclusive',
       'payment_channel', 'payment_reference', 'payment_url',
       'delivery_province', 'delivery_city',
+      'delivery_district', 'delivery_subdistrict', 'delivery_district_id', 'delivery_subdistrict_id',
+      'shipping_courier', 'shipping_service', 'shipping_service_name', 'shipping_etd', 'shipping_weight_gram',
+      'payment_provider', 'payment_failover_from',
       'marketplace_fee', 'net_settled', 'settlement_date', 'fee_detail',
     ],
     tenantColumn: 'store_id',
@@ -380,6 +414,13 @@ const TABLE_ROLE_ACCESS = {
     update: ['admin'],
     delete: ['admin'],
   },
+  store_banners: {
+    select: ['admin'],
+    insert: ['admin'],
+    upsert: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+  },
   shifts: {
     select: POS_ROLES,
     insert: POS_ROLES,
@@ -553,6 +594,8 @@ const TABLE_ROLE_ACCESS = {
 
 app.disable('x-powered-by');
 app.use(corsMiddleware);
+// Foto produk dari WordPress client dikirim ke pembeli sebagai salinan di server toko.
+app.use(fotoPembeli);
 app.use(
   express.json({
     limit: REQUEST_BODY_LIMIT,
@@ -563,6 +606,109 @@ app.use(
   }),
 );
 
+// Laporan pelanggaran Content-Security-Policy dari browser (header CSP dipasang
+// nginx). Dicatat ringkas ke log supaya sumber yang terblokir terlihat sebelum
+// dan sesudah CSP ditegakkan. Dibatasi per IP: laporan bisa dikirim siapa saja.
+const laporanCsp = new Map();
+// Hanya teks sederhana yang masuk log: karakter kontrol (baris baru dll.) dibuang
+// supaya isi laporan tidak bisa memalsukan baris log lain.
+const teksLaporan = (v) => (typeof v === 'string' ? v : '').replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 200);
+app.post(
+  '/api/csp-laporan',
+  express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }),
+  (req, res) => {
+    const ip = String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? '').split(',')[0].trim();
+    const kini = Date.now();
+    const catatan = (laporanCsp.get(ip) ?? []).filter((t) => kini - t < 10 * 60 * 1000);
+    if (catatan.length < 20) {
+      catatan.push(kini);
+      laporanCsp.set(ip, catatan);
+      const daftar = Array.isArray(req.body) ? req.body.map((r) => r?.body ?? r) : [req.body?.['csp-report'] ?? req.body];
+      for (const r of daftar.slice(0, 5)) {
+        if (!r || typeof r !== 'object') continue;
+        const ambil = (k1, k2) => teksLaporan(r[k1] ?? r[k2]);
+        const sikap = typeof r.disposition === 'string' && r.disposition !== 'report' ? ` [${teksLaporan(r.disposition)}]` : '';
+        console.warn(`[csp] ${ambil('effective-directive', 'effectiveDirective') || ambil('violated-directive', 'violatedDirective')} diblokir ${ambil('blocked-uri', 'blockedURL')} di ${ambil('document-uri', 'documentURL').replace(/\?.*$/, '')}${sikap}`);
+      }
+    }
+    if (laporanCsp.size > 5000) laporanCsp.clear();
+    res.status(204).end();
+  },
+  // Badan rusak atau terlalu besar dijawab singkat, tanpa jejak galat di log.
+  (err, _req, res, _next) => {
+    res.status(err?.type === 'entity.too.large' ? 413 : 400).end();
+  },
+);
+
+/**
+ * Akun demo hanya hidup bila ALLOW_DEMO_ACCOUNTS=true (pengembangan tanpa
+ * database). Di produksi akun ini pernah memberi sesi admin toko asli lewat
+ * kredensial yang tercetak di halaman /login (celah 15 Okt 2026).
+ */
+const DEMO_DIIZINKAN = process.env.ALLOW_DEMO_ACCOUNTS === 'true';
+
+// Pintu masuk staf (15 Okt 2026). ADMIN_LOGIN_PATH berisi alamat rahasia
+// /pintu-<minimal 24 huruf/angka acak>. Membuka alamat itu memberi cookie
+// bertanda tangan HMAC; tanpa cookie itu /api/auth/signin berlagak tidak ada,
+// sehingga API masuk tidak bisa ditebak-tebak dari luar. Kosong = gerbang mati
+// (pengembangan lokal, uji).
+const PINTU_ADMIN = String(process.env.ADMIN_LOGIN_PATH ?? '').trim();
+const PINTU_AKTIF = /^\/pintu-[A-Za-z0-9]{24,}$/.test(PINTU_ADMIN);
+if (PINTU_ADMIN && !PINTU_AKTIF) console.error('ADMIN_LOGIN_PATH harus /pintu- diikuti minimal 24 huruf/angka; gerbang dimatikan.');
+const KUE_PINTU = 'kasir_pintu';
+const UMUR_PINTU_DETIK = 12 * 60 * 60;
+
+function tandaPintu(exp) {
+  return crypto.createHmac('sha256', authSecret).update(`pintu:${exp}`).digest('hex');
+}
+
+function kuePintuSah(req) {
+  const mentah = String(req.headers.cookie ?? '').split(/;\s*/).find((c) => c.startsWith(`${KUE_PINTU}=`));
+  if (!mentah) return false;
+  const [exp, tanda] = decodeURIComponent(mentah.slice(KUE_PINTU.length + 1)).split('.');
+  if (!/^\d+$/.test(exp ?? '') || Number(exp) < Date.now() / 1000) return false;
+  return safeEqual(tandaPintu(exp), tanda ?? '');
+}
+
+// Batas percobaan masuk staf: 5 gagal per email dan 20 gagal per IP dalam
+// 15 menit (OWASP: penghitung melekat ke akun, bukan hanya ke IP).
+const GAGAL_MASUK = new Map();
+const JENDELA_MASUK_MS = 15 * 60 * 1000;
+const BATAS_MASUK = { email: 5, ip: 20 };
+
+function kunciMasuk(req, email) {
+  const ip = publicOrderClientIp(req);
+  // Di produksi IP pengunjung datang dari nginx (X-Forwarded-For); permintaan
+  // loopback hanya dari server sendiri (uji, pemeriksaan) dan tidak dihitung per IP.
+  const loopback = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
+  return [[`email:${email}`, BATAS_MASUK.email], ...(loopback ? [] : [[`ip:${ip}`, BATAS_MASUK.ip]])];
+}
+
+function cekBatasMasuk(req, email) {
+  const kini = Date.now();
+  for (const [kunci, batas] of kunciMasuk(req, email)) {
+    const e = GAGAL_MASUK.get(kunci);
+    if (!e) continue;
+    if (kini - e.awal > JENDELA_MASUK_MS) {
+      GAGAL_MASUK.delete(kunci);
+      continue;
+    }
+    if (e.jumlah >= batas) {
+      const menit = Math.max(1, Math.ceil((e.awal + JENDELA_MASUK_MS - kini) / 60000));
+      throw new HttpError(429, `Terlalu banyak percobaan masuk. Coba lagi dalam ${menit} menit.`);
+    }
+  }
+}
+
+function catatGagalMasuk(req, email) {
+  const kini = Date.now();
+  if (GAGAL_MASUK.size > 10000) GAGAL_MASUK.clear();
+  for (const [kunci] of kunciMasuk(req, email)) {
+    const e = GAGAL_MASUK.get(kunci);
+    if (!e || kini - e.awal > JENDELA_MASUK_MS) GAGAL_MASUK.set(kunci, { awal: kini, jumlah: 1 });
+    else e.jumlah += 1;
+  }
+}
 const DEMO_ACCOUNTS = {
   'admin@example.com': { id: 'usr-admin-001', role: 'admin', name: 'Admin Kasir', password: 'change-me-strong-password' },
   'gudang@example.com': { id: 'usr-warehouse-001', role: 'warehouse', name: 'Staff Gudang', password: 'gudang12345' },
@@ -664,10 +810,223 @@ app.post('/api/auth/signup', asyncHandler(async (req, res) => {
   }
 }));
 
-app.post('/api/auth/signin', asyncHandler(async (req, res) => {
+// ===== Verifikasi dua langkah staf (TOTP, RFC 6238), 15 Okt 2026 =====
+// Rahasia TOTP terenkripsi AES-256-GCM (kunci turunan AUTH_SECRET); kode
+// pemulihan disimpan sebagai sidik SHA-256 dan hangus setelah dipakai.
+const KUNCI_MFA = crypto.createHash('sha256').update(`mfa-totp:${authSecret}`).digest();
+const ABJAD_BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Encode(buf) {
+  let bits = 0;
+  let nilai = 0;
+  let out = '';
+  for (const b of buf) {
+    nilai = (nilai << 8) | b;
+    bits += 8;
+    while (bits >= 5) {
+      out += ABJAD_BASE32[(nilai >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += ABJAD_BASE32[(nilai << (5 - bits)) & 31];
+  return out;
+}
+
+function base32Decode(teks) {
+  let bits = 0;
+  let nilai = 0;
+  const out = [];
+  for (const c of String(teks).toUpperCase().replace(/[^A-Z2-7]/g, '')) {
+    nilai = (nilai << 5) | ABJAD_BASE32.indexOf(c);
+    bits += 5;
+    if (bits >= 8) {
+      out.push((nilai >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+function enkripsiRahasiaMfa(teks) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', KUNCI_MFA, iv);
+  const isi = Buffer.concat([c.update(teks, 'utf8'), c.final()]);
+  return ['v1', iv.toString('base64'), c.getAuthTag().toString('base64'), isi.toString('base64')].join(':');
+}
+
+function dekripsiRahasiaMfa(simpanan) {
+  try {
+    const [v, iv, tag, isi] = String(simpanan ?? '').split(':');
+    if (v !== 'v1') return null;
+    const d = crypto.createDecipheriv('aes-256-gcm', KUNCI_MFA, Buffer.from(iv, 'base64'));
+    d.setAuthTag(Buffer.from(tag, 'base64'));
+    return Buffer.concat([d.update(Buffer.from(isi, 'base64')), d.final()]).toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+function kodeTotp(rahasia, langkah) {
+  const pesan = Buffer.alloc(8);
+  pesan.writeBigUInt64BE(BigInt(langkah));
+  const h = crypto.createHmac('sha1', base32Decode(rahasia)).update(pesan).digest();
+  const o = h[h.length - 1] & 15;
+  const angka = ((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return String(angka % 1_000_000).padStart(6, '0');
+}
+
+/** Langkah 30 detik yang cocok (toleransi satu langkah), atau null. Langkah lama ditolak (anti-ulang). */
+function cocokTotp(rahasia, kode, langkahTerakhir) {
+  const k = String(kode ?? '').replace(/\s+/g, '');
+  if (!/^\d{6}$/.test(k)) return null;
+  const kini = Math.floor(Date.now() / 30000);
+  for (const geser of [0, -1, 1]) {
+    const langkah = kini + geser;
+    if (langkahTerakhir != null && langkah <= Number(langkahTerakhir)) continue;
+    if (safeEqual(kodeTotp(rahasia, langkah), k)) return langkah;
+  }
+  return null;
+}
+
+function buatTokenMfa(userId) {
+  const exp = Math.floor(Date.now() / 1000) + 300;
+  const isi = `${userId}.${exp}`;
+  return `${isi}.${crypto.createHmac('sha256', authSecret).update(`mfa:${isi}`).digest('hex')}`;
+}
+
+function bacaTokenMfa(token) {
+  const [id, exp, tanda] = String(token ?? '').split('.');
+  if (!isUuidLike(id) || !/^\d+$/.test(exp ?? '') || Number(exp) < Date.now() / 1000) return null;
+  const benar = crypto.createHmac('sha256', authSecret).update(`mfa:${id}.${exp}`).digest('hex');
+  return safeEqual(benar, tanda ?? '') ? id : null;
+}
+
+const sidikPemulihan = (kode) =>
+  crypto.createHash('sha256').update(`pemulihan:${String(kode ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')}`).digest('hex');
+
+function buatKodePemulihan() {
+  const abjad = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 8 }, () => {
+    const s = [...crypto.randomBytes(10)].map((b) => abjad[b % abjad.length]).join('');
+    return `${s.slice(0, 5)}-${s.slice(5)}`;
+  });
+}
+
+// Langkah kedua masuk: kode authenticator atau kode pemulihan, dibatasi per akun.
+app.post('/api/auth/mfa/verify', asyncHandler(async (req, res, next) => {
+  if (PINTU_AKTIF && !kuePintuSah(req)) return next();
+  const id = bacaTokenMfa(req.body?.mfa_token);
+  if (!id) throw new HttpError(401, 'Waktu verifikasi habis. Silakan masuk lagi.');
+  cekBatasMasuk(req, `mfa:${id}`);
+  const r = await pool.query(
+    `select u.id, u.email, u.totp_secret, u.totp_last_step, u.totp_recovery, p.store_id, p.role
+       from public.app_users u left join public.profiles p on p.id = u.id
+      where u.id = $1 and u.totp_enabled`,
+    [id],
+  );
+  const u = r.rows[0];
+  if (!u) throw new HttpError(401, 'Waktu verifikasi habis. Silakan masuk lagi.');
+  const kode = String(req.body?.code ?? '').trim();
+  const rahasia = dekripsiRahasiaMfa(u.totp_secret);
+  const langkah = rahasia ? cocokTotp(rahasia, kode, u.totp_last_step) : null;
+  if (langkah != null) {
+    await pool.query('update public.app_users set totp_last_step = $2 where id = $1', [id, langkah]);
+  } else {
+    const daftar = Array.isArray(u.totp_recovery) ? u.totp_recovery : [];
+    const sidik = sidikPemulihan(kode);
+    if (!kode || !daftar.includes(sidik)) {
+      catatGagalMasuk(req, `mfa:${id}`);
+      throw new HttpError(401, 'Kode verifikasi salah.');
+    }
+    await pool.query('update public.app_users set totp_recovery = $2::jsonb where id = $1', [id, JSON.stringify(daftar.filter((x) => x !== sidik))]);
+  }
+  const user = { id: u.id, email: u.email, store_id: u.store_id ?? null, role: u.role ?? 'admin' };
+  res.json({ user, session: createSession(user) });
+}));
+
+app.get('/api/auth/mfa', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id)) return res.json({ data: { available: false, enabled: false, recovery_left: 0 } });
+  const r = await pool.query('select totp_enabled, totp_recovery from public.app_users where id = $1', [req.user.id]);
+  const baris = r.rows[0] ?? {};
+  res.json({ data: { available: true, enabled: !!baris.totp_enabled, recovery_left: Array.isArray(baris.totp_recovery) ? baris.totp_recovery.length : 0 } });
+}));
+
+app.post('/api/auth/mfa/setup', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id) || req.user.role === 'customer') throw new HttpError(403, 'Verifikasi dua langkah hanya untuk akun staf.');
+  const rahasia = base32Encode(crypto.randomBytes(20));
+  await pool.query('update public.app_users set totp_pending = $2 where id = $1', [req.user.id, enkripsiRahasiaMfa(rahasia)]);
+  const toko = (await pool.query('select name from public.stores where id = $1', [req.user.store_id]).catch(() => ({ rows: [] }))).rows[0]?.name || 'Konsol Toko';
+  const label = `${encodeURIComponent(toko)}:${encodeURIComponent(req.user.email)}`;
+  res.json({ data: { secret: rahasia, otpauth: `otpauth://totp/${label}?secret=${rahasia}&issuer=${encodeURIComponent(toko)}&algorithm=SHA1&digits=6&period=30` } });
+}));
+
+app.post('/api/auth/mfa/enable', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id)) throw new HttpError(403, 'Verifikasi dua langkah hanya untuk akun staf.');
+  cekBatasMasuk(req, `mfa:${req.user.id}`);
+  const r = await pool.query('select totp_pending from public.app_users where id = $1', [req.user.id]);
+  const rahasia = dekripsiRahasiaMfa(r.rows[0]?.totp_pending);
+  if (!rahasia) throw new HttpError(400, 'Mulai pemasangan verifikasi dua langkah dulu.');
+  const langkah = cocokTotp(rahasia, req.body?.code, null);
+  if (langkah == null) {
+    catatGagalMasuk(req, `mfa:${req.user.id}`);
+    throw new HttpError(400, 'Kode salah. Pastikan jam di ponsel tepat, lalu masukkan kode terbaru.');
+  }
+  const kode = buatKodePemulihan();
+  await pool.query(
+    `update public.app_users
+        set totp_secret = totp_pending, totp_pending = null, totp_enabled = true,
+            totp_last_step = $2, totp_recovery = $3::jsonb
+      where id = $1`,
+    [req.user.id, langkah, JSON.stringify(kode.map(sidikPemulihan))],
+  );
+  await writeAdminAudit(pool, req.user, 'auth.mfa.enable', 'user', req.user.id, {});
+  res.json({ data: { recovery_codes: kode } });
+}));
+
+app.post('/api/auth/mfa/disable', requireUser, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.user.id)) throw new HttpError(403, 'Verifikasi dua langkah hanya untuk akun staf.');
+  cekBatasMasuk(req, `mfa:${req.user.id}`);
+  const r = await pool.query('select password_hash, totp_secret, totp_last_step from public.app_users where id = $1 and totp_enabled', [req.user.id]);
+  const u = r.rows[0];
+  if (!u) throw new HttpError(400, 'Verifikasi dua langkah belum aktif.');
+  const rahasia = dekripsiRahasiaMfa(u.totp_secret);
+  const sandiBenar = await verifyPassword(String(req.body?.password ?? ''), u.password_hash);
+  if (!sandiBenar || !rahasia || cocokTotp(rahasia, req.body?.code, u.totp_last_step) == null) {
+    catatGagalMasuk(req, `mfa:${req.user.id}`);
+    throw new HttpError(400, 'Sandi atau kode salah.');
+  }
+  await pool.query(
+    'update public.app_users set totp_enabled = false, totp_secret = null, totp_pending = null, totp_recovery = null, totp_last_step = null where id = $1',
+    [req.user.id],
+  );
+  await writeAdminAudit(pool, req.user, 'auth.mfa.disable', 'user', req.user.id, {});
+  res.json({ data: { enabled: false } });
+}));
+
+// Admin mematikan verifikasi dua langkah staf lain di tokonya (ponsel hilang).
+app.post('/api/admin/users/:id/mfa/reset', requireUser, requireRoles(['admin']), asyncHandler(async (req, res) => {
+  const id = String(req.params.id ?? '');
+  if (!isUuidLike(id)) throw new HttpError(400, 'User tidak valid.');
+  const r = await pool.query(
+    `update public.app_users u
+        set totp_enabled = false, totp_secret = null, totp_pending = null, totp_recovery = null, totp_last_step = null
+       from public.profiles p
+      where p.id = u.id and u.id = $1 and p.store_id = $2
+      returning u.id`,
+    [id, req.user.store_id],
+  );
+  if (!r.rowCount) throw new HttpError(404, 'User tidak ditemukan.');
+  await writeAdminAudit(pool, req.user, 'user.mfa.reset', 'user', id, {});
+  res.json({ data: { enabled: false } });
+}));
+
+app.post('/api/auth/signin', asyncHandler(async (req, res, next) => {
+  // Tanpa cookie dari halaman masuk rahasia, alamat API ini berlagak tidak ada.
+  if (PINTU_AKTIF && !kuePintuSah(req)) return next();
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? '');
   if (!email || !password) throw new HttpError(400, 'Email dan password wajib diisi.');
+  cekBatasMasuk(req, email);
 
   // Akun asli di database diperiksa LEBIH DULU. DEMO_ACCOUNTS hanya cadangan
   // saat database belum tersedia. Kalau demo dicek duluan, akun hasil
@@ -679,7 +1038,7 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
   try {
     const result = await pool.query(
       `
-        select u.id, u.email, u.password_hash, p.store_id, p.role
+        select u.id, u.email, u.password_hash, u.totp_enabled, p.store_id, p.role
         from public.app_users u
         left join public.profiles p on p.id = u.id
         where lower(u.email) = lower($1)
@@ -694,8 +1053,11 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
 
   if (dbUser) {
     if (!(await verifyPassword(password, dbUser.password_hash))) {
+      catatGagalMasuk(req, email);
       throw new HttpError(401, 'Email atau password salah.');
     }
+    // Verifikasi dua langkah aktif: sesi baru diberikan setelah kode benar.
+    if (dbUser.totp_enabled) return res.json({ mfa_required: true, mfa_token: buatTokenMfa(dbUser.id) });
     const user = {
       id: dbUser.id,
       email: dbUser.email,
@@ -705,9 +1067,12 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
     return res.json({ user, session: createSession(user) });
   }
 
-  const demo = DEMO_ACCOUNTS[email];
+  const demo = DEMO_DIIZINKAN ? DEMO_ACCOUNTS[email] : undefined;
   if (demo) {
-    if (demo.password !== password) throw new HttpError(401, 'Email atau password salah.');
+    if (demo.password !== password) {
+      catatGagalMasuk(req, email);
+      throw new HttpError(401, 'Email atau password salah.');
+    }
     // Kalau database hidup, pakai toko yang benar-benar ada supaya store_id
     // tetap UUID valid; 'store-default-001' hanya untuk mode offline murni.
     const user = {
@@ -720,6 +1085,10 @@ app.post('/api/auth/signin', asyncHandler(async (req, res) => {
     return res.json({ user, session: createSession(user) });
   }
 
+  // Akun tidak ada: scrypt tetap dijalankan supaya lama jawabannya sama dengan
+  // sandi salah dan tidak membocorkan email mana yang terdaftar.
+  await scrypt(password, 'samaran-waktu-masuk', 64);
+  catatGagalMasuk(req, email);
   throw new HttpError(401, 'Email atau password salah.');
 }));
 
@@ -742,15 +1111,150 @@ function requireIntegrationAdmin(req, _res, next) {
 app.get('/api/admin/integrations', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const data = {};
-  for (const provider of ['tripay', 'kiriminaja', 'onesender', 'meta_whatsapp']) {
+  for (const provider of ['tripay', 'mayar', 'doku', 'kiriminaja', 'onesender', 'meta_whatsapp']) {
     data[provider] = publicConfig(provider, await loadIntegration(pool, req.user.store_id, provider));
   }
+  // Alamat yang ditempel admin di DOKU Back Office (Settings > Notification).
+  data.doku.notificationUrl = `${ASAL_TOKO}${doku.JALUR_NOTIFIKASI}`;
   res.json({ data });
+}));
+
+app.get('/api/admin/payment-gateway', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { provider: await selectedGateway(pool, req.user.store_id) } });
+}));
+app.put('/api/admin/payment-gateway', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { provider: await selectGateway(pool, req.user.store_id, req.body?.provider) } });
+}));
+app.get('/api/admin/integrations/mayar/channels', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  const config = await loadIntegration(pool, req.user.store_id, 'mayar');
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { active: mayar.mayarAktif(config), mode: config.mode, channels: await mayar.daftarKanal(config) } });
+}));
+app.post('/api/admin/integrations/mayar/webhook', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  const config = await loadIntegration(pool, req.user.store_id, 'mayar');
+  const url = `${ASAL_TOKO}/api/mayar/callback`;
+  if (!url.startsWith('https://')) throw new HttpError(400, 'Atur URL toko HTTPS di server terlebih dahulu.');
+  await mayar.registerWebhook(config, url);
+  res.json({ data: { message: 'Webhook Mayar terdaftar untuk toko ini.' } });
+}));
+
+app.get('/api/admin/email/settings', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  const data = await emailSettings.loadSettings(pool, req.user.store_id);
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { ...data, config: emailSettings.publicConfig(data.config), variables: emailSettings.VARIABLES } });
+}));
+app.put('/api/admin/email/settings', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await emailSettings.saveSettings(pool, req.user.store_id, req.body) });
+}));
+app.post('/api/admin/email/test', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  const { config } = await emailSettings.loadSettings(pool, req.user.store_id);
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await emailSettings.testConnection(config) });
+}));
+app.post('/api/admin/email/preview', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  if (!emailSettings.TEMPLATE_KEYS.includes(req.body?.key)) throw new HttpError(400, 'Template email tidak dikenali.');
+  const templates = emailSettings.validateTemplates(req.body?.templates);
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: emailSettings.renderEmail(templates[req.body.key], emailSettings.SAMPLE) });
+}));
+
+app.get('/api/admin/whatsapp/settings', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: { settings: await whatsapp.loadSettings(pool, req.user.store_id), variables: whatsapp.VARIABLES } });
+}));
+
+app.put('/api/admin/whatsapp/settings', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await whatsapp.saveSettings(pool, req.user.store_id, req.body) });
+}));
+
+app.get('/api/admin/whatsapp/messages', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const result = await pool.query(`select * from public.whatsapp_messages where store_id = $1
+    and status <> 'draft' order by created_at desc limit 50`, [req.user.store_id]);
+  res.json({ data: result.rows.map(whatsapp.publicMessage) });
+}));
+
+app.get('/api/admin/whatsapp/reminders', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const result = await pool.query(`select r.id, r.order_id, o.order_number, r.template_key, r.scheduled_at,
+    r.status, r.reason, r.message_id from public.whatsapp_reminders r join public.orders o on o.id = r.order_id
+    where r.store_id = $1 order by r.created_at desc, r.scheduled_at limit 50`, [req.user.store_id]);
+  res.json({ data: result.rows });
+}));
+
+app.get('/api/admin/customers/:id/whatsapp/orders', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.params.id)) throw new HttpError(400, 'Customer ID tidak valid.');
+  assertTableAccess(req.user, 'customers', 'select');
+  const result = await pool.query(`select id, order_number, total, payment_status from public.orders
+    where store_id = $1 and customer_id = $2 order by created_at desc limit 50`, [req.user.store_id, req.params.id]);
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: result.rows });
+}));
+
+app.post('/api/admin/customers/:id/whatsapp/preview', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  const orderId = req.body?.orderId || null;
+  if (!isUuidLike(req.params.id) || (orderId && !isUuidLike(orderId))) throw new HttpError(400, 'Customer atau order ID tidak valid.');
+  assertTableAccess(req.user, 'customers', 'select');
+  const row = await whatsapp.prepareMessage(pool, { storeId: req.user.store_id, customerId: req.params.id,
+    orderId, key: req.body?.templateKey, createdBy: req.user.id });
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: whatsapp.publicMessage(row) });
+}));
+
+app.post('/api/admin/whatsapp/messages/:id/send', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.params.id)) throw new HttpError(400, 'ID pesan tidak valid.');
+  assertTableAccess(req.user, 'customers', 'select');
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await whatsapp.sendMessage(pool, req.user.store_id, req.params.id) });
 }));
 
 app.patch('/api/admin/integrations/:provider', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ data: await saveIntegration(pool, req.user.store_id, req.params.provider, req.body) });
+  const data = await saveIntegration(pool, req.user.store_id, req.params.provider, req.body);
+  // Kunci Mayar yang aktif langsung mendaftarkan webhook, supaya admin tidak
+  // perlu membuka dashboard Mayar. Gagal di sini tidak membatalkan simpan.
+  if (req.params.provider === 'mayar' && data.enabled) {
+    const url = `${ASAL_TOKO}/api/mayar/callback`;
+    try {
+      if (!url.startsWith('https://')) throw new Error('URL toko belum HTTPS.');
+      await mayar.registerWebhook(await loadIntegration(pool, req.user.store_id, 'mayar'), url);
+      data.webhook = { ok: true, message: 'Webhook Mayar terdaftar otomatis.' };
+    } catch (error) {
+      data.webhook = { ok: false, message: `Webhook Mayar belum terdaftar: ${error.message} Tekan Daftarkan webhook untuk mencoba lagi.` };
+    }
+  }
+  if (req.params.provider === 'doku') data.notificationUrl = `${ASAL_TOKO}${doku.JALUR_NOTIFIKASI}`;
+  res.json({ data });
+}));
+
+// Wilayah KiriminAja untuk memilih alamat asal kirim toko (AC-15). Memakai
+// token tersimpan walau integrasi belum diaktifkan, karena alamat asal wajib
+// diisi sebelum aktif.
+app.get('/api/admin/integrations/kiriminaja/wilayah', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const config = await loadIntegration(pool, req.user.store_id, 'kiriminaja');
+  if (!config.token) throw new HttpError(400, 'Simpan token KiriminAja terlebih dahulu.');
+  try {
+    res.json({ data: await kiriminaja.daftarWilayah(String(req.query.level ?? ''), req.query.induk, config) });
+  } catch (error) {
+    throw new HttpError(502, error.message);
+  }
+}));
+
+app.get('/api/admin/integrations/tripay/channels', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const config = await loadIntegration(pool, req.user.store_id, 'tripay');
+  if (!config.apiKey) throw new HttpError(400, 'Simpan API Key Tripay terlebih dahulu.');
+  try {
+    const channels = await tripay.daftarKanal(config, true);
+    res.json({ data: { active: tripay.tripayAktif(config), mode: config.mode, channels: channels.map(tripay.kanalPublik) } });
+  } catch (error) {
+    throw new HttpError(502, error instanceof tripay.TripayError ? error.message : 'Gagal memuat kanal Tripay.');
+  }
 }));
 
 app.post('/api/admin/integrations/:provider/test', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
@@ -758,23 +1262,33 @@ app.post('/api/admin/integrations/:provider/test', requireUser, requireIntegrati
   const provider = req.params.provider;
   assertProvider(provider);
   const config = await loadIntegration(pool, req.user.store_id, provider);
-  const credential = provider === 'meta_whatsapp' ? config.accessToken : provider === 'kiriminaja' ? config.token : config.apiKey;
+  const credential = provider === 'meta_whatsapp' ? config.accessToken : provider === 'kiriminaja' ? config.token : provider === 'doku' ? config.secretKey : config.apiKey;
   if (!credential) throw new HttpError(400, 'Simpan kunci API terlebih dahulu.');
   let metaResult;
+  let tripayChannels;
   try {
-    if (provider === 'tripay') await tripay.daftarKanal(config, true);
+    if (provider === 'tripay') tripayChannels = (await tripay.daftarKanal(config, true)).map(tripay.kanalPublik);
+    else if (provider === 'mayar') tripayChannels = await mayar.daftarKanal(config);
     else if (provider === 'kiriminaja') await kiriminaja.tesKoneksi(config);
+    else if (provider === 'doku') await doku.tesKoneksi(config);
     else if (provider === 'onesender') await onesender.tesKoneksi(config);
     else metaResult = await metaWhatsapp.tesKoneksi(config);
   } catch (error) {
+    if (error instanceof tripay.TripayError || error instanceof mayar.MayarError || error instanceof doku.DokuError) throw new HttpError(502, error.message);
     if (error instanceof metaWhatsapp.MetaWhatsAppError) throw new HttpError(502, error.message);
     // Respons penyedia tidak diteruskan karena dapat memuat kredensial.
     throw new HttpError(502, 'Koneksi gagal. Periksa kunci API, mode, dan ketersediaan layanan.');
   }
-  res.json({ data: { message: provider === 'meta_whatsapp'
+  res.json({ data: { ...(tripayChannels ? { channels: tripayChannels, mode: config.mode } : {}), message: provider === 'mayar'
+    ? `Koneksi Mayar ${config.mode} berhasil. ${tripayChannels.filter((c) => c.active).length} kanal aktif. Pembuatan pembayaran memerlukan izin Read & Write.`
+    : provider === 'tripay'
+    ? `Koneksi Tripay ${config.mode} berhasil. ${tripayChannels.filter((channel) => channel.active).length} kanal aktif.${config.enabled ? '' : ' Integrasi masih dinonaktifkan di toko.'}`
+    : provider === 'meta_whatsapp'
     ? `Koneksi Meta berhasil. Nomor ${metaResult.phoneNumber} terdaftar pada WABA ini. Tes tidak mengirim pesan.`
     : provider === 'onesender'
     ? 'API OneSender dapat diakses. Status perangkat WhatsApp perlu diperiksa di dashboard OneSender.'
+    : provider === 'doku'
+    ? `Client ID dan Secret Key DOKU ${config.mode} diterima.${config.enabled ? '' : ' Integrasi masih dinonaktifkan di toko.'}`
     : 'Kunci API diterima. Koneksi berhasil.' } });
 }));
 
@@ -1179,13 +1693,14 @@ function customerMeRow(row) {
     address: row.address ?? null,
     // Wilayah disimpan terpisah karena ongkir dihitung dari sini, bukan dari alamat teks.
     province: row.address_province ?? null,
+    wilayah: row.address_wilayah ?? null,
     city: row.address_city ?? null,
   };
 }
 
 async function loadCustomerForUser(userId, storeId) {
   const found = await pool.query(
-    `select c.id, c.name, c.phone, c.address, c.address_province, c.address_city, u.email
+    `select c.id, c.name, c.phone, c.address, c.address_province, c.address_city, c.address_wilayah, u.email
        from public.customers c
        join public.app_users u on u.id = c.user_id
       where c.user_id = $1 and c.store_id = $2
@@ -1262,6 +1777,7 @@ app.post('/api/customer/signup', asyncHandler(async (req, res) => {
   try {
     await client.query('begin');
     user = await createCustomerAccount(client, { storeId, email, passwordHash, name, phone });
+    await catatReferralAman(client, req, storeId, user.id, user.email);
     await client.query('commit');
   } catch (error) {
     await client.query('rollback');
@@ -1343,6 +1859,7 @@ app.post('/api/customer/google', asyncHandler(async (req, res) => {
     try {
       await client.query('begin');
       user = await createCustomerAccount(client, { storeId, email, passwordHash, name, phone: '' });
+      await catatReferralAman(client, req, storeId, user.id, user.email);
       await client.query('commit');
     } catch (error) {
       await client.query('rollback');
@@ -1419,9 +1936,6 @@ function hashKodeReset(userId, code) {
   return crypto.createHmac('sha256', AUTH_SECRET || 'kasir-reset').update(`${userId}:${code}`).digest('hex');
 }
 
-function escHtml(value) {
-  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
 
 let pengirimEmail;
 /**
@@ -1469,65 +1983,38 @@ function alamatUji(email) {
   return /\.(test|invalid|localhost|local)$/.test(domain);
 }
 
-async function kabarkanPesananBaru({ storeId, orderNumber, total, items, pembeliEmail, customerName, customerPhone, alamat, metode }) {
+async function kabarkanPesananBaru({ storeId, orderNumber, total, items, pembeliEmail, customerName, customerPhone, alamat, metode, diskon = 0, kodeVoucher = null }) {
   const toko = (await pool.query('select name from public.stores where id = $1', [storeId])).rows[0]?.name || 'Toko';
+  const settings = await emailSettings.loadSettings(pool, storeId);
   const rupiah = (n) => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
-  const barisBarang = items
-    .map((it) => `<tr><td>${escHtml(it.name)}</td><td align="center">${it.qty}</td><td align="right">${rupiah(it.price * it.qty)}</td></tr>`)
-    .join('');
-  const tabel =
-    '<table cellpadding="6" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;max-width:520px">' +
-    '<tr><th align="left">Barang</th><th align="center">Qty</th><th align="right">Subtotal</th></tr>' +
-    barisBarang +
-    `<tr><td colspan="2"><b>Total</b></td><td align="right"><b>${rupiah(total)}</b></td></tr>` +
-    '</table>';
-
-  if (!pembeliEmail || alamatUji(pembeliEmail)) {
-    console.log(`[pesanan] ${orderNumber}: email pembeli dilewati (${pembeliEmail || 'tanpa email'}).`);
-  } else {
-    await kirimEmail({
-      to: pembeliEmail,
-      subject: `Pesanan ${orderNumber} diterima - ${toko}`,
-      text:
-        `Terima kasih, pesananmu di ${toko} sudah kami terima.\n\n` +
-        `Nomor pesanan: ${orderNumber}\nTotal: ${rupiah(total)}\n` +
-        `Metode pembayaran: ${metode}\n\n` +
-        'Pesanan sedang menunggu konfirmasi toko. Ongkos kirim dikabari terpisah.',
-      html:
-        `<p>Terima kasih, pesananmu di <b>${escHtml(toko)}</b> sudah kami terima.</p>` +
-        `<p>Nomor pesanan: <b>${escHtml(orderNumber)}</b><br>Metode pembayaran: ${escHtml(metode)}</p>` +
-        tabel +
-        '<p>Pesanan sedang menunggu konfirmasi toko. Ongkos kirim dikabari terpisah lewat WhatsApp.</p>',
-    });
-  }
-
-  // Alamat pemberitahuan toko HARUS disetel sendiri lewat ORDER_NOTIFY_EMAIL.
-  // Sengaja tidak jatuh ke alamat pengirim: alamat pengirim ada di setiap
-  // pemasangan, termasuk mesin pengembangan, dan toko akan kebanjiran email dari
-  // pesanan uji tanpa pernah memintanya.
-  const tujuanToko = (process.env.ORDER_NOTIFY_EMAIL || '').trim();
-  if (!tujuanToko || alamatUji(tujuanToko)) {
-    console.log(`[pesanan] ${orderNumber}: ORDER_NOTIFY_EMAIL belum disetel, toko tidak dikabari lewat email.`);
-  } else {
-    await kirimEmail({
-      to: tujuanToko,
-      subject: `Pesanan website baru ${orderNumber} - ${rupiah(total)}`,
-      text:
-        `Pesanan baru dari toko online ${toko}.\n\n` +
-        `Nomor: ${orderNumber}\nPembeli: ${customerName} (${customerPhone})\n` +
-        `Alamat: ${alamat}\nTotal: ${rupiah(total)}\nMetode: ${metode}`,
-      html:
-        `<p>Pesanan baru dari toko online <b>${escHtml(toko)}</b>.</p>` +
-        `<p>Nomor: <b>${escHtml(orderNumber)}</b><br>` +
-        `Pembeli: ${escHtml(customerName)} (${escHtml(customerPhone)})<br>` +
-        `Alamat: ${escHtml(alamat)}<br>Metode: ${escHtml(metode)}</p>` +
-        tabel +
-        '<p>Pesanan menunggu konfirmasi di menu Riwayat Transaksi, tab Pesanan Website.</p>',
-    });
+  const variables = {
+    nama_toko: toko, nama_customer: customerName, nomor_order: orderNumber, total: rupiah(total),
+    rincian_order: [
+      ...items.map((it, i) => `${i + 1}. ${it.name} — ${it.qty} x ${rupiah(it.price)} = ${rupiah(it.price * it.qty)}`),
+      ...(diskon > 0 ? [`Voucher ${kodeVoucher ?? ''} — -${rupiah(diskon)}`] : []),
+    ].join('\n'),
+    metode_pembayaran: metode, alamat, telepon_customer: customerPhone,
+    link_pesanan: `${(process.env.PUBLIC_STORE_URL || 'https://store.gnnkracing.id').replace(/\/+$/, '')}/toko/akun?tab=pesanan`,
+  };
+  // Alamat admin kosong menonaktifkan notifikasi toko; null mewarisi pengaturan server.
+  const tujuanToko = settings.config.orderNotifyEmail ?? (process.env.ORDER_NOTIFY_EMAIL || '').trim();
+  const targets = [[pembeliEmail, 'order_customer'], [tujuanToko, 'order_admin']].filter(([to]) => to && !alamatUji(to));
+  const results = await Promise.allSettled(targets.map(([to, key]) => kirimEmail({ storeId, to,
+    ...emailSettings.renderEmail(settings.templates[key], variables) }, settings.config)));
+  if (results.some((result) => result.status === 'rejected')) {
+    throw new Error('Sebagian notifikasi email gagal. Periksa koneksi layanan email dan log penyedia.');
   }
 }
 
-async function kirimEmail({ to, subject, text, html }) {
+async function kirimEmail({ storeId, to, subject, text, html }, savedConfig) {
+  const config = savedConfig || (await emailSettings.loadSettings(pool, storeId)).config;
+  if (config.provider !== 'server') {
+    try { return await emailSettings.sendEmail(config, { to, subject, text, html }); }
+    catch (error) {
+      galatEmailTerakhir = { waktu: new Date().toISOString(), pesan: error instanceof emailSettings.EmailError || error instanceof MailketingError ? error.message : 'Pengiriman email gagal.' };
+      throw error;
+    }
+  }
   // Domain pengirim client sudah terverifikasi di Mailketing, jadi dipakai lebih
   // dulu. Kalau layanannya menolak (token salah, kredit habis), pengiriman
   // jatuh ke SMTP: reset kata sandi tidak boleh ikut mati karena satu layanan.
@@ -1590,8 +2077,9 @@ app.post('/api/customer/password/forgot', asyncHandler(async (req, res) => {
   const identifier = String(req.body?.identifier ?? '').trim();
   if (!identifier) throw new HttpError(400, 'Isi nomor HP atau email akunmu.');
   await assertStoreExists(storeId);
-  // Email bisa lewat Mailketing atau SMTP; salah satu saja sudah cukup.
-  if (!mailketingAktif() && !ambilPengirimEmail()) {
+  const email = await emailSettings.loadSettings(pool, storeId);
+  // Pengaturan per toko mengungguli konfigurasi email server.
+  if (email.config.provider === 'server' && !mailketingAktif() && !ambilPengirimEmail()) {
     throw new HttpError(503, 'Pengiriman email belum diaktifkan toko. Hubungi toko lewat chat.');
   }
 
@@ -1609,19 +2097,9 @@ app.post('/api/customer/password/forgot', asyncHandler(async (req, res) => {
       [akun.id, storeId, hashKodeReset(akun.id, code), RESET_BERLAKU_MENIT],
     );
     const toko = (await pool.query('select name from public.stores where id = $1', [storeId])).rows[0]?.name || 'Toko';
-    await kirimEmail({
-      to: akun.email,
-      subject: `Kode reset kata sandi ${toko}: ${code}`,
-      text:
-        `Kode verifikasi untuk mengatur ulang kata sandi akunmu di ${toko}: ${code}\n\n` +
-        `Kode berlaku ${RESET_BERLAKU_MENIT} menit. Jangan berikan kode ini kepada siapa pun. ` +
-        'Abaikan email ini jika kamu tidak meminta reset kata sandi.',
-      html:
-        `<p>Kode verifikasi untuk mengatur ulang kata sandi akunmu di <b>${escHtml(toko)}</b>:</p>` +
-        `<p style="font-size:28px;font-weight:bold;letter-spacing:6px">${code}</p>` +
-        `<p>Kode berlaku ${RESET_BERLAKU_MENIT} menit. Jangan berikan kode ini kepada siapa pun. ` +
-        'Abaikan email ini jika kamu tidak meminta reset kata sandi.</p>',
-    });
+    await kirimEmail({ storeId, to: akun.email,
+      ...emailSettings.renderEmail(email.templates.password_reset, { nama_toko: toko, kode_reset: code, masa_berlaku: RESET_BERLAKU_MENIT }),
+    }, email.config);
   }
   res.json({ data: { ok: true } });
 }));
@@ -1664,12 +2142,21 @@ app.patch('/api/customer/me', requireCustomer, asyncHandler(async (req, res) => 
   const province = String(req.body?.province ?? '').trim().slice(0, 80);
   const city = String(req.body?.city ?? '').trim().slice(0, 80);
   if (!name) throw new HttpError(400, 'Nama wajib diisi.');
+  // Wilayah KiriminAja hanya disimpan utuh (empat ID + nama); selain itu dibiarkan.
+  const w = req.body?.wilayah;
+  const idSah = (v) => Number.isSafeInteger(Number(v)) && Number(v) > 0;
+  const namaSah = (v) => typeof v === 'string' && v.trim() && v.length <= 120;
+  const wilayah = w && ['provinsi', 'kota', 'kecamatan', 'kelurahan'].every((k) => idSah(w[`${k}_id`]) && namaSah(w[k]))
+    ? Object.fromEntries(['provinsi', 'kota', 'kecamatan', 'kelurahan'].flatMap((k) => [[`${k}_id`, Number(w[`${k}_id`])], [k, w[k].trim()]]))
+    : undefined;
   const updated = await pool.query(
     `update public.customers
-        set name = $3, phone = $4, address = $5, address_province = $6, address_city = $7
+        set name = $3, phone = $4, address = $5, address_province = $6, address_city = $7,
+            address_wilayah = case when $8::jsonb is null then address_wilayah else $8::jsonb end
       where user_id = $1 and store_id = $2
       returning id`,
-    [req.user.id, req.user.store_id, name, phone || null, address || null, province || null, city || null],
+    [req.user.id, req.user.store_id, name, phone || null, address || null, province || null, city || null,
+     wilayah ? JSON.stringify(wilayah) : null],
   );
   if (!updated.rowCount) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
   await pool.query('update public.profiles set full_name = $2 where id = $1', [req.user.id, name]);
@@ -1677,12 +2164,22 @@ app.patch('/api/customer/me', requireCustomer, asyncHandler(async (req, res) => 
   res.json({ data: customerMeRow(me) });
 }));
 
+app.get('/api/customer/orders/:id/payment', requireCustomer, asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.params.id)) throw new HttpError(400, 'ID pesanan tidak valid.');
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await customerPayment(pool, { orderId: req.params.id, storeId: req.user.store_id, customerId: me.id }) });
+}));
+
 app.get('/api/customer/orders', requireCustomer, asyncHandler(async (req, res) => {
   const me = await loadCustomerForUser(req.user.id, req.user.store_id);
   if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
   const orders = await pool.query(
     `select id, order_number, created_at, order_status, payment_status, total,
-            coalesce(shipping_cost, 0) as shipping_cost, delivery_address
+            coalesce(shipping_cost, 0) as shipping_cost, delivery_address,
+            coalesce(discount, 0) as discount, promo_code,
+            payment_channel, payment_reference, payment_url, payment_provider
        from public.orders
       where store_id = $1 and customer_id = $2
       order by created_at desc
@@ -1707,6 +2204,7 @@ app.get('/api/customer/orders', requireCustomer, asyncHandler(async (req, res) =
       ...o,
       total: Number(o.total),
       shipping_cost: Number(o.shipping_cost),
+      discount: Number(o.discount),
       items: byOrder.get(o.id) ?? [],
     })),
   });
@@ -1735,8 +2233,26 @@ function hitungStokSetDariBaris(baris) {
 // bernama sama), isi paket, ulasan, tanya jawab, dan info toko.
 app.get('/api/public/product', asyncHandler(async (req, res) => {
   const storeId = String(req.query.store_id ?? '');
-  const id = String(req.query.id ?? '');
-  if (!isUuidLike(storeId) || !isUuidLike(id)) throw new HttpError(400, 'Parameter tidak valid.');
+  // Permintaan 20: halaman produk dibuka lewat slug (/toko/produk/{slug}) dengan
+  // ?varian={SKU atau id}. Tanpa varian dipilih wakil kelompok seperti kartu
+  // katalog: yang masih ada stoknya, lalu yang termurah. Alamat lama ?id= tetap
+  // dilayani supaya link yang sudah tersebar tidak putus.
+  const slug = String(req.query.slug ?? '').trim().toLowerCase();
+  const varian = String(req.query.varian ?? '').trim();
+  let id = String(req.query.id ?? '');
+  if (!isUuidLike(storeId) || (!slug && !isUuidLike(id)) || slug.length > 200) throw new HttpError(400, 'Parameter tidak valid.');
+  if (slug) {
+    const pilih = await pool.query(
+      `select id from public.products
+        where store_id = $1 and slug = $2 and is_active = true
+        order by (case when $3 <> '' and (id::text = $3 or lower(sku) = lower($3)) then 0 else 1 end),
+                 (track_stock and stock_qty <= 0), base_price, created_at, id
+        limit 1`,
+      [storeId, slug, varian],
+    );
+    if (!pilih.rowCount) throw new HttpError(404, 'Produk tidak ditemukan atau sudah tidak dijual.');
+    id = pilih.rows[0].id;
+  }
 
   const storeRes = await pool.query(
     // chat_enabled ikut di-select: halaman detail produk punya dua tombol chat
@@ -1752,7 +2268,7 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
     `select id, name, description, image_url, images, base_price, compare_at_price, category_id,
             track_stock, stock_qty, sku, brand, variant_name, parent_sku, weight_gram, length_cm, width_cm, height_cm,
             spec, variant_label, warranty_type, warranty_period, box_contents, highlights,
-            license_type, license_code, video_url
+            license_type, license_code, video_url, slug
        from public.products
       where id = $1 and store_id = $2 and is_active = true`,
     [id, storeId],
@@ -1766,13 +2282,13 @@ app.get('/api/public/product', asyncHandler(async (req, res) => {
   // keduanya tampil sebagai satu produk berisi varian campur.
   const variantRes = product.parent_sku
     ? await pool.query(
-        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url, slug
            from public.products
           where store_id = $1 and is_active = true and parent_sku = $2`,
         [storeId, product.parent_sku],
       )
     : await pool.query(
-        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url
+        `select id, sku, variant_name, base_price, compare_at_price, track_stock, stock_qty, image_url, slug
            from public.products
           where store_id = $1 and is_active = true and parent_sku is null
             and lower(btrim(name)) = lower(btrim($2))`,
@@ -1989,6 +2505,7 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   const paymentMethod = String(body.payment_method ?? '').trim();
   const notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
   const items = Array.isArray(body.items) ? body.items : [];
+  const kodeVoucher = String(body.promo_code ?? '').trim();
 
   if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
   if (pembeli.store_id !== storeId) throw new HttpError(403, 'Akun ini bukan pembeli toko ini.');
@@ -1998,16 +2515,27 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   if (!customerPhone || customerPhone.length > 20) {
     throw new HttpError(400, 'Nomor HP wajib diisi (maks 20 karakter).');
   }
+  try {
+    whatsapp.normalizePhone(customerPhone);
+  } catch {
+    throw new HttpError(400, 'Nomor WhatsApp penerima tidak valid. Gunakan nomor seperti 081234567890 atau +6281234567890.');
+  }
   if (!deliveryAddress || deliveryAddress.length > 500) {
     throw new HttpError(400, 'Alamat kirim wajib diisi (maks 500 karakter).');
   }
   // Kanal Tripay (mis. BRIVA, QRIS, SHOPEEPAY) dikirim terpisah dari metode
   // manual; metode bayar yang dicatat menyesuaikan grup kanalnya.
   const paymentChannel = String(body.payment_channel ?? '').trim().toUpperCase();
-  const tripayConfig = paymentChannel ? await loadIntegration(pool, storeId, 'tripay') : null;
-  if (paymentChannel && !tripay.tripayAktif(tripayConfig)) {
-    throw new HttpError(400, 'Pembayaran otomatis belum aktif di toko ini.');
+  const paymentProvider = paymentChannel ? String(body.payment_provider || 'tripay') : null;
+  // Layanan yang dipilih pembeli harus ada di rantai aktif toko (utama atau
+  // cadangan); rantai ini juga dipakai bila pembuatan pembayaran gagal (AC-2).
+  const rantai = paymentChannel ? await rantaiGateway(pool, storeId) : [];
+  const layananPilihan = rantai.find((r) => r.provider === paymentProvider);
+  if (paymentChannel && !layananPilihan) {
+    throw new HttpError(409, 'Layanan pembayaran toko berubah. Muat ulang pilihan pembayaran sebelum membuat pesanan.');
   }
+  const gatewayConfig = layananPilihan?.config ?? null;
+  const tripayConfig = paymentProvider === 'tripay' ? gatewayConfig : null;
   if (!paymentChannel && !['cash', 'qris', 'transfer'].includes(paymentMethod)) {
     throw new HttpError(400, 'Metode bayar tidak dikenali.');
   }
@@ -2035,13 +2563,45 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
 
   const productIds = [...new Set(cleanItems.map((it) => it.product_id))];
   const productRows = await pool.query(
-    `select id, name, base_price, cost_price from public.products
+    `select id, name, base_price, cost_price, weight_gram from public.products
      where id = any($1::uuid[]) and store_id = $2 and is_active = true`,
     [productIds, storeId],
   );
   const productById = new Map(productRows.rows.map((p) => [p.id, p]));
   if (productById.size !== productIds.length) {
     throw new HttpError(400, 'Ada produk yang sudah tidak tersedia, muat ulang halaman.');
+  }
+
+  // Ongkir KiriminAja: hanya bila toko sudah memasang token dan alamat asal.
+  // Angkanya dihitung di sini dari KiriminAja, bukan diambil dari layar.
+  let kirim = null;
+  const configKirim = await konfigurasiKirim(pool, storeId);
+  if (configKirim) {
+    const tujuan = bacaWilayah(body.delivery_wilayah);
+    if (!tujuan) throw new HttpError(400, 'Pilih provinsi, kota, kecamatan, dan kelurahan tujuan.');
+    let wilayah;
+    try { wilayah = await kiriminaja.pastikanWilayah(tujuan, configKirim); }
+    catch { throw new HttpError(503, 'Wilayah pengiriman belum dapat diperiksa. Coba lagi beberapa saat.'); }
+    if (!wilayah) throw new HttpError(400, 'Wilayah pengiriman tidak cocok. Pilih ulang kecamatan dan kelurahan.');
+    const berat = beratPesanan(cleanItems, productById);
+    const nilaiBarang = cleanItems.reduce((n, it) => n + Number(productById.get(it.product_id).base_price) * it.qty, 0);
+    let opsi;
+    try { opsi = await opsiOngkir(configKirim, { kecamatanId: wilayah.kecamatan_id, kelurahanId: wilayah.kelurahan_id, berat, nilaiBarang }); }
+    catch (error) {
+      console.error('[kiriminaja] tarif gagal saat buat pesanan:', error.message);
+      throw new HttpError(503, 'Ongkir belum dapat dihitung. Coba lagi beberapa saat.');
+    }
+    const pilihKurir = body.shipping && typeof body.shipping === 'object' ? body.shipping : {};
+    const dipilih = opsi.find((o) => o.courier === String(pilihKurir.courier ?? '').toLowerCase() && o.service === String(pilihKurir.service ?? ''));
+    if (!dipilih || Number(pilihKurir.ongkir) !== dipilih.ongkir) {
+      res.status(409).json({
+        error: dipilih ? `Ongkir ${dipilih.nama} berubah menjadi ${dipilih.ongkir.toLocaleString('id-ID')}. Periksa lalu buat pesanan lagi.`
+          : 'Layanan kurir yang dipilih tidak tersedia lagi. Pilih kurir lain.',
+        shipping_options: opsi,
+      });
+      return;
+    }
+    kirim = { wilayah, berat, ...dipilih };
   }
 
   const orderId = crypto.randomUUID();
@@ -2060,16 +2620,41 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   };
   let metodeTercatat = paymentMethod;
   let kanalTripay = null;
-  if (paymentChannel) {
-    const kanal = (await tripay.daftarKanal(tripayConfig).catch(() => [])).find((k) => String(k.code).toUpperCase() === paymentChannel);
-    if (!kanal || kanal.active === false) throw new HttpError(400, 'Kanal pembayaran tidak tersedia.');
-    kanalTripay = kanal;
-    metodeTercatat = PETA_GRUP[kanal.group] || 'other';
+  let layananUtamaGagal = false;
+  const adaCadangan = rantai.length > 1;
+  if (paymentProvider) {
+    metodeTercatat = paymentChannel.startsWith('QRIS') ? 'qris' : /^(VA\/|.+VA$)/.test(paymentChannel) ? 'transfer' : 'other';
+  }
+  if (paymentProvider === 'doku' && paymentChannel !== 'DOKU') throw new HttpError(400, 'Kanal DOKU tidak tersedia. Muat ulang pilihan pembayaran.');
+  if (paymentProvider === 'mayar') {
+    let channels = null;
+    try { channels = await mayar.daftarKanal(gatewayConfig); }
+    catch (error) { if (!adaCadangan) throw error; layananUtamaGagal = true; }
+    if (channels) {
+      if (paymentChannel !== 'MAYAR' && !mayar.checkoutChannels(channels).some((c) => c.code === paymentChannel)) throw new HttpError(400, 'Kanal Mayar tidak tersedia. Muat ulang pilihan pembayaran.');
+      if (!channels.some((c) => c.active)) throw new HttpError(400, 'Kanal Mayar tidak tersedia.');
+    }
+  }
+  if (paymentProvider === 'tripay') {
+    let channels = null;
+    try { channels = await tripay.daftarKanal(tripayConfig, true); }
+    catch {
+      if (!adaCadangan) throw new HttpError(503, 'Tripay sementara tidak dapat diakses. Coba lagi atau pilih metode pembayaran lain.');
+      layananUtamaGagal = true;
+    }
+    if (channels) {
+      const kanal = channels.find((k) => String(k.code).toUpperCase() === paymentChannel);
+      if (!kanal || !tripay.kanalAktif(kanal)) throw new HttpError(400, 'Kanal pembayaran tidak tersedia. Muat ulang pilihan pembayaran.');
+      kanalTripay = kanal;
+      metodeTercatat = kanal.code.startsWith('QRIS') ? 'qris' : PETA_GRUP[kanal.group] || 'other';
+    }
   }
 
   const client = await pool.connect();
   let orderItems;
   let total;
+  let diskon = 0;
+  let voucher = null;
   try {
     await client.query('begin');
 
@@ -2119,8 +2704,19 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         note: it.note,
       });
     }
-    // TODO: tambahkan ongkir dari KiriminAja di sini saat integrasinya siap.
-    total = subtotal;
+    // Voucher dicek ulang di sini, bukan dipercaya dari layar: promo bisa saja
+    // dimatikan atau berakhir di antara pembeli menekan "Pakai" dan "Buat Pesanan".
+    if (kodeVoucher) {
+      voucher = await cariVoucher(client, storeId, kodeVoucher);
+      if (!voucher) throw new HttpError(400, 'Voucher sudah tidak berlaku. Hapus voucher lalu buat pesanan lagi.');
+      diskon = diskonVoucher(voucher, subtotal);
+    }
+    if (subtotal - diskon <= 0) throw new HttpError(400, 'Voucher membuat total pesanan Rp0. Hubungi toko untuk pesanan ini.');
+    // Ongkir KiriminAja ikut ditagih (AC-12); tanpa KiriminAja ongkir diisi staf saat konfirmasi.
+    total = subtotal - diskon + (kirim ? kirim.ongkir : 0);
+    if (kanalTripay && !tripay.nominalSah(kanalTripay, total)) {
+      throw new HttpError(400, 'Total pesanan di luar batas nominal kanal Tripay yang dipilih. Pilih metode pembayaran lain.');
+    }
 
     await client.query(
       `insert into public.orders (
@@ -2129,24 +2725,58 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         order_status, order_type, table_number, notes, created_at,
         sales_channel, payment_term, due_date, paid_amount, settled_at,
         customer_name, customer_phone, delivery_address, points_earned,
-        delivery_province, delivery_city
+        delivery_province, delivery_city, promo_code
       ) values (
         $1, $2, $11, null, null, $3,
-        $4, 0, 0, $4, $5, 'unpaid',
+        $14, 0, $15, $4, $5, 'unpaid',
         'awaiting_confirmation', 'take_away', null, $6, $7,
         'website', 'cash', null, 0, null,
         $8, $9, $10, 0,
-        $12, $13
+        $12, $13, $16
       )`,
       [orderId, storeId, orderNumber, total, metodeTercatat, notes, nowIso, customerName, customerPhone, deliveryAddress, pembeli.id,
-       deliveryProvince || null, deliveryCity || null],
+       (kirim ? kirim.wilayah.provinsi : deliveryProvince) || null, (kirim ? kirim.wilayah.kota : deliveryCity) || null, subtotal, diskon, voucher ? voucher.code : null],
     );
+    if (kirim) {
+      await client.query(
+        `update public.orders set shipping_cost = $2, shipping_courier = $3, shipping_service = $4, shipping_service_name = $5,
+           shipping_etd = $6, shipping_weight_gram = $7, delivery_district = $8, delivery_subdistrict = $9,
+           delivery_district_id = $10, delivery_subdistrict_id = $11
+         where id = $1`,
+        [orderId, kirim.ongkir, kirim.courier, kirim.service, kirim.nama, kirim.etd || null, kirim.berat,
+         kirim.wilayah.kecamatan, kirim.wilayah.kelurahan, kirim.wilayah.kecamatan_id, kirim.wilayah.kelurahan_id],
+      );
+    }
+    if (paymentProvider) await client.query(`update public.orders set payment_provider = $2, payment_mode = $3,
+      payment_amount = $4, payment_channel = $5 where id = $1`, [orderId, paymentProvider, gatewayConfig.mode, total, paymentChannel]);
     for (const item of orderItems) {
       await client.query(
         `insert into public.order_items (id, order_id, product_id, name, size, qty, price, cost_price, note)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [item.id, orderId, item.product_id, item.name, item.size, item.qty, item.price, item.cost_price, item.note],
       );
+    }
+    await client.query('savepoint whatsapp_reminders');
+    try {
+      await enqueueReminders(client, { storeId, orderId, createdAt: nowIso,
+        paymentMethod: metodeTercatat, requiresGateway: Boolean(paymentProvider) });
+      await client.query('release savepoint whatsapp_reminders');
+    } catch {
+      await client.query('rollback to savepoint whatsapp_reminders');
+      console.error('[whatsapp] Jadwal reminder order tidak dapat disimpan.');
+    }
+    // Atribusi affiliate dan komisinya. Savepoint: kegagalan di sini tidak
+    // boleh membatalkan pesanan pembeli (NFR spesifikasi 0001).
+    await client.query('savepoint affiliate');
+    try {
+      await catatAtribusiPesanan(client, {
+        storeId, orderId, pembeliId: pembeli.id, items: orderItems, discount: diskon,
+        cookieHeader: req.headers.cookie, rahasia: authSecret,
+      });
+      await client.query('release savepoint affiliate');
+    } catch (error) {
+      await client.query('rollback to savepoint affiliate');
+      console.error('[affiliate] atribusi pesanan gagal:', error.message);
     }
     await client.query('commit');
   } catch (error) {
@@ -2157,46 +2787,66 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   }
 
   let pembayaran = null;
-  if (kanalTripay) {
-    try {
-      const trx = await tripay.buatTransaksi({
-        method: kanalTripay.code,
-        merchantRef: orderNumber,
-        amount: total,
-        customerName,
-        // Tripay menolak transaksi tanpa email pembeli.
-        customerEmail: pembeli.email || `${customerPhone.replace(/\D/g, '') || 'pembeli'}@pesanan.web`,
-        customerPhone,
-        items: orderItems.map((it) => ({ name: it.name, price: it.price, quantity: it.qty })),
-        callbackUrl: tripayConfig.callbackUrl || undefined,
-        returnUrl: tripayConfig.returnUrl || undefined,
-      }, tripayConfig);
-      await pool.query(
-        'update public.orders set payment_channel = $2, payment_reference = $3, payment_url = $4 where id = $1',
-        [orderId, kanalTripay.code, trx.reference ?? null, trx.checkout_url ?? null],
-      );
-      pembayaran = {
-        channel: kanalTripay.code,
-        channel_name: kanalTripay.name,
-        reference: trx.reference ?? null,
-        checkout_url: trx.checkout_url ?? null,
-        pay_code: trx.pay_code ?? null,
-        qr_url: trx.qr_url ?? null,
-        expired_time: trx.expired_time ?? null,
-      };
-    } catch (error) {
-      // Pesanan sudah tercatat; kegagalan gateway tidak boleh menghapusnya.
-      // Staff menagih manual seperti pesanan lain.
-      console.error('[tripay] gagal membuat transaksi', error.message);
-      pembayaran = { channel: kanalTripay.code, error: 'Pembayaran otomatis gagal dibuat. Toko akan menagih manual.' };
+  if (paymentProvider) {
+    // Layanan pilihan pembeli dicoba dulu, lalu layanan aktif lain sesuai
+    // urutan rantai. Pesanan yang sama dipakai; tidak ada pesanan ganda.
+    const percobaan = [
+      ...(layananUtamaGagal ? [] : [{ provider: paymentProvider, config: gatewayConfig, kode: paymentChannel, kanalTripay }]),
+      ...rantai.filter((r) => r.provider !== paymentProvider).map((r) => ({ ...r, cadangan: true })),
+    ];
+    const gagal = layananUtamaGagal ? [`${paymentProvider}: tidak dapat dihubungi`] : [];
+    for (const coba of percobaan) {
+      try {
+        let pilihan = { kode: coba.kode, kanalTripay: coba.kanalTripay };
+        if (coba.cadangan) {
+          const setara = await kanalSetara(paymentChannel, coba.provider, coba.config, total);
+          if (!setara) { gagal.push(`${coba.provider}: tidak ada kanal setara`); continue; }
+          pilihan = { kode: setara.code, kanalTripay: setara.kanal };
+        }
+        const hasil = await buatPembayaran(coba.provider, coba.config, pilihan, {
+          orderId, orderNumber, total, customerName, customerPhone, customerEmail: pembeli.email || null,
+          barisTripay: barisTagihanTripay(orderItems, total, diskon, orderNumber, kirim), asalToko: ASAL_TOKO,
+        });
+        const pindah = coba.provider !== paymentProvider ? paymentProvider : null;
+        const k = hasil.kolom;
+        // Pindah layanan: identitas gateway pesanan diganti ke layanan cadangan.
+        if (pindah) {
+          await pool.query(
+            `update public.orders set payment_provider = $2, payment_mode = $3, payment_channel = $4, payment_failover_from = $5,
+               payment_method = case when $4 in ('DOKU', 'MAYAR') then 'other' else payment_method end
+             where id = $1`,
+            [orderId, coba.provider, coba.config.mode, k.channel, pindah],
+          );
+        }
+        if (coba.provider === 'tripay') {
+          await pool.query(
+            'update public.orders set payment_channel = $2, payment_reference = $3, payment_url = $4, payment_expires_at = $5 where id = $1',
+            [orderId, k.channel, k.reference, k.url, k.expiresAt],
+          );
+        } else {
+          await pool.query(`update public.orders set payment_reference = $2, payment_transaction_id = $3,
+            payment_url = $4, payment_expires_at = $5, payment_instructions = $6::jsonb where id = $1`,
+            [orderId, k.reference, k.transactionId, k.url, k.expiresAt, k.instructions ? JSON.stringify(k.instructions) : null]);
+        }
+        if (pindah) console.warn(`[gateway] ${orderNumber} dipindah dari ${pindah} ke ${coba.provider}. ${gagal.join('; ')}`);
+        pembayaran = { ...hasil.respons, ...(pindah ? { pindah_dari: pindah } : {}) };
+        break;
+      } catch (error) {
+        gagal.push(`${coba.provider}: ${error?.message || error}`);
+        console.error(`[${coba.provider}] gagal membuat pembayaran ${orderNumber}:`, error?.message || error);
+      }
+    }
+    if (!pembayaran) {
+      // Pesanan sudah tercatat; kegagalan semua layanan tidak boleh menghapusnya.
+      pembayaran = { provider: paymentProvider, channel: paymentChannel, error: `Pesanan tersimpan, tetapi pembayaran ${NAMA_GATEWAY[paymentProvider] || 'online'} belum dapat disiapkan. Hubungi toko untuk memeriksa transaksi sebelum membayar atau membuat pesanan baru.` };
     }
   }
 
   // Kabar dikirim setelah transaksi database aman. Ditunggu (bukan dilepas)
   // karena di serverless proses bisa dimatikan begitu balasan terkirim, tapi
   // kegagalannya tidak pernah menggagalkan pesanan.
-  try {
-    await kabarkanPesananBaru({
+  const notifications = await Promise.allSettled([
+    kabarkanPesananBaru({
       storeId,
       orderNumber,
       total,
@@ -2205,52 +2855,54 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
       customerName,
       customerPhone,
       alamat: deliveryAddress,
-      metode: kanalTripay ? kanalTripay.name : metodeTercatat,
-    });
-  } catch (error) {
-    console.error('[pesanan] gagal mengabarkan lewat email:', error.message);
-  }
+      metode: pembayaran && !pembayaran.error ? (pembayaran.provider === 'tripay' ? pembayaran.channel_name : NAMA_GATEWAY[pembayaran.provider]) : kanalTripay ? kanalTripay.name : paymentProvider ? NAMA_GATEWAY[paymentProvider] : metodeTercatat,
+      diskon,
+      kodeVoucher: voucher ? voucher.code : null,
+    }),
+    whatsapp.notifyOrder(pool, { storeId, orderId, customerId: pembeli.id }),
+  ]);
+  notifications.forEach((result, index) => {
+    if (result.status === 'rejected') console.error(`[pesanan] notifikasi ${index === 0 ? 'email' : 'WhatsApp'} gagal:`, result.reason?.message);
+  });
 
   res.json({ data: { order_id: orderId, order_number: orderNumber, payment: pembayaran } });
 }));
 
 // Kanal pembayaran otomatis yang aktif di akun Tripay toko. Selama Tripay
 // belum dikonfigurasi, daftarnya kosong dan checkout memakai metode manual.
-app.get('/api/public/payment-channels', asyncHandler(async (req, res) => {
-  const storeId = String(req.query.store_id ?? '');
+// Cek kode voucher dari checkout. Hanya kode yang persis cocok yang dijawab;
+// daftar promo toko tidak pernah dibuka ke publik.
+app.post('/api/public/voucher', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!bolehCekVoucher(publicOrderClientIp(req))) throw new HttpError(429, 'Terlalu banyak percobaan kode voucher. Coba lagi beberapa menit lagi.');
+  const storeId = String(req.body?.store_id ?? '');
   if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  const voucher = await cariVoucher(pool, storeId, req.body?.code);
+  if (!voucher) throw new HttpError(404, 'Kode voucher tidak ditemukan atau sudah tidak berlaku.');
+  res.json({ data: { code: voucher.code, name: voucher.name, type: voucher.type, value: Number(voucher.value) } });
+}));
+
+app.get('/api/public/payment-channels', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const storeId = String(req.query.store_id ?? '');
+  const amount = req.query.amount === undefined ? null : Number(req.query.amount);
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  if (amount !== null && (!Number.isSafeInteger(amount) || amount <= 0)) throw new HttpError(400, 'Nominal pembayaran tidak valid.');
   await assertStoreExists(storeId);
-  const config = await loadIntegration(pool, storeId, 'tripay');
-  if (!tripay.tripayAktif(config)) {
-    res.json({ data: { active: false, mode: null, channels: [] } });
-    return;
-  }
-  let kanal;
-  try {
-    kanal = await tripay.daftarKanal(config);
-  } catch (err) {
-    // Gangguan atau kunci ditolak di sisi Tripay tidak boleh membuat halaman
-    // checkout gagal dimuat: pembeli tetap bisa memakai metode bayar manual.
-    console.error('[tripay] daftar kanal gagal:', err?.message || err);
-    res.json({ data: { active: false, mode: config.mode, channels: [] } });
+  const rantai = await rantaiGateway(pool, storeId);
+  if (!rantai.length) return res.json({ data: { active: false, provider: null, mode: null, channels: [] } });
+  const hasil = await kanalDariRantai(rantai, amount);
+  if (hasil.gagal.length) console.error('[gateway] daftar kanal:', hasil.gagal.join('; '));
+  if (!hasil.provider) {
+    // Gangguan semua layanan tidak boleh membuat checkout gagal dimuat:
+    // pembeli tetap bisa memakai metode bayar manual.
+    res.status(503).json({ error: 'Pilihan pembayaran online sementara tidak dapat dimuat. Coba lagi atau pilih pembayaran manual.' });
     return;
   }
   res.json({
     data: {
-      active: true,
-      mode: config.mode,
-      channels: kanal
-        .filter((k) => k.active !== false)
-        .map((k) => ({
-          code: k.code,
-          name: k.name,
-          group: k.group,
-          icon_url: k.icon_url,
-          fee_flat: k.total_fee?.flat ?? k.fee_merchant?.flat ?? 0,
-          fee_percent: k.total_fee?.percent ?? k.fee_merchant?.percent ?? 0,
-          minimum_amount: k.minimum_amount ?? 0,
-          maximum_amount: k.maximum_amount ?? 0,
-        })),
+      active: true, provider: hasil.provider, mode: hasil.config.mode, amount, channels: hasil.channels,
+      ...(hasil.provider !== rantai[0].provider ? { cadangan_dari: rantai[0].provider } : {}),
     },
   });
 }));
@@ -2266,21 +2918,28 @@ app.post('/api/tripay/callback', asyncHandler(async (req, res) => {
   const status = String(body.status ?? '').toUpperCase();
   if (!reference || !merchantRef) throw new HttpError(400, 'Referensi transaksi kosong.');
   const found = await pool.query(
-    'select id, store_id, payment_reference from public.orders where order_number = $1', [merchantRef],
+    'select id, store_id, payment_reference, payment_channel, payment_provider, payment_amount, total, coalesce(shipping_cost, 0) as shipping_cost from public.orders where order_number = $1', [merchantRef],
   );
   const order = found.rows[0];
-  if (found.rowCount !== 1 || (order.payment_reference && order.payment_reference !== reference)) {
+  if (found.rowCount !== 1 || (order.payment_provider && order.payment_provider !== 'tripay') || !order.payment_reference || order.payment_reference !== reference) {
     throw new HttpError(403, 'Referensi callback tidak sah.');
   }
   const config = await loadIntegration(pool, order.store_id, 'tripay');
   if (!tripay.callbackSah(raw, signature, config) || req.get('X-Callback-Event') !== 'payment_status') {
     throw new HttpError(403, 'Tanda tangan atau event callback tidak sah.');
   }
+  const paidTotal = Number(body.total_amount);
+  const customerFee = Number(body.fee_customer);
+  if (Number(body.is_closed_payment) !== 1 || body.payment_method_code !== order.payment_channel
+    || !Number.isSafeInteger(paidTotal) || !Number.isSafeInteger(customerFee) || customerFee < 0
+    || paidTotal - customerFee !== Number(order.payment_amount ?? (Number(order.total) - Number(order.shipping_cost)))) {
+    throw new HttpError(400, 'Kanal atau nominal callback tidak sesuai pesanan.');
+  }
 
   if (status === 'PAID') {
     await pool.query(
       `update public.orders
-          set payment_status = 'paid', paid_amount = total, settled_at = now()
+          set payment_status = 'paid', paid_amount = coalesce(payment_amount, total - coalesce(shipping_cost, 0)), settled_at = now()
         where id = $1 and store_id = $2
           and payment_status <> 'paid'`,
       [order.id, order.store_id],
@@ -2298,38 +2957,114 @@ app.post('/api/tripay/callback', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
+app.post(doku.JALUR_NOTIFIKASI, asyncHandler(async (req, res) => {
+  const invoice = String(req.body?.order?.invoice_number ?? '');
+  if (!/^[A-Za-z0-9-_]{1,64}$/.test(invoice)) { res.status(400).json({ error: 'Invoice kosong.' }); return; }
+  const found = await pool.query(
+    `select * from public.orders where order_number = $1 and payment_provider = 'doku' and payment_reference is not null`, [invoice],
+  );
+  const order = found.rows[0];
+  // Invoice yang tidak dikenal dijawab 200 supaya DOKU tidak mengulang terus.
+  if (!order) { res.json({ success: true }); return; }
+  const config = await loadIntegration(pool, order.store_id, 'doku');
+  const raw = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
+  const sah = doku.notifikasiSah({
+    clientId: req.get('Client-Id'), requestId: req.get('Request-Id'),
+    timestamp: req.get('Request-Timestamp'), signature: req.get('Signature'),
+  }, raw, config);
+  const status = String(req.body?.transaction?.status ?? '').toUpperCase();
+  if (sah && status === 'SUCCESS' && Number(req.body?.order?.amount) === Number(order.payment_amount) && order.payment_status !== 'paid') {
+    await pool.query(
+      `update public.orders set payment_status = 'paid', paid_amount = coalesce(payment_amount, total), settled_at = coalesce(settled_at, now()),
+         payment_checked_at = now()
+       where id = $1 and store_id = $2 and payment_reference = $3 and payment_status <> 'paid'`,
+      [order.id, order.store_id, order.payment_reference],
+    );
+  } else {
+    if (!sah) console.warn(`[doku] tanda tangan notifikasi ${invoice} tidak cocok; status dipastikan lewat API.`);
+    try { await syncPayment(pool, order); }
+    catch (error) { console.warn(`[doku] status ${invoice} belum terbaca: ${error.message}. Akan diperiksa kembali.`); }
+  }
+  res.json({ success: true });
+}));
+
+app.post('/api/mayar/callback', asyncHandler(async (req, res) => {
+  await handleMayarWebhook(pool, req.body);
+  res.json({ success: true });
+}));
+
 // Tarif ongkir KiriminAja. Selama tokennya kosong, jawabannya active:false dan
 // checkout tetap memakai keterangan "ongkir dihitung toko".
 app.post('/api/public/shipping-rates', asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!bolehPerIp('ongkir', publicOrderClientIp(req), 60, 10 * 60 * 1000)) throw new HttpError(429, 'Terlalu banyak permintaan ongkir. Coba lagi beberapa menit lagi.');
   const body = req.body ?? {};
   const storeId = String(body.store_id ?? '');
   if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
   await assertStoreExists(storeId);
-  const config = await loadIntegration(pool, storeId, 'kiriminaja');
-  if (!kiriminaja.kiriminAjaAktif(config)) {
-    res.json({ data: { active: false, results: [] } });
-    return;
+  const config = await konfigurasiKirim(pool, storeId);
+  if (!config) { res.json({ data: { active: false, options: [] } }); return; }
+  // destination/subdistrict_destination/weight: nama isian lama, tetap diterima.
+  const kecamatanId = Number(body.kecamatan_id ?? body.destination);
+  const kelurahanId = Number(body.kelurahan_id ?? body.subdistrict_destination);
+  if (!Number.isSafeInteger(kecamatanId) || kecamatanId <= 0 || !Number.isSafeInteger(kelurahanId) || kelurahanId <= 0) {
+    throw new HttpError(400, 'Kecamatan dan kelurahan tujuan wajib dipilih.');
   }
-  const angka = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const origin = angka(config.originDistrict);
-  const subOrigin = angka(config.originSubdistrict);
-  const destination = angka(body.destination);
-  const subDestination = angka(body.subdistrict_destination);
-  const weight = Math.max(1, angka(body.weight));
-  if (!origin || !subOrigin) throw new HttpError(400, 'Alamat asal toko belum disetel.');
-  if (!destination || !subDestination) throw new HttpError(400, 'Kecamatan & kelurahan tujuan wajib diisi.');
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 30)
+    .map((it) => ({ product_id: String(it?.product_id ?? ''), qty: Number(it?.qty) }))
+    .filter((it) => isUuidLike(it.product_id) && Number.isInteger(it.qty) && it.qty >= 1 && it.qty <= 50);
+  let berat;
+  let nilaiBarang = 0;
+  if (items.length) {
+    const rows = await pool.query(
+      'select id, base_price, weight_gram from public.products where id = any($1::uuid[]) and store_id = $2 and is_active = true',
+      [[...new Set(items.map((it) => it.product_id))], storeId],
+    );
+    const produkById = new Map(rows.rows.map((p) => [p.id, p]));
+    const ada = items.filter((it) => produkById.has(it.product_id));
+    if (!ada.length) throw new HttpError(400, 'Produk di keranjang tidak ditemukan. Muat ulang halaman.');
+    berat = beratPesanan(ada, produkById);
+    nilaiBarang = ada.reduce((n, it) => n + Number(produkById.get(it.product_id).base_price) * it.qty, 0);
+  } else {
+    // Perkiraan tanpa keranjang (pemanggil lama). Pesanan tetap dihitung ulang dari produknya.
+    berat = Math.min(Math.max(1, Math.round(Number(body.weight) || 0)), 100000);
+    if (!Number(body.weight)) throw new HttpError(400, 'Keranjang kosong.');
+  }
+  try {
+    // Checkout (berkeranjang) wajib memakai kelurahan milik kecamatan itu.
+    if (items.length && !(await kiriminaja.daftarWilayah('kelurahan', kecamatanId, config)).some((k) => k.id === kelurahanId)) {
+      throw new HttpError(400, 'Kelurahan tidak berada di kecamatan itu. Pilih ulang wilayah.');
+    }
+    const options = await opsiOngkir(config, { kecamatanId, kelurahanId, berat, nilaiBarang });
+    res.json({ data: { active: true, options, berat_gram: berat } });
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    console.error('[kiriminaja] tarif gagal:', error.message);
+    throw new HttpError(503, 'Ongkir belum dapat dihitung. Coba lagi beberapa saat.');
+  }
+}));
 
-  const results = await kiriminaja.tarifOngkir({
-    origin,
-    subdistrictOrigin: subOrigin,
-    destination,
-    subdistrictDestination: subDestination,
-    weight,
-    itemValue: angka(body.item_value),
-    insurance: !!body.insurance,
-    courier: Array.isArray(body.courier) ? body.courier : undefined,
-  }, config);
-  res.json({ data: { active: true, mode: config.mode, results } });
+// Wilayah KiriminAja bertingkat untuk alamat checkout. Saat KiriminAja belum
+// siap jawabannya active:false dan checkout memakai daftar wilayah bawaan.
+app.get('/api/public/wilayah', asyncHandler(async (req, res) => {
+  const storeId = String(req.query.store_id ?? '');
+  if (!isUuidLike(storeId)) throw new HttpError(400, 'store_id tidak valid.');
+  if (!bolehPerIp('wilayah', publicOrderClientIp(req), 200, 10 * 60 * 1000)) throw new HttpError(429, 'Terlalu banyak permintaan wilayah. Coba lagi beberapa menit lagi.');
+  const config = await konfigurasiKirim(pool, storeId);
+  if (!config) { res.json({ data: { active: false, items: [] } }); return; }
+  const level = String(req.query.level ?? '');
+  if (!['provinsi', 'kota', 'kecamatan', 'kelurahan'].includes(level)) throw new HttpError(400, 'Tingkat wilayah tidak dikenal.');
+  try {
+    const items = await kiriminaja.daftarWilayah(level, req.query.induk, config);
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.json({ data: { active: true, items } });
+  } catch (error) {
+    if (/tidak valid/.test(error.message)) throw new HttpError(400, error.message);
+    console.error('[kiriminaja] wilayah gagal:', error.message);
+    // active:true memberi tahu checkout bahwa KiriminAja tetap dipakai walau daftar
+    // sedang gagal, supaya tidak jatuh ke alamat bawaan yang akan ditolak server.
+    res.status(503).json({ error: 'Daftar wilayah belum dapat dimuat. Coba lagi beberapa saat.', active: true });
+  }
 }));
 
 // Katalog untuk storefront publik. Sama-sama tanpa requireUser: /api/query
@@ -2360,7 +3095,7 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
   const productsRes = await pool.query(
     `select p.id, p.name, p.description, p.image_url, p.base_price, p.category_id,
             p.track_stock, p.stock_qty, p.weight_gram, p.length_cm, p.width_cm, p.height_cm,
-            p.brand, p.variant_name, p.parent_sku, p.compare_at_price,
+            p.brand, p.variant_name, p.parent_sku, p.compare_at_price, p.slug,
             coalesce(s.sold, 0)::int as sold_qty,
             coalesce(rv.avg_rating, 0)::float as rating_avg,
             coalesce(rv.jumlah, 0)::int as rating_count
@@ -2410,13 +3145,41 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
       : p,
   );
 
+  const bannerRes = await pool.query(
+    `select id, title, link_url, image_mobile_data is not null as ada_hp,
+            substr(md5(image_data || coalesce(image_mobile_data, '')), 1, 12) as versi
+       from public.store_banners
+      where store_id = $1 and ${SYARAT_BANNER_BERLAKU}
+      order by sort_order, created_at`,
+    [storeId],
+  );
+
   res.json({
     data: {
       store: storeRes.rows[0],
       categories: categoriesRes.rows,
       products,
+      banners: bannerRes.rows.map(bannerPublik),
     },
   });
+}));
+
+// Gambar banner beranda. Alamatnya membawa versi (?v=updated_at), jadi boleh
+// disimpan lama di cache browser dan CDN; banner yang diganti mendapat alamat baru.
+app.get('/api/public/banners/:id/gambar', asyncHandler(async (req, res) => {
+  if (!isUuidLike(req.params.id)) throw new HttpError(404, 'Banner tidak ditemukan.');
+  const hp = req.query.jenis === 'hp';
+  const found = await pool.query(
+    `select image_data, image_mobile_data from public.store_banners where id = $1 and ${SYARAT_BANNER_BERLAKU}`,
+    [req.params.id],
+  );
+  const baris = found.rows[0];
+  const gambar = baris ? bacaGambarBanner(hp && baris.image_mobile_data ? baris.image_mobile_data : baris.image_data) : null;
+  if (!gambar) throw new HttpError(404, 'Banner tidak ditemukan.');
+  res.set('Content-Type', gambar.mime);
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(gambar.isi);
 }));
 
 // Sesi flash sale yang sedang berjalan untuk storefront publik. Tanpa
@@ -2446,22 +3209,37 @@ app.get('/api/public/flash-sale', asyncHandler(async (req, res) => {
     [storeId],
   );
   const flashSale = sessionRes.rows[0] ?? null;
-  if (!flashSale) {
-    res.json({ data: { flash_sale: null, items: [] } });
-    return;
-  }
-
-  const itemsRes = await pool.query(
+  const itemSesi = async (id) => (await pool.query(
     `select fsi.product_id, fsi.flash_price, fsi.quota_qty, fsi.sold_qty,
-            p.name, p.image_url, p.base_price, p.stock_qty
+            p.name, p.image_url, p.base_price, p.stock_qty, p.slug
        from public.flash_sale_items fsi
        join public.products p on p.id = fsi.product_id
       where fsi.flash_sale_id = $1 and p.is_active = true
       order by p.name`,
-    [flashSale.id],
-  );
+    [id],
+  )).rows;
+  if (!flashSale) {
+    // Belum ada yang berjalan: sesi aktif terdekat yang dimulai dalam 7 hari
+    // ditampilkan sebagai "Segera Dimulai" (spec 0003, AC-9).
+    const nextRes = await pool.query(
+      `select id, store_id, name, starts_at, ends_at
+         from public.flash_sales
+        where store_id = $1 and is_active = true and starts_at > now() and starts_at <= now() + interval '7 days'
+          and exists (
+            select 1 from public.flash_sale_items fsi
+            join public.products p on p.id = fsi.product_id
+            where fsi.flash_sale_id = flash_sales.id and p.is_active = true
+          )
+        order by starts_at asc
+        limit 1`,
+      [storeId],
+    );
+    const berikutnya = nextRes.rows[0] ?? null;
+    res.json({ data: { flash_sale: null, items: [], berikutnya: berikutnya ? { flash_sale: berikutnya, items: await itemSesi(berikutnya.id) } : null, server_time: new Date().toISOString() } });
+    return;
+  }
 
-  res.json({ data: { flash_sale: flashSale, items: itemsRes.rows } });
+  res.json({ data: { flash_sale: flashSale, items: await itemSesi(flashSale.id), berikutnya: null, server_time: new Date().toISOString() } });
 }));
 
 app.post('/api/query', requireUser, asyncHandler(async (req, res) => {
@@ -2497,8 +3275,9 @@ app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
         `update public.orders
             set order_status = 'done',
                 payment_status = 'paid',
-                shipping_cost = $3,
-                total = subtotal - discount + tax + $3
+                -- Ongkir KiriminAja sudah dibayar bersama pesanan: tidak ikut diubah.
+                shipping_cost = case when shipping_service is not null then shipping_cost else $3 end,
+                total = subtotal - discount + tax + case when shipping_service is not null then coalesce(shipping_cost, 0) else $3 end
           where id = $1 and store_id = $2 and order_status = 'awaiting_confirmation'
          returning id`,
         [orderId, req.user.store_id, ongkir],
@@ -2544,6 +3323,24 @@ app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
     if (ids.length > 500) throw new HttpError(400, 'Maksimal 500 pesanan sekali proses.');
     if (!ids.every(isUuidLike)) throw new HttpError(400, 'id pesanan tidak valid.');
     const hapus = req.body?.p_delete === true;
+    // Komisi affiliate ikut terhapus bersama pesanannya. Yang sudah dibayar
+    // adalah catatan uang keluar, jadi pesanannya hanya boleh dibatalkan.
+    if (hapus) {
+      const dibayar = await pool.query(
+        `select distinct o.order_number
+           from public.affiliate_commissions k join public.orders o on o.id = k.order_id
+          where k.store_id = $1 and k.order_id = any($2::uuid[]) and k.paid
+          order by 1 limit 5`,
+        [req.user.store_id, ids],
+      );
+      if (dibayar.rowCount) {
+        throw new HttpError(
+          409,
+          `Pesanan ${dibayar.rows.map((x) => x.order_number).join(', ')} punya komisi affiliate yang sudah dibayar, jadi tidak bisa dihapus. ` +
+            'Batalkan pesanannya, atau batalkan dulu pembayaran komisinya di menu Affiliate.',
+        );
+      }
+    }
     // Satu pemanggilan fungsi = satu transaksi: semua pesanan diproses atau
     // tidak sama sekali. Pesanan toko lain diabaikan lewat filter store_id.
     const result = await pool.query(
@@ -2634,6 +3431,27 @@ app.post('/api/rpc/:name', requireUser, asyncHandler(async (req, res) => {
   throw new HttpError(404, `RPC ${req.params.name} tidak tersedia.`);
 }));
 
+// Alamat toko untuk tautan di email affiliate. Sengaja dari konfigurasi, bukan
+// dari header permintaan: header bisa diisi pengirim dengan domain lain.
+const ASAL_TOKO = (process.env.PUBLIC_STORE_URL || 'https://store.gnnkracing.id').replace(/\/+$/, '');
+
+pasangRuteAffiliate(app, {
+  pool,
+  asyncHandler,
+  galat: buatHttpError,
+  requireUser,
+  requireRoles,
+  requireCustomer,
+  writeAdminAudit,
+  kirimEmail,
+  alamatUji,
+  verifyToken,
+  rahasia: authSecret,
+  clientIp: publicOrderClientIp,
+  idAktor: (user) => (isStorableActorId(user?.id) ? user.id : null),
+  asalToko: ASAL_TOKO,
+});
+
 app.all('/api/notifications', (req, res) => {
   void notificationsHandler(req, res);
 });
@@ -2647,6 +3465,24 @@ if (fs.existsSync(path.join(distPath, 'index.html'))) {
       }
     },
   }));
+  if (PINTU_AKTIF) {
+    // Halaman masuk staf: cookie gerbang + penanda untuk aplikasi, tidak pernah
+    // di-cache dan tidak diindeks mesin pencari.
+    app.get(PINTU_ADMIN, (_req, res) => {
+      const exp = Math.floor(Date.now() / 1000) + UMUR_PINTU_DETIK;
+      res.cookie(KUE_PINTU, `${exp}.${tandaPintu(exp)}`, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/api/auth',
+        maxAge: UMUR_PINTU_DETIK * 1000,
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      const html = fs.readFileSync(path.join(distPath, 'index.html'), 'utf8');
+      res.type('html').send(html.replace('<head>', '<head><script>window.KASIR_PINTU_ADMIN=true</script>'));
+    });
+  }
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(distPath, 'index.html'));
@@ -2660,9 +3496,61 @@ app.use(errorMiddleware);
 // hanya didengarkan saat dijalankan langsung (lokal / PM2).
 const DI_VERCEL = Boolean(process.env.VERCEL);
 if (!DI_VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`Kasir API listening on :${PORT}`);
+  // HOST=127.0.0.1 di produksi: hanya nginx di server yang sama yang bisa
+  // menjangkau Node. Tanpa HOST, perilaku lama (semua alamat) tetap untuk lokal.
+  const HOST = (process.env.HOST || '').trim() || undefined;
+  app.listen(PORT, HOST, () => {
+    console.log(`Kasir API listening on ${HOST ?? ''}:${PORT}`);
   });
+  let paymentsRunning = false;
+  setInterval(async () => {
+    if (paymentsRunning) return;
+    paymentsRunning = true;
+    try { await reconcilePayments(pool); }
+    catch { console.error('[payment] Pemeriksaan berkala gagal.'); }
+    finally { paymentsRunning = false; }
+  }, 60000).unref();
+  let remindersRunning = false;
+  setInterval(async () => {
+    if (remindersRunning) return;
+    remindersRunning = true;
+    try { await processReminders(pool); }
+    catch { console.error('[whatsapp] Pemrosesan reminder gagal. Periksa database dan riwayat pengiriman.'); }
+    finally { remindersRunning = false; }
+  }, 60000).unref();
+  const jedaAntrean = Number(process.env.AFFILIATE_OUTBOX_INTERVAL_MS || 15000);
+  let antreanJalan = false;
+  setInterval(async () => {
+    if (antreanJalan) return;
+    antreanJalan = true;
+    try {
+      await prosesOutbox({ pool, kirimEmail, alamatUji, asalToko: ASAL_TOKO });
+    } catch (error) {
+      if (!isConnectionError(error)) console.error('[affiliate] antrean email gagal:', error.message);
+    } finally {
+      antreanJalan = false;
+    }
+  }, jedaAntrean).unref();
+
+  // Bonus target bulanan (D-38, FR-58): dihitung ulang tiap menit untuk toko
+  // yang bonusnya aktif atau masih punya bonus berjalan.
+  const jedaBonus = Number(process.env.AFFILIATE_BONUS_INTERVAL_MS || 60000);
+  let bonusJalan = false;
+  setInterval(async () => {
+    if (bonusJalan) return;
+    bonusJalan = true;
+    try {
+      const toko = await pool.query(
+        `select id from public.stores where affiliate_settings->>'bonus_enabled' = 'true'
+          union select distinct store_id from public.affiliate_bonuses where not paid`,
+      );
+      for (const { id } of toko.rows) await segarkanBonus(pool, id, { paksa: true });
+    } catch (error) {
+      if (!isConnectionError(error)) console.error('[affiliate] bonus target gagal:', error.message);
+    } finally {
+      bonusJalan = false;
+    }
+  }, jedaBonus).unref();
 }
 
 // Dipakai oleh api/[...path].js sebagai handler serverless.
@@ -3278,6 +4166,7 @@ const TABLE_CAPABILITY = {
   supplier_product_mappings: 'managePurchasing',
   customers: 'manageCustomers',
   promos: 'managePromos',
+  store_banners: 'managePromos',
   orders: 'useCashier',
   order_items: 'useCashier',
   order_payments: 'useCashier',
@@ -3508,7 +4397,7 @@ async function requireUser(req, _res, next) {
     // Cocokkan HANYA lewat id demo. Sebelumnya email juga dipakai, sehingga
     // token milik akun asli (sub = UUID) dengan email yang sama ikut dianggap
     // demo dan store_id-nya tertimpa 'store-default-001'.
-    const demo = Object.values(DEMO_ACCOUNTS).find((d) => d.id === payload.sub);
+    const demo = DEMO_DIIZINKAN ? Object.values(DEMO_ACCOUNTS).find((d) => d.id === payload.sub) : undefined;
     if (demo) {
       const demoStoreId = await resolveDemoStoreId();
       req.user = {
@@ -3525,6 +4414,8 @@ async function requireUser(req, _res, next) {
       req.authExp = payload.exp;
       return next();
     }
+    // Token akun demo (sub 'usr-...') yang terlanjur terbit ditolak, bukan jatuh ke cadangan admin di bawah.
+    if (!DEMO_DIIZINKAN && !isUuidLike(payload.sub)) throw new HttpError(401, 'Sesi tidak valid. Silakan masuk lagi.');
 
     try {
       const result = await pool.query(
@@ -3548,6 +4439,8 @@ async function requireUser(req, _res, next) {
       next();
     } catch (dbErr) {
       if (dbErr instanceof HttpError) throw dbErr;
+      // Database tidak terjangkau: gagal tertutup, jangan menganggap pemegang token sebagai admin.
+      if (!DEMO_DIIZINKAN) throw new HttpError(503, 'Server sedang sibuk. Coba lagi sebentar.');
       req.user = { id: payload.sub, email: payload.email || 'admin@example.com', store_id: 'store-default-001', role: 'admin' };
       req.authToken = token;
       req.authExp = payload.exp;
@@ -3668,7 +4561,9 @@ function asyncHandler(fn) {
 function errorMiddleware(error, _req, res, _next) {
   if (error?.code === '22P02') {
   }
-  if (error instanceof HttpError || error instanceof IntegrationError) {
+  if (error instanceof mayar.MayarError || error instanceof tripay.TripayError) return res.status(502).json({ error: error.message });
+  if (error instanceof metaWhatsapp.MetaWhatsAppError) return res.status(400).json({ error: error.message });
+  if (error instanceof HttpError || error instanceof IntegrationError || error instanceof whatsapp.WhatsAppError || error instanceof emailSettings.EmailError || error instanceof MailketingError) {
     return res.status(error.status).json({ error: error.message, code: error.code });
   }
   if (
@@ -3689,6 +4584,26 @@ function errorMiddleware(error, _req, res, _next) {
       ? 'Internal server error.'
       : error?.message ?? 'Internal server error.',
   });
+}
+
+/** Dipakai modul di luar berkas ini; deklarasi fungsi ter-hoist, kelasnya tidak. */
+function buatHttpError(status, message, code) {
+  return new HttpError(status, message, code);
+}
+
+/** Upline akun baru dari cookie affiliate atau undangan. Gagal di sini tidak menggagalkan pendaftaran. */
+async function catatReferralAman(client, req, storeId, userId, email) {
+  await client.query('savepoint referral');
+  try {
+    const c = await client.query('select id from public.customers where user_id = $1 and store_id = $2 limit 1', [userId, storeId]);
+    if (c.rows[0]) {
+      await catatReferralDaftar(client, { storeId, customerId: c.rows[0].id, email, cookieHeader: req.headers.cookie, rahasia: authSecret });
+    }
+    await client.query('release savepoint referral');
+  } catch (error) {
+    await client.query('rollback to savepoint referral');
+    console.error('[affiliate] referral daftar gagal:', error.message);
+  }
 }
 
 class HttpError extends Error {

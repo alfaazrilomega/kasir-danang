@@ -19,6 +19,7 @@ export function FormMasuk({
   onMode,
   next,
   idAwal = '',
+  emailAwal = '',
   onLupa,
   onBerhasil,
 }: {
@@ -26,6 +27,8 @@ export function FormMasuk({
   onMode: (m: 'masuk' | 'daftar') => void;
   next: string | null;
   idAwal?: string;
+  /** Email pendaftaran yang sudah terisi, misalnya dari undangan affiliate. */
+  emailAwal?: string;
   /** Bila diisi, "Lupa Kata Sandi?" ditangani induk (pop-up) alih-alih pindah halaman. */
   onLupa?: (identifier: string) => void;
   onBerhasil: () => void;
@@ -36,7 +39,7 @@ export function FormMasuk({
 
   const [identifier, setIdentifier] = useState(idAwal);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(emailAwal);
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [setuju, setSetuju] = useState(false);

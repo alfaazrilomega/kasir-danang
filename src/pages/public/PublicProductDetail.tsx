@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Heart,
   MapPin,
+  Megaphone,
   MessageCircle,
   Minus,
   Play,
@@ -27,6 +28,7 @@ import { KartuProduk } from '@/components/public/KartuProduk';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import {
+  alamatProduk,
   fetchPublicCatalog,
   fetchPublicFlashSale,
   fetchPublicProduct,
@@ -44,6 +46,7 @@ import { usePublicCart } from '@/stores/publicCart';
 import { useWishlist } from '@/stores/wishlist';
 import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
+import { affiliateApi, linkAffiliate } from '@/lib/affiliate';
 
 const FLASH_KOSONG: PublicFlashSaleData = { flash_sale: null, items: [] };
 const PER_HALAMAN = 5;
@@ -125,10 +128,18 @@ function bacaHelpful(): string[] {
  */
 export function PublicProductDetail() {
   const navigate = useNavigate();
-  const { search } = useLocation();
-  const productId = new URLSearchParams(search).get('id') ?? '';
+  const { pathname, search } = useLocation();
+  // Permintaan 20: /toko/produk/{slug}?varian={SKU atau id}. Alamat lama
+  // /toko/produk?id= tetap dibuka, lalu diganti ke alamat slug.
+  const awalanSlug = '/toko/produk/';
+  const slugUrl = pathname.startsWith(awalanSlug) ? decodeURIComponent(pathname.slice(awalanSlug.length).split('/')[0] ?? '') : '';
+  const kueri = new URLSearchParams(search);
+  const idUrl = slugUrl ? '' : kueri.get('id') ?? '';
+  const varianUrl = slugUrl ? kueri.get('varian') ?? '' : '';
+  const dialihkan = useRef('');
 
   const [data, setData] = useState<PublicProductDetailData | null>(null);
+  const productId = data?.product.id ?? idUrl;
   const [catalog, setCatalog] = useState<PublicCatalogData | null>(null);
   const [flash, setFlash] = useState<PublicFlashSaleData>(FLASH_KOSONG);
   const [loading, setLoading] = useState(true);
@@ -171,30 +182,79 @@ export function PublicProductDetail() {
   const klikMasuk = useKlikMasuk();
   const me = useCustomer((s) => s.me);
   const favorit = useWishlist((s) => s.ids.includes(productId));
+  // Link affiliate produk ini, hanya untuk affiliate berhak atas produk ini (FR-14).
+  const [linkKomisi, setLinkKomisi] = useState<string | null>(null);
   const toggleFavorit = useWishlist((s) => s.toggle);
 
   useEffect(() => {
+    // Alamat baru hasil pengalihan dari ?id=: produknya sudah termuat.
+    if (slugUrl && dialihkan.current === `${slugUrl}|${varianUrl}`) {
+      dialihkan.current = '';
+      setLoading(false);
+      return;
+    }
+    // Ganti varian di produk yang sama: halaman tetap tampil dan data varian
+    // ditukar diam-diam. Dulu seluruh halaman diganti kerangka lalu digambar
+    // ulang dari atas, sehingga gambar berkedip (permintaan 31). Lembar pilihan
+    // varian di HP juga tetap terbuka.
+    const gantiVarian = !!data && (slugUrl ? slugUrl === data.product.slug : data.variants.some((v) => v.id === idUrl));
     let alive = true;
-    setLoading(true);
-    setGaleri(0);
+    if (!gantiVarian) {
+      setLoading(true);
+      setGaleri(0);
+      setHalaman(1);
+      setLembar(null);
+      setDeskripsiTerbentang(false);
+      window.scrollTo({ top: 0 });
+    }
     setQty(1);
     setQtyText('1');
-    setHalaman(1);
-    setLembar(null);
-    setDeskripsiTerbentang(false);
-    window.scrollTo({ top: 0 });
-    fetchPublicProduct(PUBLIC_STORE_ID, productId)
-      .then((d) => alive && setData(d))
-      .catch(() => alive && setData(null))
+    const gambarDari = (p: PublicProductDetailData['product']) => JSON.stringify([p.image_url, p.video_url, p.images]);
+    fetchPublicProduct(PUBLIC_STORE_ID, slugUrl ? { slug: slugUrl, varian: varianUrl } : { id: idUrl })
+      .then((d) => {
+        if (!alive) return;
+        // Galeri kembali ke foto pertama hanya bila foto varian baru memang berbeda.
+        if (gantiVarian && data && gambarDari(d.product) !== gambarDari(data.product)) setGaleri(0);
+        setData(d);
+        if (!slugUrl && d.product.slug) {
+          // Parameter lain (utm iklan, dll.) ikut dibawa ke alamat baru.
+          const sisa = new URLSearchParams(search);
+          sisa.delete('id');
+          const varian = d.product.sku || d.product.id;
+          sisa.set('varian', varian);
+          dialihkan.current = `${d.product.slug}|${varian}`;
+          navigate(`${awalanSlug}${encodeURIComponent(d.product.slug)}?${sisa.toString()}`, { replace: true });
+        }
+      })
+      // Gagal memuat rincian varian: halaman tetap memakai data varian yang sudah tampil.
+      .catch(() => alive && !gantiVarian && setData(null))
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
     };
-  }, [productId]);
+    // `search` sengaja tidak jadi pemicu: hanya dibaca saat alamat lama dialihkan.
+  }, [slugUrl, varianUrl, idUrl]);
 
   useEffect(() => {
     fetchPublicCatalog(PUBLIC_STORE_ID).then(setCatalog).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setLinkKomisi(null);
+    if (!token || !productId) return;
+    let hidup = true;
+    void (async () => {
+      const saya = await affiliateApi.me(token);
+      const kode = saya.data?.eligible ? saya.data.profile?.code : null;
+      if (!kode || !hidup) return;
+      const p = await affiliateApi.products(token, productId);
+      const ini = p.data?.[0];
+      if (hidup && ini?.eligible) setLinkKomisi(linkAffiliate(window.location.origin, kode, ini.slug || productId));
+    })();
+    return () => {
+      hidup = false;
+    };
+  }, [token, productId]);
 
   // Sesi flash sale toko, tanpa cache supaya harganya segar tiap halaman dibuka.
   useEffect(() => {
@@ -408,6 +468,18 @@ export function PublicProductDetail() {
   const harga = itemFlash ? Number(itemFlash.flash_price) : Number(product.base_price);
   const coret = itemFlash ? Number(itemFlash.base_price) : Number(product.compare_at_price ?? 0);
   const diskon = coret > harga && harga > 0 ? Math.round((1 - harga / coret) * 100) : 0;
+  // Tinggi blok harga dijaga sama untuk semua varian sekelompok. Tanpa ini lencana
+  // Flash Sale dan baris harga coret muncul-hilang saat ganti varian, dan tombol
+  // varian serta tombol beli di bawahnya bergeser 46px (temuan QC R1).
+  const adaFlashKelompok = !!itemFlash || variants.some((v) => petaFlash.has(v.id));
+  const adaCoretKelompok =
+    diskon > 0 ||
+    variants.some((v) => {
+      const f = petaFlash.get(v.id);
+      const h = f ? Number(f.flash_price) : Number(v.base_price);
+      const c = f ? Number(f.base_price) : Number(v.compare_at_price ?? 0);
+      return c > h && h > 0;
+    });
   const namaAtribut = product.variant_label?.trim() || 'Variasi';
   const labelVarian = (v: { variant_name: string | null; sku: string | null }) => v.variant_name || v.sku || 'Standar';
   const variasi = [...variants].sort((a, b) =>
@@ -482,7 +554,6 @@ export function PublicProductDetail() {
 
   // ---- Penjual ----
   const nilaiToko = store.rating_count ? Math.round((store.positive_count / store.rating_count) * 100) : null;
-  const umurTahun = Math.floor((Date.now() - new Date(store.created_at).getTime()) / (365.25 * 86400000));
 
   function aturQty(n: number) {
     const bersih = Math.min(maxQty, Math.max(1, Math.floor(n) || 1));
@@ -513,6 +584,16 @@ export function PublicProductDetail() {
     }
   }
 
+  async function salinLinkKomisi() {
+    if (!linkKomisi) return;
+    try {
+      await navigator.clipboard.writeText(linkKomisi);
+      toast.success('Link affiliate produk ini disalin. Bagikan untuk dapat komisi.');
+    } catch {
+      toast.error('Gagal menyalin. Salin dari halaman Affiliate > Link.');
+    }
+  }
+
   async function klikHelpful(r: PublicReview) {
     if (helpful.includes(r.id)) return;
     const baru = [...helpful, r.id];
@@ -526,7 +607,8 @@ export function PublicProductDetail() {
     await tandaiHelpful(r.id).catch(() => {});
   }
 
-  const tautanMasuk = `/toko/masuk?next=${encodeURIComponent(`/toko/produk?id=${product.id}`)}`;
+  const alamatIni = alamatProduk(product, product.sku || product.id);
+  const tautanMasuk = `/toko/masuk?next=${encodeURIComponent(alamatIni)}`;
 
   // ---------- potongan yang dipakai desktop & HP ----------
   const pilihVariasi = variasi.length > 1 && (
@@ -538,9 +620,32 @@ export function PublicProductDetail() {
           <button
             key={v.id}
             type="button"
-            onClick={() => !aktif && navigate(`/toko/produk?id=${v.id}`)}
+            onClick={() => {
+              if (aktif) return;
+              // Varian baru langsung dipakai harga, stok, dan tombol beli sebelum
+              // rinciannya selesai dimuat. Tanpa ini "+ Keranjang" yang diketuk
+              // sesaat setelah memilih varian memasukkan varian lama.
+              setData((d) =>
+                d && {
+                  ...d,
+                  product: {
+                    ...d.product,
+                    id: v.id,
+                    sku: v.sku,
+                    variant_name: v.variant_name,
+                    base_price: v.base_price,
+                    compare_at_price: v.compare_at_price,
+                    track_stock: v.track_stock,
+                    stock_qty: v.stock_qty,
+                    image_url: v.image_url,
+                    slug: v.slug ?? d.product.slug,
+                  },
+                },
+              );
+              navigate(alamatProduk({ id: v.id, slug: v.slug ?? product.slug }, v.sku || v.id));
+            }}
             className={cn(
-              'rounded-md border px-3 py-1.5 text-sm transition',
+              'min-h-[44px] min-w-[44px] rounded-md border px-3 py-1.5 text-sm transition lg:min-h-0 lg:min-w-0',
               aktif
                 ? 'border-brand-500 text-brand-700 dark:text-brand-200'
                 : 'border-ink-200 hover:border-brand-400 dark:border-ink-700',
@@ -560,7 +665,7 @@ export function PublicProductDetail() {
       <div className="flex items-center rounded-md border border-ink-200 dark:border-ink-700">
         <button
           type="button"
-          className="grid h-9 w-9 place-items-center hover:bg-ink-50 disabled:opacity-40 dark:hover:bg-ink-800"
+          className="grid h-[44px] w-[44px] place-items-center hover:bg-ink-50 disabled:opacity-40 lg:h-9 lg:w-9 dark:hover:bg-ink-800"
           onClick={() => aturQty(qty - 1)}
           disabled={qty <= 1}
           aria-label="Kurangi"
@@ -570,7 +675,7 @@ export function PublicProductDetail() {
         <input
           aria-label="Jumlah"
           inputMode="numeric"
-          className="h-9 w-14 border-x border-ink-200 bg-transparent text-center text-sm focus:outline-none dark:border-ink-700"
+          className="h-[44px] w-14 border-x border-ink-200 bg-transparent text-center text-sm focus:outline-none lg:h-9 dark:border-ink-700"
           value={qtyText}
           onFocus={(e) => e.target.select()}
           onChange={(e) => setQtyText(e.target.value.replace(/\D/g, ''))}
@@ -578,7 +683,7 @@ export function PublicProductDetail() {
         />
         <button
           type="button"
-          className="grid h-9 w-9 place-items-center hover:bg-ink-50 disabled:opacity-40 dark:hover:bg-ink-800"
+          className="grid h-[44px] w-[44px] place-items-center hover:bg-ink-50 disabled:opacity-40 lg:h-9 lg:w-9 dark:hover:bg-ink-800"
           onClick={() => aturQty(qty + 1)}
           disabled={qty >= maxQty}
           aria-label="Tambah"
@@ -599,7 +704,7 @@ export function PublicProductDetail() {
         <span className="min-w-0 flex-1">
           {me?.address || (token ? 'Alamat belum diisi di akun.' : 'Masuk untuk memakai alamat pengirimanmu.')}
         </span>
-        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', `/toko/produk?id=${product.id}`)} className="shrink-0 -my-[11px] py-[11px] text-xs font-semibold text-brand-600">
+        <Link to={token ? '/toko/akun?tab=profil' : tautanMasuk} onClick={token ? undefined : klikMasuk('masuk', alamatIni)} className="shrink-0 -my-[11px] py-[11px] text-xs font-semibold text-brand-600">
           UBAH
         </Link>
       </div>
@@ -1026,14 +1131,20 @@ export function PublicProductDetail() {
               <img src={store.pdp_banner_url} alt="Promo toko" className="max-h-24 rounded-md object-contain" />
             )}
             <div>
-              {itemFlash && (
-                <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
+              {adaFlashKelompok && (
+                <span
+                  aria-hidden={!itemFlash}
+                  className={cn(
+                    'mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white',
+                    !itemFlash && 'invisible',
+                  )}
+                >
                   Flash Sale
                 </span>
               )}
               <div className="text-3xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
-              {diskon > 0 && (
-                <div className="mt-1 flex items-center gap-2 text-sm">
+              {adaCoretKelompok && (
+                <div aria-hidden={diskon <= 0} className={cn('mt-1 flex items-center gap-2 text-sm', diskon <= 0 && 'invisible')}>
                   <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
                   <span className="text-ink-700 dark:text-ink-200">-{diskon}%</span>
                 </div>
@@ -1077,26 +1188,37 @@ export function PublicProductDetail() {
                 <Heart size={20} className={favorit ? 'fill-rose-500' : ''} /> Suka
               </button>
             </div>
+            {linkKomisi && (
+              <button
+                type="button"
+                onClick={salinLinkKomisi}
+                data-bagikan-komisi
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 text-sm font-semibold text-brand-700 transition-colors duration-150 hover:bg-brand-100 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200"
+              >
+                <Megaphone size={16} /> Bagikan &amp; dapat komisi
+              </button>
+            )}
           </div>
 
           {/* ----- Info (HP) ----- */}
           <div className="space-y-2 px-4 pb-4 lg:hidden">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                {itemFlash && (
-                  <span className="mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                    Flash Sale
-                  </span>
-                )}
-                <div className="text-2xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
-                {diskon > 0 && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
-                    <span>-{diskon}%</span>
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-3 pt-1 text-ink-500">
+            {/* Ikon hati dan bagikan sejajar dengan baris harga, bukan dengan slot
+                lencana Flash Sale yang disisakan untuk varian lain (temuan QC C5). */}
+            <div>
+              {adaFlashKelompok && (
+                <span
+                  aria-hidden={!itemFlash}
+                  className={cn(
+                    'mb-1 inline-flex w-fit items-center rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white',
+                    !itemFlash && 'invisible',
+                  )}
+                >
+                  Flash Sale
+                </span>
+              )}
+              <div className="flex items-center justify-between gap-3">
+              <div className="text-2xl font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>
+              <div className="flex gap-3 text-ink-500">
                 <button
                   type="button"
                   onClick={() => toast.success(toggleFavorit(product.id) ? 'Masuk ke Favorit.' : 'Dihapus dari Favorit.')}
@@ -1109,12 +1231,29 @@ export function PublicProductDetail() {
                   <Share2 size={20} />
                 </button>
               </div>
+              </div>
+              {adaCoretKelompok && (
+                <div aria-hidden={diskon <= 0} className={cn('flex items-center gap-2 text-xs', diskon <= 0 && 'invisible')}>
+                  <span className="text-ink-400 line-through">{formatMoney(coret, store.currency)}</span>
+                  <span>-{diskon}%</span>
+                </div>
+              )}
             </div>
             {store.pdp_banner_url && <img src={store.pdp_banner_url} alt="Promo toko" className="max-h-28 w-full rounded-md object-contain" />}
             <h1 className="text-base leading-snug">{product.name}</h1>
             <a href="#ulasan-hp" className="flex items-center gap-1.5 text-xs">
               <Bintang nilai={rataRata} ukuran={12} /> {rataRata.toFixed(1)} ({formatNumber(jumlahUlasan)})
             </a>
+            {linkKomisi && (
+              <button
+                type="button"
+                onClick={salinLinkKomisi}
+                data-bagikan-komisi
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-md border border-brand-200 bg-brand-50 px-4 text-sm font-semibold text-brand-700 transition-colors duration-150 hover:bg-brand-100 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200"
+              >
+                <Megaphone size={16} /> Bagikan &amp; dapat komisi
+              </button>
+            )}
           </div>
         </Blok>
 
@@ -1180,12 +1319,12 @@ export function PublicProductDetail() {
               <Store size={20} />
             </span>
             )}
+            {/* Label umur toko ("Toko Baru") dihapus atas permintaan client (permintaan 30). */}
             <div className="min-w-0">
               <div className="truncate font-semibold">{store.name}</div>
-              <div className="truncate text-xs text-ink-500">{umurTahun >= 1 ? `Toko ${umurTahun}-Tahun` : 'Toko Baru'}</div>
             </div>
           </div>
-          <div className="grid w-full grid-cols-3 gap-4 text-center text-xs sm:w-auto lg:flex lg:gap-6 lg:text-left">
+          <div className="grid w-full grid-cols-2 gap-4 text-center text-xs sm:w-auto lg:flex lg:gap-6 lg:text-left">
             <div>
               <div className="font-semibold text-ink-800 dark:text-ink-100">{nilaiToko === null ? '-' : `${nilaiToko}%`}</div>
               <div className="text-ink-500">Nilai Toko</div>
@@ -1193,10 +1332,6 @@ export function PublicProductDetail() {
             <div>
               <div className="font-semibold text-ink-800 dark:text-ink-100">{formatNumber(store.total_sold)}</div>
               <div className="text-ink-500">Terjual oleh Toko</div>
-            </div>
-            <div>
-              <div className="font-semibold text-ink-800 dark:text-ink-100">{formatNumber(store.repeat_customers)}</div>
-              <div className="text-ink-500">Pelanggan Tetap</div>
             </div>
           </div>
           <div className="flex w-full gap-2 lg:w-auto">
@@ -1468,14 +1603,19 @@ export function PublicProductDetail() {
               <span className="font-semibold">
                 {lembar === 'variasi' ? 'Pilihan Produk' : lembar === 'spesifikasi' ? 'Spesifikasi' : 'Layanan'}
               </span>
-              <button type="button" onClick={() => setLembar(null)} aria-label="Tutup">
+              <button
+                type="button"
+                onClick={() => setLembar(null)}
+                aria-label="Tutup"
+                className="-mr-3 grid h-[44px] w-[44px] place-items-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800"
+              >
                 <X size={18} />
               </button>
             </div>
             {lembar === 'variasi' && (
               <>
                 <div className="flex items-center gap-3">
-                  <span className="h-16 w-16 overflow-hidden rounded-md bg-white ring-1 ring-ink-100 dark:ring-ink-800">
+                  <span className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-white ring-1 ring-ink-100 dark:ring-ink-800">
                     {product.image_url && <img src={product.image_url} alt="" className="h-full w-full object-contain" />}
                   </span>
                   <div>
@@ -1493,11 +1633,14 @@ export function PublicProductDetail() {
                   <div className="text-sm text-ink-500">Kuantitas</div>
                   {pengatur}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="secondary" className="border border-brand-500 text-brand-600" disabled={habis} onClick={beliSekarang}>
+                {/* Disematkan di dasar lembar: produk berisi puluhan varian dulu
+                    mendorong tombol beli ratusan piksel di bawah layar (temuan QC C1). */}
+                <div className="sticky -bottom-4 -mx-4 -mb-4 grid grid-cols-2 gap-2 border-t border-ink-100 bg-white px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 dark:border-ink-800 dark:bg-ink-900" data-tombol-beli-lembar>
+                  <Button variant="secondary" className="min-h-[44px] border border-brand-500 text-brand-600" disabled={habis} onClick={beliSekarang}>
                     Beli Sekarang
                   </Button>
                   <Button
+                    className="min-h-[44px]"
                     disabled={habis}
                     onClick={() => {
                       tambahKeranjang();

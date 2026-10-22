@@ -1,4 +1,4 @@
-import {
+import { Images,
   BarChart3,
   Boxes,
   ClipboardCheck,
@@ -17,6 +17,9 @@ import {
   Wallet,
   WalletCards,
   type LucideIcon,
+  Megaphone,
+  MessageSquareText,
+  Mail,
 } from 'lucide-react';
 import type { UserRole } from '@/types';
 
@@ -99,6 +102,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/suppliers', label: 'Supplier', icon: Truck },
   { to: '/purchases', label: 'Pembelian', icon: ShoppingBag },
   { to: '/promos', label: 'Promos', icon: Percent },
+  { to: '/banners', label: 'Banner Toko', icon: Images },
+  { to: '/affiliate', label: 'Affiliate', icon: Megaphone },
   { to: '/shifts', label: 'Shifts', icon: WalletCards },
   { to: '/stock-mutation', label: 'Mutasi Stok', icon: RotateCcw },
   { to: '/stock-opname', label: 'Stock Opname', icon: ClipboardCheck },
@@ -106,6 +111,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/users', label: 'Users', icon: UserCog },
   { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/email-templates', label: 'Email & Template', icon: Mail },
+  { to: '/whatsapp-templates', label: 'Template WA', icon: MessageSquareText },
   { to: '/customer', label: 'Katalog', icon: Store },
 ];
 
@@ -119,6 +126,8 @@ const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
   '/suppliers': ['managePurchasing'],
   '/purchases': ['managePurchasing'],
   '/promos': ['managePromos'],
+  '/banners': ['managePromos'],
+  '/affiliate': ['manageStoreSettings'],
   '/shifts': ['manageShifts'],
   '/stock-mutation': ['manageInventory'],
   '/stock-opname': ['manageInventory'],
@@ -127,6 +136,8 @@ const ROUTE_CAPABILITIES: Record<string, Capability[]> = {
   '/reports': ['viewSalesReports'],
   '/users': ['manageUsers'],
   '/settings': ['manageStoreSettings', 'manageInventory', 'useCashier'],
+  '/email-templates': ['manageStoreSettings'],
+  '/whatsapp-templates': ['manageStoreSettings'],
   '/customer': ['viewCustomerPortal'],
 };
 

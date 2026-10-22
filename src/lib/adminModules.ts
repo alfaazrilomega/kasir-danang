@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Images,
   Boxes,
   ClipboardCheck,
   ClipboardList,
@@ -8,6 +9,7 @@ import {
   History,
   LayoutDashboard,
   MessageSquareText,
+  Mail,
   Percent,
   RotateCcw,
   Settings as SettingsIcon,
@@ -21,6 +23,7 @@ import {
   Users,
   WalletCards,
   type LucideIcon,
+  Megaphone,
 } from 'lucide-react';
 import { canAccessRoute, hasCapability, type Capability } from '@/lib/roles';
 import type { UserRole } from '@/types';
@@ -29,6 +32,8 @@ export type AdminModuleKey =
   | 'overview'
   | 'users'
   | 'store-settings'
+  | 'whatsapp-templates'
+  | 'email-templates'
   | 'suppliers'
   | 'customers'
   | 'products'
@@ -41,6 +46,8 @@ export type AdminModuleKey =
   | 'returns'
   | 'feedback'
   | 'promos'
+  | 'banners'
+  | 'affiliate'
   | 'expenses'
   | 'sales-report'
   | 'stock-report';
@@ -80,6 +87,8 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
     items: [
       { key: 'users', label: 'User', icon: UserCog, route: '/users', description: 'Tambah admin gudang, kasir, dan pembeli.' },
       { key: 'store-settings', label: 'Store Settings', icon: SettingsIcon, route: '/settings', description: 'Profil toko, struk, pajak, fitur POS.' },
+      { key: 'email-templates', label: 'Email & Template', icon: Mail, route: '/email-templates', description: 'Pengirim Mailketing/SMTP dan template email otomatis.' },
+      { key: 'whatsapp-templates', label: 'Template WA', icon: MessageSquareText, route: '/whatsapp-templates', description: 'Template rincian order, follow-up WA 1–3, dan riwayat pengiriman.' },
     ],
   },
   {
@@ -112,6 +121,8 @@ export const ADMIN_MODULE_SECTIONS: AdminModuleSection[] = [
       { key: 'returns', label: 'Retur Barang', icon: Undo2, route: '/returns', capability: 'useCashier', description: 'Retur barang berbasis nomor pemesanan.' },
       { key: 'feedback', label: 'Ulasan Produk', icon: MessageSquareText, route: '/feedback', description: 'Balas dan kelola ulasan pembeli toko online.' },
       { key: 'promos', label: 'Promo', icon: Percent, route: '/promos', description: 'Diskon, voucher, dan kampanye penjualan.' },
+      { key: 'banners', label: 'Banner Toko', icon: Images, route: '/banners', capability: 'managePromos', description: 'Banner beranda toko online: gambar, tautan, urutan, dan jadwal.' },
+      { key: 'affiliate', label: 'Affiliate', icon: Megaphone, route: '/affiliate', capability: 'manageStoreSettings', description: 'Program affiliate: link, komisi, pembayaran, dan pengaturan.' },
       { key: 'expenses', label: 'Pengeluaran', icon: WalletCards, route: '/expenses', capability: 'manageExpenses', description: 'Biaya operasional toko: sewa, gaji, listrik, dll.' },
     ],
   },

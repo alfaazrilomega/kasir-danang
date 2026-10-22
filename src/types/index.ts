@@ -50,6 +50,8 @@ export interface Store {
   social_youtube?: string | null;
   /** Tautan artikel "Jelajahi" di footer toko online, urutan array = urutan tampil. */
   footer_links?: { label: string; url: string }[] | null;
+  /** Kategori pengeluaran tambahan dari Pengaturan Toko (permintaan 26). */
+  expense_categories?: string[] | null;
   /** Tombol chat penjual di toko online bisa dimatikan tanpa menghapus nomor WhatsApp-nya. */
   chat_enabled?: boolean;
   /** ID pelacakan iklan toko online; kosong berarti platform itu tidak dipakai. */
@@ -132,6 +134,12 @@ export interface Product {
   license_code?: string | null;
   /** Tautan video produk (YouTube atau file video) untuk galeri. */
   video_url?: string | null;
+  /** Program affiliate (Sejoli): produk boleh diaffiliasikan, syarat sudah membeli, komisi khusus per tier. */
+  affiliate_enabled?: boolean;
+  affiliate_if_bought?: boolean;
+  affiliate_commission?: { type: 'percentage' | 'fixed'; value: number }[] | null;
+  /** Alamat halaman produk di toko, sama untuk semua varian sekelompok (migrasi 054). */
+  slug?: string | null;
 }
 
 export interface Customer {
@@ -161,6 +169,24 @@ export interface Promo {
   start_date: string | null;
   end_date: string | null;
   is_active: boolean;
+}
+
+/** Banner beranda toko online, dikelola di menu Banner Toko (spec 0003). */
+export interface StoreBanner {
+  id: string;
+  store_id: string;
+  title: string | null;
+  /** Data URL gambar desktop hasil kompres di browser. */
+  image_data: string;
+  image_mobile_data: string | null;
+  /** Alamat di toko yang diawali "/" atau alamat https:// lain. */
+  link_url: string | null;
+  sort_order: number;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface FlashSale {
@@ -260,6 +286,20 @@ export interface Order {
   /** Wilayah tujuan kirim, dipakai perhitungan ongkir. */
   delivery_province?: string | null;
   delivery_city?: string | null;
+  /** Kecamatan dan kelurahan tujuan versi KiriminAja (spec 0002). */
+  delivery_district?: string | null;
+  delivery_subdistrict?: string | null;
+  delivery_district_id?: number | null;
+  delivery_subdistrict_id?: number | null;
+  /** Kurir pilihan pembeli di checkout; ongkirnya sudah dibayar bersama pesanan. */
+  shipping_courier?: string | null;
+  shipping_service?: string | null;
+  shipping_service_name?: string | null;
+  shipping_etd?: string | null;
+  shipping_weight_gram?: number | null;
+  payment_provider?: 'tripay' | 'mayar' | 'doku' | null;
+  /** Layanan asal bila pembayaran dipindah ke cadangan saat Buat Pesanan. */
+  payment_failover_from?: string | null;
   payment_channel?: string | null;
   payment_reference?: string | null;
   payment_url?: string | null;
@@ -411,7 +451,11 @@ export type ExpenseCategory =
   | 'pajak_retribusi'
   /** Biaya jasa pihak ketiga saat mengirim uang ke supplier. */
   | 'biaya_admin'
-  | 'lainnya';
+  /** Pembayaran komisi affiliate yang dicentang "catat sebagai pengeluaran". */
+  | 'komisi_affiliate'
+  | 'lainnya'
+  /** Kategori tambahan buatan toko, disimpan sebagai labelnya sendiri. */
+  | (string & Record<never, never>);
 
 export type ExpensePaymentMethod = 'cash' | 'transfer' | 'card' | 'ewallet' | 'other';
 

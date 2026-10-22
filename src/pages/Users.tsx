@@ -46,6 +46,7 @@ import {
   type Capability,
 } from '@/lib/roles';
 import { useAuth } from '@/stores/auth';
+import { mfaApi } from '@/lib/mfa';
 import { db } from '@/lib/db';
 import { uuid } from '@/lib/format';
 import type { RolePermission, UserRole } from '@/types';
@@ -55,6 +56,9 @@ type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 type AssignableUserRole = Exclude<UserRole, 'manager'>;
 
 const ROLE_OPTIONS: AssignableUserRole[] = ['admin', 'warehouse', 'cashier', 'customer'];
+/** Tombol ikon di kolom Action: 44px di HP supaya mudah diketuk, ringkas di layar lebar. */
+const TOMBOL_AKSI =
+  'grid h-[44px] w-[44px] place-items-center rounded-full hover:bg-ink-100 dark:hover:bg-ink-800 sm:h-auto sm:w-auto sm:p-1.5';
 const CAPABILITY_ORDER: Capability[] = [
   'manageUsers',
   'manageStoreSettings',
@@ -262,6 +266,16 @@ export function UsersPage() {
     await loadAdminData();
   }
 
+  /** Staf kehilangan ponsel authenticator: admin mematikan verifikasi dua langkahnya. */
+  async function resetMfa(user: AdminUser) {
+    if (!confirm(`Matikan verifikasi dua langkah ${user.email}? Akun itu bisa masuk hanya dengan sandi sampai mengaktifkannya lagi.`)) return;
+    setBusy(true);
+    const { error } = await mfaApi.resetUser(user.id);
+    setBusy(false);
+    if (error) toast.error(error);
+    else toast.success(`Verifikasi dua langkah ${user.email} dimatikan.`);
+  }
+
   async function removeUser(user: AdminUser) {
     if (!confirm(`Hapus user ${user.email}?`)) return;
     setBusy(true);
@@ -434,7 +448,7 @@ export function UsersPage() {
                 <thead className="text-left text-xs text-ink-500">
                   <tr>
                     <th className="py-2">User</th>
-                    <th className="py-2">Role</th>
+                    <th className="hidden py-2 sm:table-cell">Role</th>
                     <th className="hidden py-2 lg:table-cell">Akses</th>
                     <th className="hidden py-2 sm:table-cell">Dibuat</th>
                     <th className="py-2 text-right">Action</th>
@@ -450,8 +464,12 @@ export function UsersPage() {
                           <div className="truncate text-xs text-ink-500">{user.email}</div>
                           {/* Lima kolom ini 462px di wadah 328px pada layar HP,
                               jadi tombol aksinya tidak terlihat. Akses dan
-                              Dibuat disembunyikan, ringkasnya ikut di sini. */}
+                              Dibuat disembunyikan, ringkasnya ikut di sini. Di HP
+                              Role juga pindah ke sini supaya tombol aksi bisa 44px. */}
                           <div className="mt-1 flex flex-wrap items-center gap-1 lg:hidden">
+                            <span className="sm:hidden">
+                              <RoleBadge role={user.role} />
+                            </span>
                             {caps.slice(0, 2).map((capability) => (
                               <Badge key={capability} tone="neutral">
                                 {CAPABILITY_LABELS[capability]}
@@ -460,7 +478,7 @@ export function UsersPage() {
                             {caps.length > 2 && <Badge tone="info">+{caps.length - 2}</Badge>}
                           </div>
                         </td>
-                        <td className="py-3 pr-4">
+                        <td className="hidden py-3 pr-4 sm:table-cell">
                           <RoleBadge role={user.role} />
                         </td>
                         <td className="hidden py-3 pr-4 lg:table-cell">
@@ -475,18 +493,32 @@ export function UsersPage() {
                         </td>
                         <td className="hidden py-3 pr-4 text-ink-500 sm:table-cell">{formatDateTime(user.created_at)}</td>
                         <td className="py-3">
-                          <div className="flex justify-end gap-1">
+                          {/* Tiga tombol aksi (tambah reset verifikasi dua langkah) membuat tabel
+                              340px di wadah 328px pada layar HP. Di layar sempit tombolnya
+                              disusun dua kolom, baris user sudah cukup tinggi untuk dua deret. */}
+                          <div className="grid grid-cols-2 justify-items-end gap-1 sm:flex sm:justify-end">
                             <button
                               onClick={() => startEdit(user)}
-                              className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800"
+                              className={TOMBOL_AKSI}
                               title="Edit user"
                             >
                               <Pencil size={14} />
                             </button>
+                            {user.id !== profile?.id && (
+                              <button
+                                onClick={() => void resetMfa(user)}
+                                className={TOMBOL_AKSI}
+                                disabled={busy}
+                                title="Reset verifikasi dua langkah"
+                              >
+                                <LockKeyhole size={14} />
+                              </button>
+                            )}
                             <button
                               onClick={() => removeUser(user)}
                               className={cn(
-                                'rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10',
+                                TOMBOL_AKSI,
+                                'text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10',
                                 user.id === profile?.id && 'cursor-not-allowed opacity-40',
                               )}
                               disabled={user.id === profile?.id || busy}

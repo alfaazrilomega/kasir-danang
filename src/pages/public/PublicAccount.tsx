@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Check, Copy, Heart, ImagePlus, LogOut, MapPin, MessageSquareText, Package, Star, UserRound, X, type LucideIcon } from 'lucide-react';
+import { Check, Copy, Heart, ImagePlus, LogOut, MapPin, Megaphone, MessageSquareText, Package, Star, UserRound, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/Button';
 import { TextArea } from '@/components/ui/Input';
@@ -11,6 +11,7 @@ import { cn, formatDateTime, formatMoney } from '@/lib/format';
 import { resizeImageToDataUrl } from '@/lib/imageUpload';
 import { PUBLIC_STORE_ID } from '@/lib/config';
 import {
+  alamatProduk,
   fetchPublicCatalog,
   kelompokkanVarian,
   lokasiToko,
@@ -18,6 +19,7 @@ import {
   type PublicCatalogData,
 } from '@/lib/publicCatalog';
 import { useWishlist } from '@/stores/wishlist';
+import { affiliateApi } from '@/lib/affiliate';
 import { KolomAlamat, type NilaiAlamat } from '@/components/public/KolomAlamat';
 import { provinsiDariKota } from '@/lib/wilayah';
 import {
@@ -112,6 +114,9 @@ export function PublicAccount() {
   const [busy, setBusy] = useState(false);
   const [menilai, setMenilai] = useState<ReviewableItem | null>(null);
   const [subUlasan, setSubUlasan] = useState<'belum' | 'riwayat'>('belum');
+  // Menu Affiliate tampil selama program dibuka toko. Member tanpa akses tetap
+  // melihatnya dan mendapat pesan dari pengaturan, seperti Sejoli.
+  const [programAffiliate, setProgramAffiliate] = useState(false);
 
   useEffect(() => {
     if (ready && !token) navigate('/toko/masuk?next=/toko/akun');
@@ -141,6 +146,7 @@ export function PublicAccount() {
       setOrders(data ?? []);
     });
     muatUlasan();
+    void affiliateApi.me(token).then(({ data }) => setProgramAffiliate(!!data && data.reason !== 'program_off'));
     // muatUlasan hanya bergantung pada token.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -220,12 +226,15 @@ export function PublicAccount() {
     );
   }
 
-  const MENU: { tab: Tab; label: string; labelHp: string; ikon: LucideIcon; jumlah: number }[] = [
+  const MENU: { tab: Tab | 'affiliate'; label: string; labelHp: string; ikon: LucideIcon; jumlah: number }[] = [
     { tab: 'pesanan', label: 'Pesanan Saya', labelHp: 'Pesanan', ikon: Package, jumlah: orders?.length ?? 0 },
     { tab: 'ulasan', label: 'Ulasan', labelHp: 'Ulasan', ikon: MessageSquareText, jumlah: belumDiulas.length },
     { tab: 'favorit', label: 'Favorit', labelHp: 'Favorit', ikon: Heart, jumlah: favoritIds.length },
     { tab: 'profil', label: 'Profil & Alamat', labelHp: 'Profil', ikon: UserRound, jumlah: 0 },
+    ...(programAffiliate ? [{ tab: 'affiliate' as const, label: 'Affiliate', labelHp: 'Affiliate', ikon: Megaphone, jumlah: 0 }] : []),
   ];
+  // Affiliate punya halamannya sendiri; menu lain berpindah tab di halaman ini.
+  const pilihMenu = (t: Tab | 'affiliate') => (t === 'affiliate' ? navigate('/toko/affiliate') : setTab(t));
   const JUDUL: Record<Tab, [string, string]> = {
     pesanan: ['Pesanan Saya', 'Pantau status setiap pesanan Anda di sini.'],
     ulasan: ['Ulasan', 'Beri penilaian untuk barang dari pesanan yang sudah dikonfirmasi.'],
@@ -262,7 +271,7 @@ export function PublicAccount() {
               <button
                 key={m.tab}
                 type="button"
-                onClick={() => setTab(m.tab)}
+                onClick={() => pilihMenu(m.tab)}
                 aria-current={tab === m.tab ? 'page' : undefined}
                 className={cn(
                   'flex w-full items-center gap-3 border-l-[3px] px-4 py-2.5 text-left text-sm transition-colors duration-150',
@@ -287,17 +296,21 @@ export function PublicAccount() {
         </aside>
 
         {/* ---------- Identitas + menu 4 kolom (HP) ---------- */}
-        <div className="lg:hidden">
+        {/* min-w-0: tanpa ini nama panjang (truncate = satu baris) melebarkan halaman HP sampai ratusan piksel. */}
+        <div className="min-w-0 lg:hidden">
           <div className="overflow-hidden rounded-t-lg">{identitas}</div>
           <nav
             aria-label="Menu akun"
-            className="sticky top-[var(--tinggi-header,64px)] z-10 grid grid-cols-4 rounded-b-lg border-b border-ink-100 bg-white shadow-card dark:border-ink-800 dark:bg-ink-900"
+            className={cn(
+              'sticky top-[var(--tinggi-header,64px)] z-10 grid rounded-b-lg border-b border-ink-100 bg-white shadow-card dark:border-ink-800 dark:bg-ink-900',
+              MENU.length > 4 ? 'grid-cols-5' : 'grid-cols-4',
+            )}
           >
             {MENU.map((m) => (
               <button
                 key={m.tab}
                 type="button"
-                onClick={() => setTab(m.tab)}
+                onClick={() => pilihMenu(m.tab)}
                 aria-current={tab === m.tab ? 'page' : undefined}
                 className={cn(
                   'flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors duration-150',
@@ -413,7 +426,7 @@ export function PublicAccount() {
                           {r.image_url ? <img src={r.image_url} alt="" className="h-full w-full object-contain" /> : null}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <Link to={`/toko/produk?id=${r.product_id}`} className="line-clamp-2 text-sm hover:text-brand-600">
+                          <Link to={alamatProduk({ id: r.product_id, slug: catalog?.products.find((k) => k.id === r.product_id)?.slug }, r.product_id)} className="line-clamp-2 text-sm hover:text-brand-600">
                             {r.name}
                           </Link>
                           <div className="mt-0.5 text-xs text-ink-500">
@@ -610,6 +623,9 @@ function KartuPesanan({
         </span>
       </header>
       <p className="px-4 pt-3 text-xs text-ink-600 sm:px-5 dark:text-ink-400">{st.keterangan}</p>
+      {o.payment_channel && <p className="px-4 pt-2 text-xs text-ink-600 sm:px-5 dark:text-ink-400">
+        Tripay · {o.payment_channel} · {o.payment_status === 'paid' ? 'Pembayaran diterima' : 'Belum lunas'}
+      </p>}
       <ul className="divide-y divide-ink-100 px-4 sm:px-5 dark:divide-ink-800">
         {o.items.map((it, i) => (
           <li key={i} className="flex items-baseline gap-3 py-2.5 text-sm">
@@ -629,12 +645,16 @@ function KartuPesanan({
           )}
         </div>
         <div className="flex flex-col-reverse items-stretch gap-3 sm:ml-auto sm:flex-row sm:items-center sm:gap-4">
+          {o.payment_url && o.payment_status !== 'paid' && o.order_status !== 'canceled' && (
+            <a href={o.payment_provider === 'mayar' ? `/toko/checkout?order=${encodeURIComponent(o.id)}` : o.payment_url} className={cn(TOMBOL_GARIS, 'justify-center')}>Lanjutkan Pembayaran</a>
+          )}
           {ulas && (
             <button type="button" onClick={() => onUlas(ulas)} className={cn(TOMBOL_GARIS, 'justify-center')}>
               Beri Ulasan
             </button>
           )}
           <div className="text-right">
+            {(o.discount ?? 0) > 0 && <div className="text-xs text-emerald-700 [overflow-wrap:anywhere] dark:text-emerald-300">Voucher {o.promo_code} -{formatMoney(o.discount ?? 0)}</div>}
             {o.shipping_cost > 0 && <div className="text-xs text-ink-500">Ongkir {formatMoney(o.shipping_cost)}</div>}
             <div className="text-xs text-ink-500">
               Total Pesanan <span className="ml-1 text-lg font-bold tabular-nums text-brand-600">{formatMoney(o.total)}</span>

@@ -22,6 +22,7 @@ import {
 import { toast } from 'sonner';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from '@/lib/router';
+import { ALAMAT_SETELAH_KELUAR } from '@/lib/pintuAdmin';
 import { useAuth } from '@/stores/auth';
 import { usePinLock } from '@/stores/pinLock';
 import { useUI } from '@/stores/ui';
@@ -504,7 +505,7 @@ export function NavActions({
                 onClick={async () => {
                   setOpenMenu(null);
                   await signOut();
-                  navigate('/login');
+                  navigate(ALAMAT_SETELAH_KELUAR);
                 }}
               >
                 <LogOut size={14} /> Sign out

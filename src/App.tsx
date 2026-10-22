@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from '@/lib/router';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from '@/lib/router';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { AdminLayout } from '@/components/layout/AdminLayout';
+import { StoreDocumentTitle } from '@/components/layout/StoreDocumentTitle';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { PinLockGate } from '@/components/pin/PinLockGate';
 import { Dashboard } from '@/pages/Dashboard';
@@ -14,8 +15,11 @@ import { Products } from '@/pages/Products';
 import { Suppliers } from '@/pages/Suppliers';
 import { Purchases } from '@/pages/Purchases';
 import { Promos } from '@/pages/Promos';
+import { Banners } from '@/pages/Banners';
 import { Settings } from '@/pages/Settings';
+import { WhatsAppTemplates } from '@/pages/WhatsAppTemplates';
 import { Login } from '@/pages/Login';
+import { GERBANG_ADMIN, diPintuAdmin } from '@/lib/pintuAdmin';
 import { Shifts } from '@/pages/Shifts';
 import { Reports } from '@/pages/Reports';
 import { Expenses } from '@/pages/Expenses';
@@ -33,19 +37,35 @@ import { PublicLogin } from '@/pages/public/PublicLogin';
 import { PublicResetPassword } from '@/pages/public/PublicResetPassword';
 import { PublicKebijakanPrivasi, PublicSyaratKetentuan } from '@/pages/public/PublicKebijakan';
 import { PublicAccount } from '@/pages/public/PublicAccount';
+import { PublicAffiliate } from '@/pages/public/PublicAffiliate';
+import { AffiliateOpen } from '@/pages/public/AffiliateOpen';
+import { AffiliateAdmin } from '@/pages/AffiliateAdmin';
 import { useAuth } from '@/stores/auth';
 import { applyTheme, useUI } from '@/stores/ui';
 import { applyAccent } from '@/lib/accents';
 import { bindOnlineSync, flushPending } from '@/lib/sync';
 
+const EmailTemplates = lazy(() => import('@/pages/EmailTemplates').then((module) => ({ default: module.EmailTemplates })));
+
+/**
+ * Toko online memakai tema pembeli, halaman lain memakai tema konsol admin.
+ * Tanpa pemisahan ini mode gelap admin ikut membuat toko gelap di browser yang
+ * sama, sementara pembeli tidak bisa memilih sendiri (permintaan 19).
+ */
+function TemaHalaman() {
+  const { pathname } = useLocation();
+  const theme = useUI((s) => s.theme);
+  const themeToko = useUI((s) => s.themeToko);
+  const toko = pathname === '/toko' || pathname.startsWith('/toko/') || pathname.startsWith('/aff/');
+  useEffect(() => {
+    applyTheme(toko ? themeToko : theme);
+  }, [toko, theme, themeToko]);
+  return null;
+}
+
 export default function App() {
   const init = useAuth((s) => s.init);
-  const theme = useUI((s) => s.theme);
   const accent = useUI((s) => s.accent);
-
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
 
   useEffect(() => {
     applyAccent(accent);
@@ -81,10 +101,13 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <TemaHalaman />
+      <StoreDocumentTitle />
       <Toaster position="top-right" richColors closeButton />
       <PinLockGate>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        {/* Di produksi formulir staf hanya di alamat rahasia (lihat lib/pintuAdmin). */}
+        <Route path="/login" element={GERBANG_ADMIN ? <Navigate to="/toko" replace /> : <Login />} />
         <Route path="/" element={<ProtectedRoute><AdminLayout><Dashboard /></AdminLayout></ProtectedRoute>} />
         <Route path="/menu" element={<ProtectedRoute><AdminLayout><MenuPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/orders" element={<ProtectedRoute><AdminLayout><Orders /></AdminLayout></ProtectedRoute>} />
@@ -94,6 +117,7 @@ export default function App() {
         <Route path="/suppliers" element={<ProtectedRoute><AdminLayout><Suppliers /></AdminLayout></ProtectedRoute>} />
         <Route path="/purchases" element={<ProtectedRoute><AdminLayout><Purchases /></AdminLayout></ProtectedRoute>} />
         <Route path="/promos" element={<ProtectedRoute><AdminLayout><Promos /></AdminLayout></ProtectedRoute>} />
+        <Route path="/banners" element={<ProtectedRoute><AdminLayout><Banners /></AdminLayout></ProtectedRoute>} />
         <Route path="/shifts" element={<ProtectedRoute><AdminLayout><Shifts /></AdminLayout></ProtectedRoute>} />
         <Route path="/stock-mutation" element={<ProtectedRoute><AdminLayout><StockMutation /></AdminLayout></ProtectedRoute>} />
         <Route path="/stock-opname" element={<ProtectedRoute><AdminLayout><StockOpnamePage /></AdminLayout></ProtectedRoute>} />
@@ -102,9 +126,13 @@ export default function App() {
         <Route path="/reports" element={<ProtectedRoute><AdminLayout><Reports /></AdminLayout></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute><AdminLayout><UsersPage /></AdminLayout></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><AdminLayout><Settings /></AdminLayout></ProtectedRoute>} />
+        <Route path="/email-templates" element={<ProtectedRoute><AdminLayout><Suspense fallback={<p>Memuat pengaturan email...</p>}><EmailTemplates /></Suspense></AdminLayout></ProtectedRoute>} />
+        <Route path="/whatsapp-templates" element={<ProtectedRoute><AdminLayout><WhatsAppTemplates /></AdminLayout></ProtectedRoute>} />
+        <Route path="/affiliate" element={<ProtectedRoute><AdminLayout><AffiliateAdmin /></AdminLayout></ProtectedRoute>} />
         <Route path="/customer" element={<ProtectedRoute><AppShell><CustomerPortal /></AppShell></ProtectedRoute>} />
         <Route path="/toko" element={<PublicCatalog />} />
-        <Route path="/toko/produk" element={<PublicProductDetail />} />
+        {/* /toko/produk/{slug} (permintaan 20) dan alamat lama /toko/produk?id= */}
+        <Route path="/toko/produk/*" element={<PublicProductDetail />} />
         <Route path="/toko/keranjang" element={<PublicCart />} />
         <Route path="/toko/checkout" element={<PublicCheckout />} />
         <Route path="/toko/selesai" element={<PublicOrderDone />} />
@@ -113,7 +141,9 @@ export default function App() {
         <Route path="/toko/kebijakan-privasi" element={<PublicKebijakanPrivasi />} />
         <Route path="/toko/syarat-ketentuan" element={<PublicSyaratKetentuan />} />
         <Route path="/toko/akun" element={<PublicAccount />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/toko/affiliate" element={<PublicAffiliate />} />
+        <Route path="/aff/*" element={<AffiliateOpen />} />
+        <Route path="*" element={diPintuAdmin() ? <Login /> : <Navigate to="/" replace />} />
       </Routes>
       </PinLockGate>
     </BrowserRouter>

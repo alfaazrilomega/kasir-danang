@@ -2,7 +2,7 @@ import { ShoppingBag } from 'lucide-react';
 import { Link } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import { Bintang } from '@/components/public/Bintang';
-import type { FlashKartuInfo, KelompokProduk } from '@/lib/publicCatalog';
+import { alamatProduk, type FlashKartuInfo, type KelompokProduk } from '@/lib/publicCatalog';
 
 /**
  * Kartu produk mengikuti kartu Lazada: rata tanpa bingkai dan tanpa tombol,
@@ -33,7 +33,7 @@ export function KartuProduk({
 
   return (
     <Link
-      to={`/toko/produk?id=${p.id}`}
+      to={alamatProduk(p)}
       data-kartu-produk=""
       className={cn(
         'flex h-full flex-col overflow-hidden bg-white hover:shadow-[0_2px_12px_rgba(0,0,0,0.16)] dark:bg-ink-900',

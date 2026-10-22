@@ -28,6 +28,8 @@ import { pullLoyalty, pullRecentOrders, pullReference } from '@/lib/sync';
 import { cn, formatDate, formatDateTime, formatMoney, uuid } from '@/lib/format';
 import { hasCapability } from '@/lib/roles';
 import { ImportExportModal } from '@/components/data/ImportExportModal';
+import { WhatsAppFollowup } from '@/components/customers/WhatsAppFollowup';
+import type { WATemplateKey } from '@/lib/whatsapp';
 import type { Customer, LoyaltyTransaction } from '@/types';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -61,6 +63,7 @@ export function Customers() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [detail, setDetail] = useState<Customer | null>(null);
+  const [followup, setFollowup] = useState<{ customer: Customer; templateKey: WATemplateKey } | null>(null);
   const canDeleteCustomers = hasCapability(profile?.role, 'manageStoreSettings');
 
   useEffect(() => {
@@ -338,6 +341,12 @@ export function Customers() {
                         </Badge>
                       </td>
                       <td className="py-3">
+                        {canDeleteCustomers && <div className="mb-2 flex justify-end gap-1">
+                          {(['wa1', 'wa2', 'wa3'] as const).map((key, index) => <button key={key} type="button"
+                            title={`Follow-up WA ${index + 1} untuk ${c.name}`} disabled={!c.phone}
+                            onClick={() => setFollowup({ customer: c, templateKey: key })}
+                            className="whitespace-nowrap rounded-md bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 dark:bg-emerald-950 dark:text-emerald-300">WA {index + 1}</button>)}
+                        </div>}
                         <div className="flex justify-end gap-1">
                           <button
                             onClick={() => setDetail(c)}
@@ -440,6 +449,8 @@ export function Customers() {
         onDelete={remove}
         canDelete={canDeleteCustomers}
       />
+      {followup && <WhatsAppFollowup customerId={followup.customer.id} customerName={followup.customer.name}
+        templateKey={followup.templateKey} onClose={() => setFollowup(null)} />}
     </div>
   );
 }

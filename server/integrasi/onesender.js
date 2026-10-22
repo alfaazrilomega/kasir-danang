@@ -36,9 +36,12 @@ export function validateApiUrl(value) {
   return url;
 }
 
-// GET sesuai dokumentasi OneSender 2.0. Tidak mengirim pesan atau meneruskan
-// isi riwayat pesan ke browser admin. DNS dipin dan redirect tidak diikuti.
-export async function tesKoneksi(config) {
+export class OneSenderError extends Error {
+  constructor(message, uncertain = false) { super(message); this.uncertain = uncertain; }
+}
+
+// DNS tetap dipin dan redirect tidak diikuti untuk GET maupun POST.
+async function request(config, payload) {
   if (!config.apiKey || !config.apiUrl) throw new Error('Kredensial OneSender belum lengkap.');
   const url = validateApiUrl(config.apiUrl);
   const host = url.hostname.replace(/^\[|\]$/g, '');
@@ -49,19 +52,18 @@ export async function tesKoneksi(config) {
     throw new Error('Alamat server OneSender tidak diizinkan.');
   }
   const address = addresses[0];
-  url.searchParams.set('page', '1');
-  url.searchParams.set('per_page', '1');
-  await new Promise((resolve, reject) => {
+  if (!payload) { url.searchParams.set('page', '1'); url.searchParams.set('per_page', '1'); }
+  return new Promise((resolve, reject) => {
     const req = (url.protocol === 'https:' ? https : http).request(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${config.apiKey}`, Accept: 'application/json' },
+      method: payload ? 'POST' : 'GET',
+      headers: { Authorization: `Bearer ${config.apiKey}`, Accept: 'application/json', ...(payload ? { 'Content-Type': 'application/json' } : {}) },
       signal: AbortSignal.timeout(15000),
       lookup: (_hostname, options, callback) => options.all
         ? callback(null, [address]) : callback(null, address.address, address.family),
     }, (res) => {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         res.resume();
-        reject(new Error('OneSender menolak koneksi.'));
+        reject(new OneSenderError(res.statusCode === 401 || res.statusCode === 403 ? 'API Key OneSender ditolak. Periksa kunci dan perangkat pengirim.' : `OneSender menolak permintaan (HTTP ${res.statusCode}). Periksa perangkat dan antrean pada dashboard OneSender.`, !!payload && res.statusCode >= 500));
         return;
       }
       let size = 0;
@@ -71,19 +73,43 @@ export async function tesKoneksi(config) {
         if (size > 1024 * 1024) { res.destroy(new Error('Respons OneSender terlalu besar.')); return; }
         chunks.push(chunk);
       });
-      res.on('error', reject);
+      res.on('error', () => reject(new OneSenderError('Respons OneSender terputus. Periksa antrean pesan sebelum mengirim ulang.', !!payload)));
       res.on('end', () => {
         try {
           const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-          const messages = Array.isArray(data) ? data : data?.data?.data ?? data?.data?.messages ?? data?.data ?? data?.messages;
-          if (!Array.isArray(messages) || data.error || data.errors || data.success === false || data.status === false || Number(data.code) >= 400 || Number(data.status) >= 400) {
-            throw new Error('Respons OneSender tidak valid.');
+          if (data.error || data.errors || data.success === false || data.status === false || Number(data.code) >= 400 || Number(data.status) >= 400) {
+            throw new OneSenderError('OneSender menolak pesan. Periksa nomor penerima, perangkat terhubung, dan antrean pesan.');
           }
-          resolve();
-        } catch { reject(new Error('Respons OneSender tidak valid.')); }
+          resolve(data);
+        } catch (error) {
+          reject(error instanceof OneSenderError ? error : new OneSenderError('Respons OneSender tidak valid. Periksa antrean sebelum mengirim ulang.', !!payload));
+        }
       });
     });
-    req.on('error', reject);
-    req.end();
+    req.on('error', () => reject(new OneSenderError('Tidak dapat memastikan respons OneSender. Periksa koneksi server dan antrean pesan sebelum mengirim ulang.', !!payload)));
+    req.end(payload ? JSON.stringify(payload) : undefined);
   });
+}
+
+
+export async function tesKoneksi(config) {
+  const data = await request(config);
+  const messages = Array.isArray(data) ? data : data?.data?.data ?? data?.data?.messages ?? data?.data ?? data?.messages;
+  if (!Array.isArray(messages)) throw new OneSenderError('Respons OneSender tidak valid.');
+}
+
+export async function kirimPesan(config, { to, text }) {
+  if (!/^[1-9]\d{7,14}$/.test(to) || typeof text !== 'string' || !text.trim() || text.length > 4096) {
+    throw new OneSenderError('Nomor penerima atau isi pesan OneSender tidak valid.');
+  }
+  const data = await request(config, { recipient_type: 'individual', to, type: 'text', text: { body: text } });
+  const result = Array.isArray(data) ? data[0] : Array.isArray(data?.data) ? data.data[0] : data?.data ?? data;
+  if (result?.error || result?.errors || result?.success === false || result?.status === false || ['failed', 'error'].includes(result?.status)) {
+    throw new OneSenderError('OneSender menolak pesan. Periksa nomor penerima dan perangkat di dashboard OneSender.');
+  }
+  const id = result?.id ?? result?.message_id ?? result?.messages?.[0]?.id;
+  if (!id && data?.success !== true && Number(data?.code) !== 200) {
+    throw new OneSenderError('Penerimaan pesan OneSender belum dapat dipastikan. Periksa antrean sebelum mengirim ulang.', true);
+  }
+  return { id: id == null ? null : String(id) };
 }

@@ -1,9 +1,8 @@
-// Checkout storefront publik (tanpa login). Terpisah dari KasirApiClient
-// karena endpoint ini TIDAK butuh (dan tidak boleh mengirim) token sesi —
-// lihat POST /api/public/orders di server/index.js.
+// Checkout storefront dengan token akun pembeli, terpisah dari sesi staf.
 
 import { loadConfig } from './config';
 import type { PaymentMethod } from '@/types';
+import type { OpsiOngkir } from './pengirimanToko';
 
 export interface PublicOrderItemInput {
   product_id: string;
@@ -20,15 +19,25 @@ export interface PublicOrderInput {
   /** Wilayah tujuan; dipakai menghitung ongkir saat KiriminAja aktif. */
   delivery_province?: string;
   delivery_city?: string;
-  /** Transfer & QRIS masih manual (dicek staff); kanal otomatis menunggu Tripay. */
+  /** Metode manual, dipakai saat payment_channel tidak diisi. */
   payment_method: Extract<PaymentMethod, 'cash' | 'qris' | 'transfer'>;
   /** Kode kanal Tripay (mis. BRIVA, QRIS). Bila diisi, metode manual di atas diabaikan server. */
   payment_channel?: string;
+  payment_provider?: 'tripay' | 'mayar' | 'doku';
+  /** Wilayah KiriminAja (spec 0002); wajib saat KiriminAja toko aktif. */
+  delivery_wilayah?: { provinsi_id: number; kota_id: number; kecamatan_id: number; kelurahan_id: number };
+  /** Kurir pilihan pembeli; ongkirnya diperiksa ulang server. */
+  shipping?: { courier: string; service: string; ongkir: number };
   notes?: string;
   items: PublicOrderItemInput[];
+  /** Kode voucher (promo toko); server memeriksa ulang dan menghitung diskonnya. */
+  promo_code?: string;
 }
 
 export interface PublicOrderPayment {
+  provider?: 'tripay' | 'mayar' | 'doku';
+  /** Layanan asal bila pembayaran dipindah ke cadangan. */
+  pindah_dari?: string;
   channel: string;
   channel_name?: string;
   reference?: string | null;
@@ -36,6 +45,8 @@ export interface PublicOrderPayment {
   pay_code?: string | null;
   qr_url?: string | null;
   expired_time?: number | null;
+  amount?: number;
+  fee_customer?: number;
   error?: string;
 }
 
@@ -50,7 +61,7 @@ export async function submitPublicOrder(
   input: PublicOrderInput,
   /** Token akun pembeli; pesanan dicatat atas nama akun ini. */
   customerToken: string,
-): Promise<{ data: PublicOrderResult | null; error: string | null }> {
+): Promise<{ data: PublicOrderResult | null; error: string | null; shippingOptions?: OpsiOngkir[] }> {
   const { apiBaseUrl } = loadConfig();
   try {
     const response = await fetch(`${apiBaseUrl}/api/public/orders`, {
@@ -59,9 +70,10 @@ export async function submitPublicOrder(
       body: JSON.stringify(input),
     });
     const text = await response.text();
-    const payload = text ? (JSON.parse(text) as { data?: PublicOrderResult; error?: string }) : null;
+    const payload = text ? (JSON.parse(text) as { data?: PublicOrderResult; error?: string; shipping_options?: OpsiOngkir[] }) : null;
     if (!response.ok) {
-      return { data: null, error: payload?.error || 'Gagal mengirim pesanan.' };
+      // 409 ongkir berubah: server mengirim daftar kurir terbaru (spec 0002, AC-11).
+      return { data: null, error: payload?.error || 'Gagal mengirim pesanan.', shippingOptions: payload?.shipping_options };
     }
     return { data: payload?.data ?? null, error: null };
   } catch {

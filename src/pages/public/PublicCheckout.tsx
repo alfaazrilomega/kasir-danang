@@ -4,8 +4,10 @@ import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { CheckoutPayment } from '@/components/public/CheckoutPayment';
 import { PublicShell } from '@/components/layout/PublicShell';
 import { formatMoney, cn } from '@/lib/format';
+import { isValidWhatsAppPhone } from '@/lib/phone';
 import { Link, useLocation, useNavigate } from '@/lib/router';
 import { usePublicCart, type PublicCartLine } from '@/stores/publicCart';
 import { submitPublicOrder } from '@/lib/publicOrders';
@@ -21,12 +23,18 @@ import {
 } from '@/lib/publicCatalog';
 import { updateCustomerMe, useCustomer } from '@/lib/customerAccount';
 import { useBukaMasuk, useTokoPublik } from '@/components/public/KerangkaAuth';
-import { biayaKanal, fetchKanalBayar, type KanalBayar } from '@/lib/publicPayments';
-import { KolomAlamat, type NilaiAlamat } from '@/components/public/KolomAlamat';
+import { biayaKanal, fetchKanalBayar, nominalKanalSah, type KanalBayar, type KanalBayarResponse } from '@/lib/publicPayments';
+import { KolomAlamat, KolomAlamatKirim, type NilaiAlamat } from '@/components/public/KolomAlamat';
+import { PilihKurir, kunciOpsi } from '@/components/public/PilihKurir';
+import { ambilOngkir, ambilWilayah, labelOpsi, wilayahLengkap, WILAYAH_KOSONG, type OpsiOngkir, type WilayahKirim } from '@/lib/pengirimanToko';
+import { KolomVoucher } from '@/components/public/KolomVoucher';
+import { diskonVoucher, type VoucherToko } from '@/lib/voucherToko';
 import { alamatLengkap as alamatSatuBaris, provinsiDariKota } from '@/lib/wilayah';
 
 type PayOption = 'cash' | 'transfer' | 'qris';
-type Galat = Partial<Record<'name' | 'phone' | 'address' | 'provinsi' | 'kota', string>>;
+type Galat = Partial<Record<'name' | 'phone' | 'address' | 'provinsi' | 'kota' | 'kecamatan' | 'kelurahan' | 'kurir', string>>;
+
+const NAMA_LAYANAN: Record<string, string> = { tripay: 'Tripay', mayar: 'Mayar', doku: 'DOKU' };
 
 const KOLOM =
   'h-[44px] w-full rounded-lg border border-ink-200 bg-white px-3 text-sm text-ink-900 outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-ink-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-100';
@@ -68,9 +76,20 @@ export function PublicCheckout() {
   const [galat, setGalat] = useState<Galat>({});
   const [ubahAlamat, setUbahAlamat] = useState(false);
   // Kanal otomatis Tripay; kosong selama kunci Tripay belum dipasang toko.
-  const [kanal, setKanal] = useState<{ active: boolean; channels: KanalBayar[] }>({ active: false, channels: [] });
+  const [kanal, setKanal] = useState<KanalBayarResponse>({ active: false, mode: null, channels: [] });
+  const [loadingKanal, setLoadingKanal] = useState(true);
+  const [refreshKanal, setRefreshKanal] = useState(0);
   const [kanalKode, setKanalKode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [voucher, setVoucher] = useState<VoucherToko | null>(null);
+  // Ongkir KiriminAja (spec 0002). null = belum diketahui apakah toko memasangnya.
+  const [kirimAktif, setKirimAktif] = useState<boolean | null>(null);
+  const [wilayahKirim, setWilayahKirim] = useState<WilayahKirim>(WILAYAH_KOSONG);
+  const [opsiKurir, setOpsiKurir] = useState<OpsiOngkir[]>([]);
+  const [memuatKurir, setMemuatKurir] = useState(false);
+  const [galatKurir, setGalatKurir] = useState<string | null>(null);
+  const [ulangKurir, setUlangKurir] = useState(0);
+  const [kurir, setKurir] = useState<OpsiOngkir | null>(null);
 
   // Keputusan client: belanja memakai akun. Keranjang boleh diisi tanpa masuk,
   // checkout wajib masuk supaya pesanan tercatat di akun pembeli.
@@ -91,12 +110,17 @@ export function PublicCheckout() {
         alamat: me.address || '',
       };
     });
+    if (me.wilayah) setWilayahKirim((w) => (w.kelurahan_id ? w : { ...WILAYAH_KOSONG, ...me.wilayah }));
     // Alamat belum tersimpan di akun: formulirnya langsung terbuka.
     if (!me.address) setUbahAlamat(true);
   }, [me]);
 
   useEffect(() => {
-    void fetchKanalBayar().then((r) => setKanal({ active: r.active, channels: r.channels }));
+    let hidup = true;
+    ambilWilayah('provinsi')
+      .then((r) => hidup && setKirimAktif(r.active))
+      .catch((error: { aktif?: boolean }) => hidup && setKirimAktif(error?.aktif === true));
+    return () => { hidup = false; };
   }, []);
 
   // Bilah total menempel di bawah layar HP; kaki halaman di kerangka toko perlu
@@ -140,6 +164,55 @@ export function PublicCheckout() {
     [lines, katalogProduk, petaFlashCheckout],
   );
   const totalQty = useMemo(() => lines.reduce((sum, l) => sum + l.qty, 0), [lines]);
+  // Nominal barang setelah voucher: inilah yang ditagih Tripay/Mayar, jadi biaya
+  // dan batas nominal kanal dihitung dari angka ini, bukan dari subtotal.
+  const diskon = diskonVoucher(voucher, subtotal);
+  const nominalBarang = subtotal - diskon;
+
+  // Pilihan kurir dihitung ulang tiap tujuan atau isi keranjang berubah.
+  const kunciKeranjang = lines.map((l) => `${l.product_id}x${l.qty}`).join(',');
+  useEffect(() => {
+    if (!kirimAktif || !wilayahLengkap(wilayahKirim)) { setOpsiKurir([]); setKurir(null); setGalatKurir(null); return; }
+    let hidup = true;
+    setMemuatKurir(true);
+    void ambilOngkir({
+      kecamatan_id: wilayahKirim.kecamatan_id!, kelurahan_id: wilayahKirim.kelurahan_id!,
+      items: lines.map((l) => ({ product_id: l.product_id, qty: l.qty })),
+    }).then((r) => {
+      if (!hidup) return;
+      setMemuatKurir(false);
+      setGalatKurir(r.error ?? null);
+      setOpsiKurir(r.options);
+      // Kurir yang sama tetap terpilih bila masih tersedia, dengan ongkir terbarunya.
+      setKurir((k) => (k ? r.options.find((o) => kunciOpsi(o) === kunciOpsi(k)) ?? null : null));
+    });
+    return () => { hidup = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kirimAktif, wilayahKirim.kecamatan_id, wilayahKirim.kelurahan_id, kunciKeranjang, ulangKurir]);
+  const ongkir = kirimAktif && kurir ? kurir.ongkir : 0;
+  // Nominal yang ditagih layanan pembayaran: barang setelah voucher ditambah ongkir.
+  const nominalTagihan = nominalBarang + ongkir;
+  useEffect(() => {
+    let alive = true;
+    setLoadingKanal(true);
+    const timer = window.setTimeout(() => {
+      void fetchKanalBayar(nominalTagihan > 0 ? nominalTagihan : undefined).then((result) => {
+        if (!alive) return;
+        setKanal(result);
+        setLoadingKanal(false);
+        setKanalKode((code) => result.channels.some((channel) => channel.code === code
+          && nominalKanalSah(channel, nominalTagihan) && channel.fee_customer != null) ? code : null);
+      });
+    }, 250);
+    return () => { alive = false; window.clearTimeout(timer); };
+  }, [nominalTagihan, refreshKanal]);
+  const kanalTerpilih = kanal.channels.find((channel) => channel.code === kanalKode);
+  const biayaPembayaran = kanalTerpilih ? biayaKanal(kanalTerpilih, nominalTagihan) : 0;
+  const totalBayar = nominalTagihan + biayaPembayaran;
+  // Total final hanya bila ongkir sudah dipilih dan tidak sedang dihitung ulang.
+  const totalFinal = !kirimAktif || (!!kurir && !memuatKurir);
+  const pembayaranSiap = !loadingKanal && kirimAktif !== null && !memuatKurir && (!kanalKode || (!!kanalTerpilih
+    && kanal.amount === nominalTagihan && nominalKanalSah(kanalTerpilih, nominalTagihan) && kanalTerpilih.fee_customer != null));
 
   // Pixel iklan: "mulai checkout" sekali per kunjungan, begitu pembeli sudah
   // masuk dan formulirnya tampil. Sebelum masuk, halaman ini hanya ajakan login.
@@ -152,6 +225,9 @@ export function PublicCheckout() {
     lacakPixel({ jenis: 'InitiateCheckout', barang: barangPixel(), nilai: subtotal });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, lines.length]);
+
+  const paymentOrderId = new URLSearchParams(search).get('order');
+  if (paymentOrderId) return <CheckoutPayment key={paymentOrderId} orderId={paymentOrderId} />;
 
   if (lines.length === 0) {
     return (
@@ -188,8 +264,11 @@ export function PublicCheckout() {
     );
   }
 
-  const alamatTeks = alamatSatuBaris({ alamat: wilayah.alamat, kota: wilayah.kota, provinsi: wilayah.provinsi });
-  const alamatLengkap = !!name.trim() && !!phone.trim() && !!wilayah.alamat.trim() && !!wilayah.provinsi && !!wilayah.kota;
+  const alamatTeks = kirimAktif
+    ? [wilayah.alamat.trim(), wilayahKirim.kelurahan, wilayahKirim.kecamatan, wilayahKirim.kota, wilayahKirim.provinsi].filter(Boolean).join(', ')
+    : alamatSatuBaris({ alamat: wilayah.alamat, kota: wilayah.kota, provinsi: wilayah.provinsi });
+  const alamatLengkap = !!name.trim() && isValidWhatsAppPhone(phone) && !!wilayah.alamat.trim()
+    && (kirimAktif ? wilayahLengkap(wilayahKirim) : !!wilayah.provinsi && !!wilayah.kota);
 
   /** Memilih metode manual membatalkan kanal otomatis yang sedang dipilih. */
   function pilihManual(p: PayOption) {
@@ -201,12 +280,22 @@ export function PublicCheckout() {
     const g: Galat = {};
     if (!name.trim()) g.name = 'Nama penerima wajib diisi.';
     if (!phone.trim()) g.phone = 'Nomor HP wajib diisi.';
-    if (!wilayah.provinsi) g.provinsi = 'Pilih provinsi.';
-    if (!wilayah.kota) g.kota = 'Pilih kota/kabupaten.';
+    else if (!isValidWhatsAppPhone(phone)) g.phone = 'Nomor WhatsApp tidak valid. Gunakan nomor seperti 081234567890 atau +6281234567890.';
+    if (kirimAktif) {
+      if (!wilayahKirim.provinsi_id) g.provinsi = 'Pilih provinsi.';
+      if (!wilayahKirim.kota_id) g.kota = 'Pilih kota/kabupaten.';
+      if (!wilayahKirim.kecamatan_id) g.kecamatan = 'Pilih kecamatan.';
+      if (!wilayahKirim.kelurahan_id) g.kelurahan = 'Pilih kelurahan/desa.';
+    } else {
+      if (!wilayah.provinsi) g.provinsi = 'Pilih provinsi.';
+      if (!wilayah.kota) g.kota = 'Pilih kota/kabupaten.';
+    }
     if (!wilayah.alamat.trim()) g.address = 'Alamat pengiriman wajib diisi.';
+    const galatAlamat = Object.keys(g).length > 0;
+    if (kirimAktif && !galatAlamat && !kurir) g.kurir = 'Pilih kurir pengiriman.';
     setGalat(g);
     if (Object.keys(g).length) {
-      setUbahAlamat(true);
+      if (galatAlamat) setUbahAlamat(true);
       // Di HP pesan galat sering jatuh persis di balik bilah total yang menempel,
       // jadi galat pertama dibawa ke tengah layar setelah dirender.
       requestAnimationFrame(() => {
@@ -217,28 +306,52 @@ export function PublicCheckout() {
   }
 
   async function submit() {
-    if (!token) return;
+    if (!token || busy || !pembayaranSiap) return;
     if (!periksa()) return;
 
     setBusy(true);
-    const { data, error } = await submitPublicOrder(
+    const { data, error, shippingOptions } = await submitPublicOrder(
       {
         store_id: PUBLIC_STORE_ID,
         customer_name: name.trim(),
         customer_phone: phone.trim(),
         delivery_address: alamatTeks,
-        delivery_province: wilayah.provinsi,
-        delivery_city: wilayah.kota,
+        delivery_province: kirimAktif ? wilayahKirim.provinsi : wilayah.provinsi,
+        delivery_city: kirimAktif ? wilayahKirim.kota : wilayah.kota,
+        ...(kirimAktif && kurir ? {
+          delivery_wilayah: {
+            provinsi_id: wilayahKirim.provinsi_id!, kota_id: wilayahKirim.kota_id!,
+            kecamatan_id: wilayahKirim.kecamatan_id!, kelurahan_id: wilayahKirim.kelurahan_id!,
+          },
+          shipping: { courier: kurir.courier, service: kurir.service, ongkir: kurir.ongkir },
+        } : {}),
         payment_method: payment,
         payment_channel: kanalKode ?? undefined,
+        payment_provider: kanalKode ? kanal.provider ?? 'tripay' : undefined,
         notes: notes.trim() || undefined,
         items: lines.map((l) => ({ product_id: l.product_id, qty: l.qty })),
+        promo_code: voucher?.code,
       },
       token,
     );
     setBusy(false);
 
     if (error || !data) {
+      // Ongkir berubah atau kurir tidak tersedia lagi: daftar diganti yang terbaru
+      // dan pembeli memeriksa total baru sebelum menekan lagi.
+      if (shippingOptions) {
+        setOpsiKurir(shippingOptions);
+        setKurir((k) => (k ? shippingOptions.find((o) => kunciOpsi(o) === kunciOpsi(k)) ?? null : null));
+        toast.error(error || 'Ongkir berubah. Periksa pilihan kurir lalu buat pesanan lagi.');
+        return;
+      }
+      // Voucher berakhir di tengah checkout: dilepas supaya total di layar kembali benar,
+      // dan pembeli diberi tahu bahwa totalnya berubah sebelum menekan lagi.
+      if (voucher && error && /voucher/i.test(error)) {
+        setVoucher(null);
+        toast.error(`Voucher ${voucher.code} tidak bisa dipakai lagi dan sudah dilepas. Periksa total baru lalu tekan Buat Pesanan lagi.`);
+        return;
+      }
       toast.error(error || 'Gagal mengirim pesanan.');
       return;
     }
@@ -249,20 +362,30 @@ export function PublicCheckout() {
     lacakPixel({
       jenis: 'Purchase',
       barang: barangPixel(),
-      nilai: subtotal,
+      nilai: nominalBarang,
       idPesanan: data.order_id,
       nomorPesanan: data.order_number,
     });
 
     // Alamat pertama disimpan ke akun supaya checkout berikutnya terisi otomatis.
-    if (me && !me.address) {
+    // Wilayah KiriminAja ikut disimpan bila berbeda dari yang tersimpan.
+    const wilayahBaru = kirimAktif && wilayahLengkap(wilayahKirim) && me?.wilayah?.kelurahan_id !== wilayahKirim.kelurahan_id;
+    if (me && (!me.address || wilayahBaru)) {
       void updateCustomerMe(token, {
         name: me.name,
         phone: me.phone || phone.trim(),
-        address: wilayah.alamat.trim(),
-        province: wilayah.provinsi,
-        city: wilayah.kota,
+        address: me.address || wilayah.alamat.trim(),
+        province: me.address ? me.province || '' : kirimAktif ? wilayahKirim.provinsi : wilayah.provinsi,
+        city: me.address ? me.city || '' : kirimAktif ? wilayahKirim.kota : wilayah.kota,
+        ...(wilayahBaru ? { wilayah: wilayahKirim as NonNullable<typeof me.wilayah> } : {}),
       }).then(({ data: baru }) => baru && setMe(baru));
+    }
+    if (data.payment?.provider === 'mayar') {
+      navigate(`/toko/checkout?order=${encodeURIComponent(data.order_id)}`, { replace: true });
+      if (isDirect) clearBuyNow();
+      else if (pilihIds) pilihIds.forEach(removeLine);
+      else clearCart();
+      return;
     }
     if (isDirect) clearBuyNow();
     else if (pilihIds) pilihIds.forEach(removeLine);
@@ -275,7 +398,7 @@ export function PublicCheckout() {
       return;
     }
     if (data.payment?.error) toast.warning(data.payment.error);
-    navigate(`/toko/selesai?order=${encodeURIComponent(data.order_number)}&bayar=${kanalKode ?? payment}`);
+    navigate(`/toko/selesai?order=${encodeURIComponent(data.order_number)}&bayar=${kanalKode ?? payment}${data.payment?.error ? '&gateway=failed' : ''}${ongkir > 0 ? '&ongkir=1' : ''}`);
   }
 
   const ringkasanIsi = (
@@ -308,15 +431,30 @@ export function PublicCheckout() {
           <span>Subtotal ({totalQty} barang)</span>
           <span className="tabular-nums">{formatMoney(subtotal)}</span>
         </div>
-        <div className="flex justify-between text-ink-600 dark:text-ink-300">
-          <span>Ongkir</span>
-          <span className="text-xs">Dihitung toko</span>
+        {diskon > 0 && voucher && <div className="flex justify-between gap-3 text-emerald-700 dark:text-emerald-300" data-baris-voucher>
+          <span className="min-w-0 [overflow-wrap:anywhere]">Voucher <span className="font-mono">{voucher.code}</span></span>
+          <span className="shrink-0 tabular-nums">-{formatMoney(diskon)}</span>
+        </div>}
+        <div className="flex justify-between gap-3 text-ink-600 dark:text-ink-300" data-baris-ongkir>
+          <span className="min-w-0 [overflow-wrap:anywhere]">Ongkir{kirimAktif && kurir ? ` (${labelOpsi(kurir).split(' · ')[0]})` : ''}</span>
+          {kirimAktif
+            ? kurir ? <span className="shrink-0 tabular-nums">{formatMoney(ongkir)}</span> : <span className="shrink-0 text-xs">Pilih kurir</span>
+            : <span className="text-xs">Dihitung toko</span>}
         </div>
+        {kanalTerpilih && <div className="flex justify-between text-ink-600 dark:text-ink-300">
+          <span>Biaya pembayaran</span>
+          <span className="tabular-nums">{formatMoney(biayaPembayaran)}</span>
+        </div>}
         <div className="flex items-baseline justify-between border-t border-ink-100 pt-2 dark:border-ink-800">
-          <span className="text-sm font-semibold">Total Sementara</span>
-          <span className="text-lg font-bold tabular-nums">{formatMoney(subtotal)}</span>
+          <span className="text-sm font-semibold">{kirimAktif && totalFinal ? 'Total' : 'Total Sementara'}</span>
+          <span className="text-lg font-bold tabular-nums">{formatMoney(totalBayar)}</span>
         </div>
-        <p className="text-xs text-ink-500">Total belum termasuk ongkir. Angka final dikonfirmasi toko.</p>
+        <p className="text-xs text-ink-500">{kirimAktif
+          ? !totalFinal ? 'Pilih kurir pengiriman untuk melihat total termasuk ongkir.'
+          : kanalKode ? 'Pembayaran online mencakup barang, ongkir, dan biaya pembayaran.' : 'Total sudah termasuk ongkir.'
+          : kanalKode
+          ? 'Pembayaran online mencakup barang dan biaya pembayaran. Ongkir ditagih terpisah setelah dikonfirmasi toko.'
+          : 'Total belum termasuk ongkir. Angka final dikonfirmasi toko.'}</p>
       </div>
     </>
   );
@@ -339,7 +477,7 @@ export function PublicCheckout() {
             <span className="text-sm font-semibold">
               Ringkasan Pesanan
               <span className="ml-2 font-normal text-ink-500">
-                {totalQty} barang · {formatMoney(subtotal)}
+                {totalQty} barang · {formatMoney(totalBayar)}
               </span>
             </span>
             <ChevronDown size={18} className="shrink-0 text-ink-400 transition-transform duration-200 group-open:rotate-180" />
@@ -347,7 +485,7 @@ export function PublicCheckout() {
           <div className="mt-3">{ringkasanIsi}</div>
         </details>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
           <div className="space-y-4">
             {/* ---------- 1. Alamat pengiriman ---------- */}
             <Blok nomor={1} judul="Alamat Pengiriman">
@@ -395,6 +533,8 @@ export function PublicCheckout() {
                         name="customer_phone"
                         aria-label="Nomor HP / WhatsApp"
                         inputMode="tel"
+                        type="tel"
+                        maxLength={20}
                         placeholder="08xxxxxxxxxx"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
@@ -402,13 +542,25 @@ export function PublicCheckout() {
                       />
                     </Kolom>
                   </div>
-                  <KolomAlamat
-                    nilai={wilayah}
-                    onChange={setWilayah}
-                    kelasKolom={KOLOM}
-                    kelasGalat={KOLOM_GALAT}
-                    galat={{ provinsi: galat.provinsi, kota: galat.kota, alamat: galat.address }}
-                  />
+                  {kirimAktif ? (
+                    <KolomAlamatKirim
+                      wilayah={wilayahKirim}
+                      onWilayah={(w) => { setWilayahKirim(w); setWilayah((v) => ({ ...v, provinsi: w.provinsi, kota: w.kota })); }}
+                      alamat={wilayah.alamat}
+                      onAlamat={(alamat) => setWilayah((v) => ({ ...v, alamat }))}
+                      kelasKolom={KOLOM}
+                      kelasGalat={KOLOM_GALAT}
+                      galat={{ provinsi: galat.provinsi, kota: galat.kota, kecamatan: galat.kecamatan, kelurahan: galat.kelurahan, alamat: galat.address }}
+                    />
+                  ) : (
+                    <KolomAlamat
+                      nilai={wilayah}
+                      onChange={setWilayah}
+                      kelasKolom={KOLOM}
+                      kelasGalat={KOLOM_GALAT}
+                      galat={{ provinsi: galat.provinsi, kota: galat.kota, alamat: galat.address }}
+                    />
+                  )}
                   <Kolom label="Catatan (opsional)" id="catatan">
                     <input
                       id="catatan"
@@ -425,7 +577,7 @@ export function PublicCheckout() {
                       <button
                         type="button"
                         onClick={() => setUbahAlamat(false)}
-                        className="inline-flex h-9 items-center rounded-lg bg-ink-100 px-4 text-sm font-semibold text-ink-700 transition-colors duration-150 hover:bg-ink-200 dark:bg-ink-800 dark:text-ink-200"
+                        className="inline-flex h-[44px] items-center rounded-lg bg-ink-100 px-4 text-sm font-semibold text-ink-700 transition-colors duration-150 hover:bg-ink-200 lg:h-9 dark:bg-ink-800 dark:text-ink-200"
                       >
                         Simpan Alamat
                       </button>
@@ -437,20 +589,58 @@ export function PublicCheckout() {
 
             {/* ---------- 2. Pengiriman ---------- */}
             <Blok nomor={2} judul="Pengiriman">
+              {kirimAktif ? (
+                <div data-galat-kurir>
+                  <PilihKurir
+                    siap={wilayahLengkap(wilayahKirim)}
+                    memuat={memuatKurir}
+                    galat={galatKurir}
+                    opsi={opsiKurir}
+                    terpilih={kurir ? kunciOpsi(kurir) : null}
+                    onPilih={(o) => { setKurir(o); setGalat((g) => ({ ...g, kurir: undefined })); }}
+                    onUlang={() => setUlangKurir((n) => n + 1)}
+                    galatPilih={galat.kurir}
+                  />
+                </div>
+              ) : (
               <div className="flex items-start gap-3 rounded-lg border border-brand-100 bg-brand-50/60 p-4 dark:border-brand-500/20 dark:bg-brand-950/20">
                 <Truck size={18} className="mt-0.5 shrink-0 text-brand-600" />
                 <div className="text-sm">
                   <div className="font-semibold">Ongkir dihitung oleh toko</div>
                   <p className="mt-1 text-ink-600 dark:text-ink-300">
-                    Biaya kirim menyesuaikan alamat dan berat paket. Tim kami menghitungnya lalu mengabari Anda lewat
-                    WhatsApp sebelum pembayaran.
+                    Biaya kirim menyesuaikan alamat dan berat paket. Tim kami mengabari Anda lewat WhatsApp.
+                    Untuk pembayaran online, ongkir ditagih terpisah setelah dikonfirmasi toko.
                   </p>
                 </div>
               </div>
+              )}
             </Blok>
 
             {/* ---------- 3. Pembayaran ---------- */}
             <Blok nomor={3} judul="Metode Pembayaran" padat>
+              <div className="space-y-2 px-4 pb-3">
+                <div className="pb-1">
+                  <KolomVoucher
+                    storeId={PUBLIC_STORE_ID}
+                    voucher={voucher}
+                    diskon={diskon}
+                    subtotal={subtotal}
+                    onPakai={(v) => {
+                      setVoucher(v);
+                      toast.success(`Voucher ${v.code} dipakai.`);
+                    }}
+                    onHapus={() => setVoucher(null)}
+                    dikunci={busy}
+                  />
+                </div>
+                {loadingKanal && <p role="status" className="text-sm text-ink-500">Memuat metode pembayaran...</p>}
+                {kanal.error && <div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                  {kanal.error}
+                  <button type="button" disabled={loadingKanal} onClick={() => setRefreshKanal((value) => value + 1)} className="ml-2 font-semibold underline">Coba lagi</button>
+                </div>}
+                {kanal.active && kanal.mode === 'sandbox' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Pembayaran online dalam mode uji coba (Sandbox). Jangan melakukan pembayaran uang sungguhan.</p>}
+                {kanal.active && !loadingKanal && !kanal.channels.length && <p className="text-sm text-ink-500">Belum ada kanal pembayaran aktif. Silakan pilih pembayaran manual.</p>}
+              </div>
               <div className="divide-y divide-ink-100 dark:divide-ink-800">
                 <GrupBayar judul="Bayar di tempat">
                   <BarisBayar
@@ -461,11 +651,13 @@ export function PublicCheckout() {
                     catatan="Bayar ke kurir saat barang diterima"
                     biaya="Tanpa biaya"
                   >
-                    Siapkan uang pas saat kurir tiba. Nominal akhir termasuk ongkir dikabari toko lewat WhatsApp.
+                    {kirimAktif
+                      ? 'Siapkan uang pas sebesar total pesanan (sudah termasuk ongkir) saat kurir tiba.'
+                      : 'Siapkan uang pas saat kurir tiba. Nominal akhir termasuk ongkir dikabari toko lewat WhatsApp.'}
                   </BarisBayar>
                 </GrupBayar>
 
-                <GrupBayar judul="Transfer & QRIS">
+                <GrupBayar judul="Pembayaran manual">
                   <BarisBayar
                     aktif={payment === 'transfer' && !kanalKode}
                     onClick={() => pilihManual('transfer')}
@@ -487,7 +679,7 @@ export function PublicCheckout() {
                     aktif={payment === 'qris' && !kanalKode}
                     onClick={() => pilihManual('qris')}
                     ikon={<QrCode size={18} />}
-                    nama="QRIS"
+                    nama="QRIS Manual"
                     catatan="Scan dari aplikasi bank atau e-wallet"
                   >
                     {toko?.qris_image_url ? (
@@ -508,11 +700,14 @@ export function PublicCheckout() {
                 {grupKanal.map(([judulGrup, daftar]) => (
                   <GrupBayar key={judulGrup} judul={judulGrup}>
                     {daftar.map((k) => {
-                      const biaya = biayaKanal(k, subtotal);
+                      const biaya = biayaKanal(k, nominalTagihan);
+                      const nominalValid = nominalKanalSah(k, nominalTagihan);
+                      const tersedia = nominalValid && k.fee_customer != null && !loadingKanal;
                       return (
                         <BarisBayar
                           key={k.code}
                           aktif={kanalKode === k.code}
+                          disabled={!tersedia}
                           onClick={() => setKanalKode(k.code)}
                           ikon={
                             k.icon_url ? (
@@ -522,11 +717,18 @@ export function PublicCheckout() {
                             )
                           }
                           nama={k.name}
-                          catatan="Bayar otomatis, langsung terverifikasi"
-                          biaya={biaya ? `+ ${formatMoney(biaya)}` : 'Tanpa biaya'}
+                          catatan={!nominalValid
+                            ? `Nominal ${formatMoney(k.minimum_amount || 0)}${k.maximum_amount ? ` sampai ${formatMoney(k.maximum_amount)}` : ' ke atas'}`
+                            : k.fee_customer == null ? 'Biaya belum tersedia. Muat ulang metode pembayaran.' : k.description || `${NAMA_LAYANAN[kanal.provider ?? 'tripay'] ?? 'Tripay'} · Pembayaran terverifikasi otomatis`}
+                          biaya={tersedia ? (biaya ? `+ ${formatMoney(biaya)}` : 'Tanpa biaya gateway') : undefined}
                         >
-                          Setelah menekan Buat Pesanan, Anda dibawa ke halaman pembayaran {k.name}. Pesanan tetap
-                          menunggu konfirmasi ongkir dari toko.
+                          {kanal.provider === 'mayar' && k.code !== 'MAYAR'
+                            ? 'Setelah menekan Buat Pesanan, kode pembayaran ditampilkan di halaman checkout ini. Status pembayaran diperbarui otomatis.'
+                            : kanal.provider === 'mayar' ? 'Pesanan tersimpan di checkout. Gunakan tombol pembayaran untuk membuka Mayar saat Anda siap.'
+                            : kanal.provider === 'doku' ? 'Setelah menekan Buat Pesanan, Anda dibawa ke halaman pembayaran DOKU untuk memilih metode bayar.'
+                            : `Setelah menekan Buat Pesanan, Anda dibawa ke halaman pembayaran ${k.name}.`}
+                          {' '}{kirimAktif ? 'Ongkir sudah termasuk dalam pembayaran.' : 'Pesanan tetap menunggu konfirmasi ongkir dari toko.'}
+                          {k.group === 'Convenience Store' && ' Gerai dapat mengenakan biaya tambahan saat pembayaran di kasir.'}
                         </BarisBayar>
                       );
                     })}
@@ -544,7 +746,7 @@ export function PublicCheckout() {
               <button
                 type="button"
                 onClick={submit}
-                disabled={busy}
+                disabled={busy || !pembayaranSiap}
                 className="mt-4 h-12 w-full rounded-lg bg-brand-500 text-base font-semibold text-white shadow-card transition-colors duration-150 hover:bg-brand-600 active:bg-brand-700 disabled:cursor-not-allowed disabled:bg-ink-200 disabled:text-ink-400"
               >
                 {busy ? 'Mengirim…' : 'Buat Pesanan'}
@@ -563,13 +765,13 @@ export function PublicCheckout() {
       {/* ---------- Total + tombol menempel (HP) ---------- */}
       <div className="fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-ink-100 bg-white px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgba(15,18,34,0.08)] lg:hidden dark:border-ink-800 dark:bg-ink-900">
         <div className="min-w-0">
-          <div className="text-[11px] text-ink-500">Total sementara</div>
-          <div className="text-lg font-bold leading-tight tabular-nums">{formatMoney(subtotal)}</div>
+          <div className="text-[11px] text-ink-500">{kirimAktif && totalFinal ? 'Total' : 'Total sementara'}</div>
+          <div className="text-lg font-bold leading-tight tabular-nums">{formatMoney(totalBayar)}</div>
         </div>
         <button
           type="button"
           onClick={submit}
-          disabled={busy}
+          disabled={busy || !pembayaranSiap}
           className="ml-auto h-12 min-w-[160px] rounded-lg bg-brand-500 px-5 text-base font-semibold text-white transition-colors duration-150 hover:bg-brand-600 active:bg-brand-700 disabled:cursor-not-allowed disabled:bg-ink-200 disabled:text-ink-400"
         >
           {busy ? 'Mengirim…' : 'Buat Pesanan'}
@@ -636,6 +838,7 @@ function GrupBayar({ judul, children }: { judul: string; children: ReactNode }) 
  */
 function BarisBayar({
   aktif,
+  disabled = false,
   onClick,
   ikon,
   nama,
@@ -644,6 +847,7 @@ function BarisBayar({
   children,
 }: {
   aktif: boolean;
+  disabled?: boolean;
   onClick: () => void;
   ikon: ReactNode;
   nama: string;
@@ -656,8 +860,9 @@ function BarisBayar({
       <button
         type="button"
         onClick={onClick}
+        disabled={disabled}
         aria-pressed={aktif}
-        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 hover:bg-ink-50 dark:hover:bg-ink-800/60"
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors duration-150 hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-ink-800/60"
       >
         <span
           className={cn(

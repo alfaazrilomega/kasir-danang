@@ -15,6 +15,11 @@ const LOCK_KEY = 202605;
 const checkOnly = process.argv.includes('--check');
 
 const REQUIRED_COLUMNS = {
+  store_payment_settings: ['store_id', 'provider', 'updated_at'],
+  whatsapp_reminders: ['id', 'store_id', 'order_id', 'template_key', 'requires_gateway', 'scheduled_at', 'status', 'message_id', 'reason', 'created_at', 'updated_at'],
+  store_email_settings: ['store_id', 'config_encrypted', 'templates', 'updated_at'],
+  whatsapp_settings: ['store_id', 'config', 'updated_at'],
+  whatsapp_messages: ['id', 'store_id', 'customer_id', 'order_id', 'template_key', 'provider', 'recipient', 'message_text', 'payload', 'status', 'provider_message_id', 'error_message', 'dedupe_key', 'created_by', 'created_at', 'updated_at'],
   store_integrations: ['store_id', 'provider', 'config_encrypted', 'updated_at'],
   app_users: ['id', 'email', 'password_hash', 'created_at'],
   admin_audit_logs: [
@@ -29,6 +34,7 @@ const REQUIRED_COLUMNS = {
     'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
     'footer_links', 'chat_enabled',
     'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+    'affiliate_settings', 'expense_categories',
   ],
   profiles: ['id', 'store_id', 'full_name', 'email', 'role', 'avatar_url', 'created_at'],
   categories: ['id', 'store_id', 'name', 'icon', 'sort_order', 'created_at'],
@@ -39,6 +45,7 @@ const REQUIRED_COLUMNS = {
     'length_cm', 'width_cm', 'height_cm', 'brand', 'variant_name', 'parent_sku', 'compare_at_price',
     'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
     'highlights', 'license_type', 'license_code', 'video_url',
+    'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission', 'slug',
   ],
   product_reviews: [
     'id', 'store_id', 'product_id', 'order_id', 'customer_id', 'reviewer_name', 'rating',
@@ -55,13 +62,18 @@ const REQUIRED_COLUMNS = {
   customers: [
     'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
     'is_active', 'points', 'created_at', 'address', 'user_id', 'privacy_accepted_at',
-    'address_province', 'address_city',
+    'address_province', 'address_city', 'address_wilayah',
+    'affiliate_code', 'affiliate_access', 'referred_by', 'referred_at', 'referral_source', 'bank_info', 'affiliate_commission',
   ],
   promos: ['id', 'store_id', 'code', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'created_at'],
   flash_sales: ['id', 'store_id', 'name', 'starts_at', 'ends_at', 'is_active', 'created_at'],
   flash_sale_items: [
     'id', 'store_id', 'flash_sale_id', 'product_id', 'flash_price',
     'quota_qty', 'sold_qty', 'created_at',
+  ],
+  store_banners: [
+    'id', 'store_id', 'title', 'image_data', 'image_mobile_data', 'link_url',
+    'sort_order', 'is_active', 'starts_at', 'ends_at', 'created_at', 'updated_at',
   ],
   orders: [
     'id', 'store_id', 'customer_id', 'cashier_id', 'shift_id', 'order_number',
@@ -73,8 +85,13 @@ const REQUIRED_COLUMNS = {
     'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
     'delivery_address', 'shipping_cost', 'tax_inclusive',
     'payment_channel', 'payment_reference', 'payment_url',
+    'payment_instructions', 'payment_provider', 'payment_mode', 'payment_transaction_id', 'payment_amount', 'payment_expires_at', 'payment_checked_at',
     'delivery_province', 'delivery_city',
+    'delivery_district', 'delivery_subdistrict', 'delivery_district_id', 'delivery_subdistrict_id',
+    'shipping_courier', 'shipping_service', 'shipping_service_name', 'shipping_etd', 'shipping_weight_gram',
+    'payment_failover_from',
     'marketplace_fee', 'net_settled', 'settlement_date', 'fee_detail',
+    'affiliate_id', 'affiliate_source', 'acquisition_source', 'acquisition_media',
   ],
   order_returns: [
     'id', 'store_id', 'order_id', 'order_number', 'refund_amount', 'reason',
@@ -140,6 +157,28 @@ const REQUIRED_COLUMNS = {
     'payment_method', 'shift_id', 'created_by', 'created_at',
     'purchase_id', 'purchase_cost_slot',
   ],
+  affiliate_clicks: ['id', 'store_id', 'affiliate_id', 'product_id', 'kind', 'source', 'media', 'visitor_hash', 'created_at'],
+  affiliate_payouts: [
+    'id', 'store_id', 'affiliate_id', 'amount', 'commission_count', 'paid_at', 'paid_by',
+    'note', 'proof_image', 'expense_id', 'created_at',
+    'commission_total', 'bonus_total', 'deduction_total',
+  ],
+  affiliate_commissions: [
+    'id', 'store_id', 'order_id', 'order_item_id', 'product_id', 'affiliate_id', 'tier',
+    'base_amount', 'rate_type', 'rate_value', 'commission', 'status', 'paid', 'paid_at',
+    'payout_id', 'created_at', 'updated_at', 'commission_awal',
+  ],
+  affiliate_potongan: ['id', 'store_id', 'affiliate_id', 'commission_id', 'jenis', 'amount', 'payout_id', 'created_at'],
+  affiliate_bonuses: [
+    'id', 'store_id', 'affiliate_id', 'bulan', 'omset', 'target', 'rate_type', 'rate_value', 'amount',
+    'status', 'paid', 'paid_at', 'payout_id', 'created_at', 'updated_at',
+  ],
+  affiliate_invitations: [
+    'id', 'store_id', 'affiliate_id', 'email', 'name', 'message', 'token_hash', 'status',
+    'sent_at', 'opened_at', 'expires_at', 'registered_customer_id', 'resend_count', 'last_error', 'created_at',
+    'dari_admin', 'commission',
+  ],
+  affiliate_outbox: ['id', 'store_id', 'kind', 'ref_id', 'status', 'attempts', 'next_attempt_at', 'sent_at', 'last_error', 'created_at'],
   product_channel_mappings: [
     'id', 'store_id', 'product_id', 'channel_code', 'external_sku',
     'external_url', 'is_synced', 'last_synced_at', 'created_at',

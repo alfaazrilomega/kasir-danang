@@ -28,14 +28,12 @@ export function tujuanAman(v: string | null): string {
   return v && v.startsWith('/toko') ? v : '/toko/akun';
 }
 
-let janjiToko: Promise<PublicCatalogStore | null> | null = null;
-
 /** Nama & logo toko untuk halaman masuk (diambil sekali per kunjungan). */
 export function useTokoPublik(): PublicCatalogStore | null {
   const [toko, setToko] = useState<PublicCatalogStore | null>(null);
   useEffect(() => {
     let alive = true;
-    janjiToko ??= fetchPublicCatalog(PUBLIC_STORE_ID)
+    const janjiToko = fetchPublicCatalog(PUBLIC_STORE_ID)
       .then((d) => d.store)
       .catch(() => null);
     void janjiToko.then((t) => alive && setToko(t));
