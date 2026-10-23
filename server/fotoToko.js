@@ -12,7 +12,7 @@ const POLA_BERKAS = /^[0-9]{4}\/[0-9]{2}\/[A-Za-z0-9._()+-]+\.(?:jpe?g|png|webp|
 export function fotoLewatToko(url) {
   if (typeof url !== 'string' || !url.startsWith(AWALAN_WP)) return url;
   const berkas = url.slice(AWALAN_WP.length);
-  return POLA_BERKAS.test(berkas) ? `/foto/wp/${berkas}` : url;
+  return POLA_BERKAS.test(berkas) ? `/foto/wp/${berkas}?v=20261023` : url;
 }
 
 /** Ganti semua nilai teks berupa alamat foto WordPress di dalam data JSON. */

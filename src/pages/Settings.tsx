@@ -94,12 +94,16 @@ interface FormState {
   bankAccountNumber: string;
   bankAccountName: string;
   qrisImage: string | null;
+  transferEnabled: boolean;
+  qrisEnabled: boolean;
   socialFacebook: string;
   socialInstagram: string;
   socialTiktok: string;
   socialYoutube: string;
   footerLinks: { label: string; url: string }[];
   chatEnabled: boolean;
+  googleAnalyticsId: string;
+  googleTagManagerId: string;
   metaPixelId: string;
   tiktokPixelId: string;
   googleAdsId: string;
@@ -138,12 +142,16 @@ function snapshot(store: Store | null): FormState {
     bankAccountNumber: store?.bank_account_number ?? '',
     bankAccountName: store?.bank_account_name ?? '',
     qrisImage: store?.qris_image_url ?? null,
+    transferEnabled: store?.manual_transfer_enabled ?? true,
+    qrisEnabled: store?.manual_qris_enabled ?? true,
     socialFacebook: store?.social_facebook ?? '',
     socialInstagram: store?.social_instagram ?? '',
     socialTiktok: store?.social_tiktok ?? '',
     socialYoutube: store?.social_youtube ?? '',
     footerLinks: store?.footer_links ?? [],
     chatEnabled: store?.chat_enabled ?? true,
+    googleAnalyticsId: store?.google_analytics_id ?? '',
+    googleTagManagerId: store?.google_tag_manager_id ?? '',
     metaPixelId: store?.meta_pixel_id ?? '',
     tiktokPixelId: store?.tiktok_pixel_id ?? '',
     googleAdsId: store?.google_ads_id ?? '',
@@ -156,6 +164,7 @@ const SECTIONS: { id: string; label: string; icon: typeof SettingsIcon }[] = [
   { id: 'business', label: 'Jenis Usaha', icon: SettingsIcon },
   { id: 'receipt', label: 'Struk', icon: ReceiptIcon },
   { id: 'online', label: 'Toko Online', icon: Globe },
+  { id: 'homepage', label: 'Banner & Flash Sale', icon: Globe },
   { id: 'loyalty', label: 'Loyalitas', icon: Coins },
   { id: 'channels', label: 'Channel', icon: StoreIcon },
   { id: 'expense-categories', label: 'Pengeluaran', icon: Tags },
@@ -178,7 +187,7 @@ export function Settings() {
     () =>
       SECTIONS.filter(
         (section) =>
-          canManageStore || !['business', 'receipt', 'loyalty', 'integrations', 'expense-categories'].includes(section.id),
+          canManageStore || !['business', 'receipt', 'loyalty', 'integrations', 'expense-categories', 'homepage'].includes(section.id),
       ),
     [canManageStore],
   );
@@ -305,12 +314,16 @@ export function Settings() {
     // lalu dicocokkan formatnya. ID yang salah ketik tidak melacak apa pun dan
     // tidak memberi tanda, jadi ditolak di sini dengan contoh yang benar.
     const pixel = {
+      googleAnalytics: form.googleAnalyticsId.replace(/\s+/g, '').toUpperCase(),
+      googleTagManager: form.googleTagManagerId.replace(/\s+/g, '').toUpperCase(),
       meta: form.metaPixelId.replace(/\s+/g, ''),
       tiktok: form.tiktokPixelId.replace(/\s+/g, '').toUpperCase(),
       googleAds: form.googleAdsId.replace(/\s+/g, '').toUpperCase(),
       googleAdsLabel: form.googleAdsLabel.trim(),
     };
     const aturanPixel: [string, RegExp, string][] = [
+      [pixel.googleAnalytics, POLA_ID_PIXEL.googleAnalytics, 'Measurement ID GA4 harus berformat G-XXXXXXXXXX.'],
+      [pixel.googleTagManager, POLA_ID_PIXEL.googleTagManager, 'ID GTM harus berformat GTM-XXXXXXX.'],
       [pixel.meta, POLA_ID_PIXEL.meta, 'Meta Pixel ID berisi angka saja, contoh 1234567890123456.'],
       [pixel.tiktok, POLA_ID_PIXEL.tiktok, 'TikTok Pixel ID berisi huruf dan angka saja, contoh C4A1B2C3D4E5F6G7H8I9.'],
       [pixel.googleAds, POLA_ID_PIXEL.googleAds, 'Google Ads ID berbentuk AW- diikuti angka, contoh AW-123456789.'],
@@ -369,12 +382,16 @@ export function Settings() {
       bank_account_number: form.bankAccountNumber.trim() || null,
       bank_account_name: form.bankAccountName.trim() || null,
       qris_image_url: form.qrisImage,
+      manual_transfer_enabled: form.transferEnabled,
+      manual_qris_enabled: form.qrisEnabled,
       social_facebook: form.socialFacebook.trim() || null,
       social_instagram: form.socialInstagram.trim() || null,
       social_tiktok: form.socialTiktok.trim() || null,
       social_youtube: form.socialYoutube.trim() || null,
       footer_links: footerLinks,
       chat_enabled: form.chatEnabled,
+      google_analytics_id: pixel.googleAnalytics || null,
+      google_tag_manager_id: pixel.googleTagManager || null,
       meta_pixel_id: pixel.meta || null,
       tiktok_pixel_id: pixel.tiktok || null,
       google_ads_id: pixel.googleAds || null,
@@ -820,6 +837,21 @@ export function Settings() {
             )}
           </Section>
 
+          <Section id="homepage" icon={Globe} title="Banner Hero & Flash Sale" description="Atur promosi yang tampil di halaman depan toko.">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3 rounded-xl border border-ink-200 p-4 dark:border-ink-700">
+                <h3 className="font-semibold">Banner Hero</h3>
+                <p className="text-sm text-ink-500">Atur gambar desktop dan mobile, tautan tujuan, urutan, jadwal, serta status aktif banner.</p>
+                <Button type="button" variant="secondary" onClick={() => navigate('/banners')}>Kelola Banner Hero</Button>
+              </div>
+              <div className="space-y-3 rounded-xl border border-ink-200 p-4 dark:border-ink-700">
+                <h3 className="font-semibold">Flash Sale</h3>
+                <p className="text-sm text-ink-500">Pilih produk, harga promo, kuota, jadwal mulai dan berakhir, serta status aktif sesi.</p>
+                <Button type="button" variant="secondary" onClick={() => navigate('/promos?tab=flash')}>Kelola Flash Sale</Button>
+              </div>
+            </div>
+          </Section>
+
           <Section
             id="online"
             icon={Globe}
@@ -860,10 +892,23 @@ export function Settings() {
               <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 text-sm font-semibold dark:border-ink-800">
                 Tujuan pembayaran checkout
                 <p className="mt-0.5 text-xs font-normal text-ink-500">
-                  Tampil di halaman checkout saat pembeli memilih Transfer Bank atau QRIS. Kosongkan bila pembayaran
-                  selalu dikabari admin lewat WhatsApp.
+                  Aktifkan atau nonaktifkan pembayaran manual sesuai kebutuhan, lalu simpan pengaturan.
+                  Data rekening dan gambar QRIS tetap tersimpan saat metode dinonaktifkan.
+                  Pembayaran otomatis melalui gateway diatur di Integrasi API.
                 </p>
               </div>
+              <FeatureToggle
+                label="Aktifkan Transfer Bank / BCA manual"
+                hint={form.transferEnabled ? 'Aktif di checkout. Transfer dicek admin.' : 'Nonaktif. Tidak ditawarkan di checkout.'}
+                checked={form.transferEnabled}
+                onChange={(v) => patch('transferEnabled', v)}
+              />
+              <FeatureToggle
+                label="Aktifkan QRIS manual"
+                hint={form.qrisEnabled ? 'Aktif di checkout. Pembayaran dicek admin.' : 'Nonaktif. Tidak ditawarkan di checkout.'}
+                checked={form.qrisEnabled}
+                onChange={(v) => patch('qrisEnabled', v)}
+              />
               <Input
                 name="bank_name"
                 label="Nama bank"
@@ -1072,13 +1117,18 @@ export function Settings() {
 
               {/* Pelacakan iklan (butir 15 PERMINTAAN-CLIENT.md). */}
               <div className="md:col-span-2 mt-1 border-t border-ink-100 pt-3 dark:border-ink-800">
-                <div className="text-sm font-semibold">Pelacakan iklan (pixel)</div>
+                <div className="text-sm font-semibold">Pixel & Analytics</div>
                 <p className="mt-0.5 text-xs text-ink-500">
                   Isi ID dari Meta Events Manager, TikTok Ads Manager, dan Google Ads. Toko online
                   lalu mengirim lihat halaman, lihat produk, tambah ke keranjang, mulai checkout, dan
-                  pembelian beserta nilai rupiahnya. Kolom kosong berarti platform itu tidak dipasang.
+                  pembelian setelah lunas beserta nilai rupiahnya (setelah diskon, tanpa ongkir dan pajak). Kolom kosong berarti platform itu tidak dipasang.
                   Halaman admin dan kasir tidak ikut dilacak.
                 </p>
+              </div>
+              <Input id="pixel-ga4" label="Google Analytics 4 Measurement ID" value={form.googleAnalyticsId} onChange={(e) => patch('googleAnalyticsId', e.target.value)} placeholder="G-XXXXXXXXXX" hint="GA4 langsung aktif jika GTM kosong. Nonaktifkan page view otomatis dari perubahan history pada Enhanced Measurement karena aplikasi sudah mengirim page view." />
+              <Input id="pixel-gtm" label="Google Tag Manager Container ID" value={form.googleTagManagerId} onChange={(e) => patch('googleTagManagerId', e.target.value)} placeholder="GTM-XXXXXXX" hint="Saat GTM diisi, tag GA4 dan Google Ads langsung dinonaktifkan. Kelola kedua tag tersebut di container GTM." />
+              <div className="md:col-span-2 rounded-xl bg-ink-50 p-3 text-xs leading-relaxed text-ink-600 dark:bg-ink-900 dark:text-ink-300">
+                GTM: gunakan custom event <code>storefront_page_view</code> untuk page_view, lalu <code>view_item</code>, <code>add_to_cart</code>, <code>begin_checkout</code>, dan <code>purchase</code> dengan data ecommerce. Matikan page view otomatis pada tag Google. Meta Pixel dan TikTok tetap dipasang langsung; hindari memasang tag yang sama lagi di GTM. Pengaturan token CAPI tersedia di Integrasi → Meta CAPI.
               </div>
               <Input
                 id="pixel-meta"
@@ -1649,11 +1699,15 @@ function shallowEqualForm(a: FormState, b: FormState): boolean {
     a.bankAccountNumber === b.bankAccountNumber &&
     a.bankAccountName === b.bankAccountName &&
     a.qrisImage === b.qrisImage &&
+    a.transferEnabled === b.transferEnabled &&
+    a.qrisEnabled === b.qrisEnabled &&
     a.socialFacebook === b.socialFacebook &&
     a.socialInstagram === b.socialInstagram &&
     a.socialTiktok === b.socialTiktok &&
     a.socialYoutube === b.socialYoutube &&
     a.chatEnabled === b.chatEnabled &&
+    a.googleAnalyticsId === b.googleAnalyticsId &&
+    a.googleTagManagerId === b.googleTagManagerId &&
     a.metaPixelId === b.metaPixelId &&
     a.tiktokPixelId === b.tiktokPixelId &&
     a.googleAdsId === b.googleAdsId &&

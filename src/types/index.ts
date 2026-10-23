@@ -38,6 +38,8 @@ export interface Store {
   bank_account_number?: string | null;
   bank_account_name?: string | null;
   qris_image_url?: string | null;
+  manual_transfer_enabled?: boolean;
+  manual_qris_enabled?: boolean;
   /** Banner promo di halaman produk toko online. */
   pdp_banner_url?: string | null;
   /** Kota toko, tampil di kartu produk toko online. */
@@ -60,6 +62,8 @@ export interface Store {
   google_ads_id?: string | null;
   /** Label konversi pembelian Google Ads (bagian setelah garis miring di send_to). */
   google_ads_purchase_label?: string | null;
+  google_analytics_id?: string | null;
+  google_tag_manager_id?: string | null;
 }
 
 export interface Profile {
@@ -135,6 +139,8 @@ export interface Product {
   /** Tautan video produk (YouTube atau file video) untuk galeri. */
   video_url?: string | null;
   /** Program affiliate (Sejoli): produk boleh diaffiliasikan, syarat sudah membeli, komisi khusus per tier. */
+  mailketing_order_list_id?: number | null;
+  mailketing_complete_list_id?: number | null;
   affiliate_enabled?: boolean;
   affiliate_if_bought?: boolean;
   affiliate_commission?: { type: 'percentage' | 'fixed'; value: number }[] | null;
@@ -157,6 +163,8 @@ export interface Customer {
   /** Wilayah alamat utama; dipisah dari teks alamat supaya ongkir bisa dihitung. */
   address_province?: string | null;
   address_city?: string | null;
+  address_district?: string | null;
+  address_village?: string | null;
 }
 
 export interface Promo {
@@ -286,6 +294,7 @@ export interface Order {
   /** Wilayah tujuan kirim, dipakai perhitungan ongkir. */
   delivery_province?: string | null;
   delivery_city?: string | null;
+  delivery_village?: string | null;
   /** Kecamatan dan kelurahan tujuan versi KiriminAja (spec 0002). */
   delivery_district?: string | null;
   delivery_subdistrict?: string | null;

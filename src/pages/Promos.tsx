@@ -1,3 +1,4 @@
+import { useLocation } from '@/lib/router';
 import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -157,7 +158,9 @@ export function Promos() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('recent');
 
-  const [tab, setTab] = useState<'kode' | 'flash'>('kode');
+  const { search } = useLocation();
+  const [tab, setTab] = useState<'kode' | 'flash'>(() => new URLSearchParams(search).get('tab') === 'flash' ? 'flash' : 'kode');
+  useEffect(() => { setTab(new URLSearchParams(search).get('tab') === 'flash' ? 'flash' : 'kode'); }, [search]);
   const [flashSales, setFlashSales] = useState<FlashSale[]>([]);
   const [flashItemsAll, setFlashItemsAll] = useState<FlashSaleItem[]>([]);
   const [flashLoading, setFlashLoading] = useState(false);

@@ -18,7 +18,7 @@ describe('idPixelDariToko', () => {
       meta: '1234567890123456',
       tiktok: 'C4A1B2C3D4E5F6G7H8I9',
       googleAds: 'AW-123456789',
-      googleAdsLabel: 'AbC-D_efG-h12_34-567',
+      googleAdsLabel: 'AbC-D_efG-h12_34-567', googleAnalytics: null, googleTagManager: null,
     });
   });
 
@@ -29,11 +29,11 @@ describe('idPixelDariToko', () => {
       google_ads_id: 'AW-123456789/../evil.js',
       google_ads_purchase_label: 'label dengan spasi',
     });
-    expect(ids).toEqual({ meta: null, tiktok: null, googleAds: null, googleAdsLabel: null });
+    expect(ids).toEqual({ meta: null, tiktok: null, googleAds: null, googleAdsLabel: null, googleAnalytics: null, googleTagManager: null });
   });
 
   it('toko tanpa data pixel menghasilkan semua kosong', () => {
-    expect(idPixelDariToko(null)).toEqual({ meta: null, tiktok: null, googleAds: null, googleAdsLabel: null });
+    expect(idPixelDariToko(null)).toEqual({ meta: null, tiktok: null, googleAds: null, googleAdsLabel: null, googleAnalytics: null, googleTagManager: null });
     expect(idPixelDariToko({ meta_pixel_id: '   ' }).meta).toBeNull();
   });
 });

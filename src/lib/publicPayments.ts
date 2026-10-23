@@ -21,6 +21,7 @@ export interface KanalBayar {
 }
 
 export interface KanalBayarResponse {
+  checkout_mode?: 'direct' | 'redirect';
   provider?: 'tripay' | 'mayar' | 'doku' | null;
   /** Terisi bila layanan utama gangguan dan daftar ini dari layanan cadangan. */
   cadangan_dari?: string | null;

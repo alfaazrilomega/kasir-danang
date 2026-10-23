@@ -1,3 +1,4 @@
+import { atribusiMeta } from './pixelToko';
 // Checkout storefront dengan token akun pembeli, terpisah dari sesi staf.
 
 import { loadConfig } from './config';
@@ -19,6 +20,8 @@ export interface PublicOrderInput {
   /** Wilayah tujuan; dipakai menghitung ongkir saat KiriminAja aktif. */
   delivery_province?: string;
   delivery_city?: string;
+  delivery_district?: string;
+  delivery_village?: string;
   /** Metode manual, dipakai saat payment_channel tidak diisi. */
   payment_method: Extract<PaymentMethod, 'cash' | 'qris' | 'transfer'>;
   /** Kode kanal Tripay (mis. BRIVA, QRIS). Bila diisi, metode manual di atas diabaikan server. */
@@ -35,6 +38,7 @@ export interface PublicOrderInput {
 }
 
 export interface PublicOrderPayment {
+  checkout_mode?: 'direct' | 'redirect';
   provider?: 'tripay' | 'mayar' | 'doku';
   /** Layanan asal bila pembayaran dipindah ke cadangan. */
   pindah_dari?: string;
@@ -67,7 +71,7 @@ export async function submitPublicOrder(
     const response = await fetch(`${apiBaseUrl}/api/public/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${customerToken}` },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, tracking: atribusiMeta() }),
     });
     const text = await response.text();
     const payload = text ? (JSON.parse(text) as { data?: PublicOrderResult; error?: string; shipping_options?: OpsiOngkir[] }) : null;

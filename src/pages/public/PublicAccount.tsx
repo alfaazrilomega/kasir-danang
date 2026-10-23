@@ -110,7 +110,7 @@ export function PublicAccount() {
   const [reviewable, setReviewable] = useState<ReviewableItem[] | null>(null);
   const [catalog, setCatalog] = useState<PublicCatalogData | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', address: '' });
-  const [wilayah, setWilayah] = useState<NilaiAlamat>({ provinsi: '', kota: '', alamat: '' });
+  const [wilayah, setWilayah] = useState<NilaiAlamat>({ provinsi: '', kota: '', kecamatan: '', kelurahan: '', alamat: '' });
   const [busy, setBusy] = useState(false);
   const [menilai, setMenilai] = useState<ReviewableItem | null>(null);
   const [subUlasan, setSubUlasan] = useState<'belum' | 'riwayat'>('belum');
@@ -130,7 +130,7 @@ export function PublicAccount() {
     if (me) {
       setForm({ name: me.name, phone: me.phone ?? '', address: me.address ?? '' });
       const kota = me.city ?? '';
-      setWilayah({ provinsi: me.province || provinsiDariKota(kota), kota, alamat: me.address ?? '' });
+      setWilayah({ provinsi: me.province || provinsiDariKota(kota), kota, kecamatan: me.district ?? '', kelurahan: me.village ?? '', alamat: me.address ?? '' });
     }
   }, [me]);
 
@@ -182,11 +182,20 @@ export function PublicAccount() {
       form.phone !== (me.phone ?? '') ||
       wilayah.alamat !== (me.address ?? '') ||
       wilayah.provinsi !== (me.province ?? '') ||
-      wilayah.kota !== (me.city ?? ''));
+      wilayah.kota !== (me.city ?? '') ||
+      wilayah.kecamatan !== (me.district ?? '') ||
+      wilayah.kelurahan !== (me.village ?? ''));
 
   async function simpan() {
     if (!token) return;
     if (!form.name.trim()) return void toast.error('Nama wajib diisi.');
+    const gantiAlamat = wilayah.alamat !== (me?.address ?? '') || wilayah.provinsi !== (me?.province ?? '')
+      || wilayah.kota !== (me?.city ?? '') || wilayah.kecamatan !== (me?.district ?? '') || wilayah.kelurahan !== (me?.village ?? '');
+    if (gantiAlamat && (!wilayah.provinsi || !wilayah.kota || !wilayah.kecamatan || !wilayah.kelurahan || !wilayah.alamat.trim())) {
+      return void toast.error('Lengkapi wilayah sampai desa/kelurahan serta RT/RW dan patokan rumah.');
+    }
+    const gantiWilayah = wilayah.provinsi !== (me?.province ?? '') || wilayah.kota !== (me?.city ?? '')
+      || wilayah.kecamatan !== (me?.district ?? '') || wilayah.kelurahan !== (me?.village ?? '');
     setBusy(true);
     const { data, error } = await updateCustomerMe(token, {
       name: form.name.trim(),
@@ -194,6 +203,9 @@ export function PublicAccount() {
       address: wilayah.alamat.trim(),
       province: wilayah.provinsi,
       city: wilayah.kota,
+      district: wilayah.kecamatan,
+      village: wilayah.kelurahan,
+      ...(gantiWilayah ? { wilayah: null } : {}),
     });
     setBusy(false);
     if (error || !data) {
@@ -506,7 +518,6 @@ export function PublicAccount() {
                         nilai={wilayah}
                         onChange={setWilayah}
                         kelasKolom={KOLOM}
-                        label="Alamat lengkap"
                         bantuan="Otomatis terisi saat checkout."
                       />
                     </div>
@@ -645,8 +656,8 @@ function KartuPesanan({
           )}
         </div>
         <div className="flex flex-col-reverse items-stretch gap-3 sm:ml-auto sm:flex-row sm:items-center sm:gap-4">
-          {o.payment_url && o.payment_status !== 'paid' && o.order_status !== 'canceled' && (
-            <a href={o.payment_provider === 'mayar' ? `/toko/checkout?order=${encodeURIComponent(o.id)}` : o.payment_url} className={cn(TOMBOL_GARIS, 'justify-center')}>Lanjutkan Pembayaran</a>
+          {(o.payment_url || o.payment_checkout_mode === 'direct') && o.payment_status !== 'paid' && o.order_status !== 'canceled' && (
+            <a href={o.payment_provider === 'mayar' || o.payment_checkout_mode === 'direct' ? `/toko/checkout?order=${encodeURIComponent(o.id)}` : o.payment_url || undefined} className={cn(TOMBOL_GARIS, 'justify-center')}>Lanjutkan Pembayaran</a>
           )}
           {ulas && (
             <button type="button" onClick={() => onUlas(ulas)} className={cn(TOMBOL_GARIS, 'justify-center')}>

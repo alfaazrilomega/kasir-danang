@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input';
 import { EmailEditor } from '@/components/email/EmailEditor';
 import { emailApi, EMAIL_LABELS, type EmailSettings, type EmailTemplateKey, type EmailPreview } from '@/lib/emailSettings';
 import { Link } from '@/lib/router';
+import { MailketingListsCard } from '@/components/settings/MailketingListsCard';
 
 export function EmailTemplates() {
   const [form, setForm] = useState<EmailSettings | null>(null);
@@ -36,6 +37,7 @@ export function EmailTemplates() {
   const config = form.config;
   const template = form.templates[key];
   const dirty = JSON.stringify(form) !== saved;
+  const savedConfig = (JSON.parse(saved) as EmailSettings).config;
   const changeConfig = (patch: Partial<typeof config>) => { setForm({ ...form, config: { ...config, ...patch } }); setTestMessage(''); setError(''); };
   const changeTemplate = (patch: Partial<typeof template>) => { setForm({ ...form, templates: { ...form.templates, [key]: { ...template, ...patch } } }); setPreview(null); setError(''); };
   return <div className="space-y-5">
@@ -52,6 +54,7 @@ export function EmailTemplates() {
       <div className="flex flex-wrap items-center gap-3"><Button variant="secondary" disabled={busy || dirty || config.provider === 'server'} onClick={() => void action('test')}>Tes koneksi email</Button><span className="text-xs text-ink-500">Simpan dahulu. Tes koneksi tidak mengirim email.</span></div>
       {testMessage && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-400">{testMessage}</p>}
     </Card>
+    {savedConfig.provider === 'mailketing' && <MailketingListsCard reloadKey={saved} />}
     <Card className="space-y-4 p-5"><div><h2 className="font-semibold">Template email</h2><p className="text-sm text-ink-500">Atur subjek dan isi pesan dengan editor Tiptap.</p></div>
       <div className="flex flex-wrap gap-2">{(Object.keys(EMAIL_LABELS) as EmailTemplateKey[]).map((value) => <Button key={value} variant={value === key ? 'primary' : 'secondary'} disabled={busy} aria-pressed={value === key} onClick={() => { setKey(value); setPreview(null); setError(''); }}>{EMAIL_LABELS[value]}</Button>)}</div>
       <Input id="email-subject" label="Subjek email" disabled={busy} maxLength={200} value={template.subject} onChange={(e) => changeTemplate({ subject: e.target.value })} hint="Variabel juga dapat diketik pada subjek, misalnya {nama_toko}." />

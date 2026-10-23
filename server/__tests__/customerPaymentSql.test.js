@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { customerPayment } from '../integrasi/customerPayment.js';
 import { encryptConfig } from '../integrasi/settings.js';
 import * as mayar from '../integrasi/mayar.js';
+import * as tripay from '../integrasi/tripay.js';
 const storeId = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
 const customerId = 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
 const orderId = 'cccccccc-cccc-4ccc-cccc-cccccccccccc';
@@ -19,6 +20,7 @@ beforeAll(async () => {
     payment_url text,paid_amount numeric,settled_at timestamptz,total numeric,shipping_cost numeric);
     create table store_integrations (store_id uuid,provider text,config_encrypted text);`);
   await db.exec(await fs.readFile(new URL('../migrations/053_inline_payment.sql', import.meta.url),'utf8'));
+  await db.exec(await fs.readFile(new URL('../migrations/061_tripay_direct.sql', import.meta.url),'utf8'));
 }, 30000);
 beforeEach(async () => {
   vi.stubEnv('INTEGRATION_SECRET','isolated-payment-page');
@@ -69,5 +71,42 @@ describe('Pembayaran checkout milik customer',()=>{
   it('dua pemeriksaan serentak tidak membanjiri Mayar',async()=>{
     await Promise.all([customerPayment(db,args),customerPayment(db,args)]);
     expect(detail).toHaveBeenCalledOnce();
+  });
+});
+
+describe('Invoice Tripay DIRECT', () => {
+  let tripayDetail;
+  const payload = { reference: ref, merchant_ref: 'WEB-PAGE', payment_method: 'BCAVA', amount: 11500, fee_customer: 1500, status: 'UNPAID', expired_time: 2000000000 };
+  beforeEach(async () => {
+    await db.query(`update orders set payment_provider='tripay',payment_channel='BCAVA',payment_transaction_id=null,payment_details=$1::jsonb`, [JSON.stringify({checkout_mode:'direct',channel_name:'BCA Virtual Account',amount:11500,pay_code:'001234567890',instructions:[{title:'ATM',steps:['Bayar VA']} ]})]);
+    await db.query('insert into store_integrations values ($1,$2,$3)',[storeId,'tripay',encryptConfig({mode:'sandbox',apiKey:'test-tripay'},`${storeId}:tripay`)]);
+    tripayDetail = vi.spyOn(tripay,'detailTransaksi').mockResolvedValue(payload);
+  });
+  it('menampilkan total termasuk biaya, tanpa link keluar, dan polling dibatasi', async () => {
+    const result = await customerPayment(db,args);
+    expect(result).toMatchObject({provider:'tripay',status:'unpaid',amount:11500,base_amount:10000,checkout_url:null,instructions:{kind:'va',pay_code:'001234567890'},steps:[{title:'ATM',steps:['Bayar VA']}]});
+    await customerPayment(db,args); expect(tripayDetail).toHaveBeenCalledOnce();
+  });
+  it('API terverifikasi melunasi dan menyembunyikan seluruh instruksi bayar', async () => {
+    tripayDetail.mockResolvedValue({...payload,status:'PAID'});
+    expect(await customerPayment(db,args)).toMatchObject({status:'paid',instructions:null,steps:[],checkout_url:null});
+    expect(Number((await db.query('select paid_amount from orders')).rows[0].paid_amount)).toBe(10000);
+  });
+  it.each([{amount:1}, {reference:'WRONG'}, {payment_method:'QRIS'}])('data provider tidak cocok tidak melunasi: %j', async patch => {
+    tripayDetail.mockResolvedValue({...payload,status:'PAID',...patch});
+    expect(await customerPayment(db,args)).toMatchObject({status:'unpaid',warning:expect.any(String)});
+  });
+  it('akun lain tidak membaca invoice atau memanggil provider', async () => {
+    await expect(customerPayment(db,{...args,customerId:storeId})).rejects.toMatchObject({status:404});
+    await expect(customerPayment(db,{...args,storeId:customerId})).rejects.toMatchObject({status:404});
+    expect(tripayDetail).not.toHaveBeenCalled();
+  });
+  it('invoice kadaluwarsa tidak menampilkan kode dan QRIS', async () => {
+    await db.exec("update orders set payment_expires_at=now()-interval '1 second'");
+    expect(await customerPayment(db,args)).toMatchObject({status:'expired',instructions:null,steps:[]});
+  });
+  it('Tripay REDIRECT lama tidak berubah menjadi invoice DIRECT', async () => {
+    await db.exec("update orders set payment_details=null");
+    await expect(customerPayment(db,args)).rejects.toMatchObject({status:404});
   });
 });

@@ -17,9 +17,10 @@ const KOLOM_TOKO_RINGAN = [
   'points_per_amount', 'low_stock_threshold', 'industry', 'features', 'created_at',
   'invoice_signer_name', 'shop_phone', 'return_policy', 'warranty_info', 'shop_city',
   'bank_name', 'bank_account_number', 'bank_account_name',
+  'manual_transfer_enabled', 'manual_qris_enabled',
   'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
   'footer_links', 'chat_enabled',
-  'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+  'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label', 'google_analytics_id', 'google_tag_manager_id',
   'expense_categories',
 ].join(',');
 

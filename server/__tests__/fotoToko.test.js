@@ -5,8 +5,8 @@ const WP = 'https://gnnkracing.id/wp-content/uploads/2025/12/GEAR-SET-CRF-150-RE
 
 describe('Foto WordPress lewat server toko', () => {
   it('alamat foto WordPress menjadi salinan /foto/wp', () => {
-    expect(fotoLewatToko(WP)).toBe('/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg');
-    expect(fotoLewatToko('https://gnnkracing.id/wp-content/uploads/2024/01/a_b(1).PNG')).toBe('/foto/wp/2024/01/a_b(1).PNG');
+    expect(fotoLewatToko(WP)).toBe('/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023');
+    expect(fotoLewatToko('https://gnnkracing.id/wp-content/uploads/2024/01/a_b(1).PNG')).toBe('/foto/wp/2024/01/a_b(1).PNG?v=20261023');
   });
 
   it('alamat lain, berkas bukan gambar, dan jalur aneh tidak diubah', () => {
@@ -31,10 +31,10 @@ describe('Foto WordPress lewat server toko', () => {
       products: [{ image_url: WP, images: [WP, 'https://down-id.img.susercontent.com/a.webp'], base_price: 655000, aktif: true, kosong: null }],
       dibuat: tanggal,
     });
-    expect(hasil.store).toEqual({ pdp_banner_url: '/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg', name: 'GNNK' });
+    expect(hasil.store).toEqual({ pdp_banner_url: '/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023', name: 'GNNK' });
     expect(hasil.products[0]).toEqual({
-      image_url: '/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg',
-      images: ['/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg', 'https://down-id.img.susercontent.com/a.webp'],
+      image_url: '/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023',
+      images: ['/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023', 'https://down-id.img.susercontent.com/a.webp'],
       base_price: 655000,
       aktif: true,
       kosong: null,
@@ -48,7 +48,7 @@ describe('Foto WordPress lewat server toko', () => {
     const asal = JSON.parse(`{"__proto__": {"x": 1}, "foto": "${WP}"}`);
     const hasil = gantiFotoDalam(asal);
     expect(Object.keys(hasil)).toEqual(['__proto__', 'foto']);
-    expect(JSON.stringify(hasil)).toBe('{"__proto__":{"x":1},"foto":"/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg"}');
+    expect(JSON.stringify(hasil)).toBe('{"__proto__":{"x":1},"foto":"/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023"}');
     expect({}.x).toBeUndefined();
   });
 
@@ -60,8 +60,8 @@ describe('Foto WordPress lewat server toko', () => {
       res.json({ image_url: WP });
       return dikirim.image_url;
     };
-    expect(jalankan('/api/public/catalog')).toBe('/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg');
-    expect(jalankan('/api/customer/reviewable')).toBe('/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg');
+    expect(jalankan('/api/public/catalog')).toBe('/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023');
+    expect(jalankan('/api/customer/reviewable')).toBe('/foto/wp/2025/12/GEAR-SET-CRF-150-RED.jpg?v=20261023');
     expect(jalankan('/api/query')).toBe(WP);
     expect(jalankan('/api/public-palsu')).toBe(WP);
   });

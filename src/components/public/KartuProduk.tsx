@@ -1,4 +1,4 @@
-import { ShoppingBag } from 'lucide-react';
+import { ProductImage } from './ProductImage';
 import { Link } from '@/lib/router';
 import { cn, formatMoney, formatNumber } from '@/lib/format';
 import { Bintang } from '@/components/public/Bintang';
@@ -41,13 +41,7 @@ export function KartuProduk({
       )}
     >
       <div className="relative aspect-square bg-white dark:bg-ink-900">
-        {p.image_url ? (
-          <img src={p.image_url} alt={p.name} loading="lazy" className="h-full w-full object-contain" />
-        ) : (
-          <div className="grid h-full place-items-center text-ink-300 dark:text-ink-600">
-            <ShoppingBag size={30} />
-          </div>
-        )}
+        <ProductImage src={p.image_url} alt={p.name} loading="lazy" className="h-full w-full object-contain" />
         {flash && (
           <span className="absolute left-1.5 top-1.5 rounded-sm bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
             Flash Sale

@@ -1,3 +1,4 @@
+import { metaTrackingContext, customerPurchases, processMetaQueue } from './integrasi/metaConversions.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +67,8 @@ pool.on('error', (err) => {
 });
 
 import * as tripay from './integrasi/tripay.js';
+import { channelAllowed, checkoutMode } from './integrasi/tripayInvoice.js';
+import { getMailketingLists, mailketingAuth, processMailketingQueue } from './integrasi/mailketingLists.js';
 import * as mayar from './integrasi/mayar.js';
 import { customerPayment } from './integrasi/customerPayment.js';
 import { selectedGateway, selectGateway, reconcilePayments, handleMayarWebhook, syncPayment } from './integrasi/payments.js';
@@ -93,9 +96,10 @@ const TABLES = {
       'features', 'created_at', 'invoice_signature_url', 'invoice_signer_name',
       'shop_phone', 'return_policy', 'warranty_info', 'pdp_banner_url', 'shop_city',
       'bank_name', 'bank_account_number', 'bank_account_name', 'qris_image_url',
+      'manual_transfer_enabled', 'manual_qris_enabled',
       'social_facebook', 'social_instagram', 'social_tiktok', 'social_youtube',
       'footer_links', 'chat_enabled',
-      'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label',
+      'meta_pixel_id', 'tiktok_pixel_id', 'google_ads_id', 'google_ads_purchase_label', 'google_analytics_id', 'google_tag_manager_id',
       'expense_categories',
     ],
     kind: 'store',
@@ -117,6 +121,7 @@ const TABLES = {
       'images', 'spec', 'variant_label', 'warranty_type', 'warranty_period', 'box_contents',
       'highlights', 'license_type', 'license_code', 'video_url',
       'affiliate_enabled', 'affiliate_if_bought', 'affiliate_commission', 'slug',
+      'mailketing_order_list_id', 'mailketing_complete_list_id',
     ],
     tenantColumn: 'store_id',
   },
@@ -126,7 +131,7 @@ const TABLES = {
     columns: [
       'id', 'store_id', 'name', 'phone', 'email', 'location', 'joined_date',
       'is_active', 'points', 'created_at', 'address',
-      'address_province', 'address_city',
+      'address_province', 'address_city', 'address_district', 'address_village',
     ],
     tenantColumn: 'store_id',
   },
@@ -197,7 +202,7 @@ const TABLES = {
       'adjusted_by', 'external_order_no', 'customer_name', 'customer_phone',
       'delivery_address', 'shipping_cost', 'tax_inclusive',
       'payment_channel', 'payment_reference', 'payment_url',
-      'delivery_province', 'delivery_city',
+      'delivery_province', 'delivery_city', 'delivery_village',
       'delivery_district', 'delivery_subdistrict', 'delivery_district_id', 'delivery_subdistrict_id',
       'shipping_courier', 'shipping_service', 'shipping_service_name', 'shipping_etd', 'shipping_weight_gram',
       'payment_provider', 'payment_failover_from',
@@ -1111,7 +1116,7 @@ function requireIntegrationAdmin(req, _res, next) {
 app.get('/api/admin/integrations', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const data = {};
-  for (const provider of ['tripay', 'mayar', 'doku', 'kiriminaja', 'onesender', 'meta_whatsapp']) {
+  for (const provider of ['tripay', 'mayar', 'doku', 'kiriminaja', 'onesender', 'meta_whatsapp', 'meta_capi']) {
     data[provider] = publicConfig(provider, await loadIntegration(pool, req.user.store_id, provider));
   }
   // Alamat yang ditempel admin di DOKU Back Office (Settings > Notification).
@@ -1214,6 +1219,10 @@ app.post('/api/admin/whatsapp/messages/:id/send', requireUser, requireIntegratio
 
 app.patch('/api/admin/integrations/:provider', requireUser, requireIntegrationAdmin, asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
+  if (req.params.provider === 'meta_capi' && req.body?.enabled === true) {
+    const store = await pool.query('select meta_pixel_id from public.stores where id = $1', [req.user.store_id]);
+    if (!/^\d{10,20}$/.test(store.rows[0]?.meta_pixel_id || '')) throw new HttpError(400, 'Simpan Meta Pixel ID di pengaturan Toko Online terlebih dahulu.');
+  }
   const data = await saveIntegration(pool, req.user.store_id, req.params.provider, req.body);
   // Kunci Mayar yang aktif langsung mendaftarkan webhook, supaya admin tidak
   // perlu membuka dashboard Mayar. Gagal di sini tidak membatalkan simpan.
@@ -1261,6 +1270,7 @@ app.post('/api/admin/integrations/:provider/test', requireUser, requireIntegrati
   res.set('Cache-Control', 'no-store');
   const provider = req.params.provider;
   assertProvider(provider);
+  if (provider === 'meta_capi') throw new HttpError(400, 'Gunakan Test Event Code dan periksa pembayaran uji di Meta Events Manager.');
   const config = await loadIntegration(pool, req.user.store_id, provider);
   const credential = provider === 'meta_whatsapp' ? config.accessToken : provider === 'kiriminaja' ? config.token : provider === 'doku' ? config.secretKey : config.apiKey;
   if (!credential) throw new HttpError(400, 'Simpan kunci API terlebih dahulu.');
@@ -1695,12 +1705,14 @@ function customerMeRow(row) {
     province: row.address_province ?? null,
     wilayah: row.address_wilayah ?? null,
     city: row.address_city ?? null,
+    district: row.address_district ?? row.address_wilayah?.kecamatan ?? null,
+    village: row.address_village ?? row.address_wilayah?.kelurahan ?? null,
   };
 }
 
 async function loadCustomerForUser(userId, storeId) {
   const found = await pool.query(
-    `select c.id, c.name, c.phone, c.address, c.address_province, c.address_city, c.address_wilayah, u.email
+    `select c.id, c.name, c.phone, c.address, c.address_province, c.address_city, c.address_wilayah, c.address_district, c.address_village, u.email
        from public.customers c
        join public.app_users u on u.id = c.user_id
       where c.user_id = $1 and c.store_id = $2
@@ -2142,26 +2154,40 @@ app.patch('/api/customer/me', requireCustomer, asyncHandler(async (req, res) => 
   const province = String(req.body?.province ?? '').trim().slice(0, 80);
   const city = String(req.body?.city ?? '').trim().slice(0, 80);
   if (!name) throw new HttpError(400, 'Nama wajib diisi.');
-  // Wilayah KiriminAja hanya disimpan utuh (empat ID + nama); selain itu dibiarkan.
+  // Wilayah KiriminAja disimpan utuh (empat ID + nama); null menghapus ID lama saat memilih wilayah manual.
   const w = req.body?.wilayah;
   const idSah = (v) => Number.isSafeInteger(Number(v)) && Number(v) > 0;
   const namaSah = (v) => typeof v === 'string' && v.trim() && v.length <= 120;
   const wilayah = w && ['provinsi', 'kota', 'kecamatan', 'kelurahan'].every((k) => idSah(w[`${k}_id`]) && namaSah(w[k]))
     ? Object.fromEntries(['provinsi', 'kota', 'kecamatan', 'kelurahan'].flatMap((k) => [[`${k}_id`, Number(w[`${k}_id`])], [k, w[k].trim()]]))
     : undefined;
+  if (w != null && !wilayah) throw new HttpError(400, 'Wilayah pengiriman tidak lengkap.');
+  const district = String(req.body?.district ?? wilayah?.kecamatan ?? '').trim().slice(0, 100);
+  const village = String(req.body?.village ?? wilayah?.kelurahan ?? '').trim().slice(0, 100);
+  if ((district || village) && (!province || !city || !district || !village || !address)) {
+    throw new HttpError(400, 'Lengkapi wilayah sampai desa/kelurahan serta RT/RW dan patokan rumah.');
+  }
   const updated = await pool.query(
     `update public.customers
         set name = $3, phone = $4, address = $5, address_province = $6, address_city = $7,
-            address_wilayah = case when $8::jsonb is null then address_wilayah else $8::jsonb end
+            address_wilayah = case when $11 then null when $8::jsonb is null then address_wilayah else $8::jsonb end,
+            address_district = $9, address_village = $10
       where user_id = $1 and store_id = $2
       returning id`,
     [req.user.id, req.user.store_id, name, phone || null, address || null, province || null, city || null,
-     wilayah ? JSON.stringify(wilayah) : null],
+     wilayah ? JSON.stringify(wilayah) : null, district || null, village || null, req.body?.wilayah === null],
   );
   if (!updated.rowCount) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
   await pool.query('update public.profiles set full_name = $2 where id = $1', [req.user.id, name]);
   const me = await loadCustomerForUser(req.user.id, req.user.store_id);
   res.json({ data: customerMeRow(me) });
+}));
+
+app.get('/api/customer/purchases', requireCustomer, asyncHandler(async (req, res) => {
+  const me = await loadCustomerForUser(req.user.id, req.user.store_id);
+  if (!me) throw new HttpError(403, 'Akun pembeli tidak ditemukan.');
+  res.set('Cache-Control', 'no-store');
+  res.json({ data: await customerPurchases(pool, { storeId: req.user.store_id, customerId: me.id }) });
 }));
 
 app.get('/api/customer/orders/:id/payment', requireCustomer, asyncHandler(async (req, res) => {
@@ -2179,7 +2205,7 @@ app.get('/api/customer/orders', requireCustomer, asyncHandler(async (req, res) =
     `select id, order_number, created_at, order_status, payment_status, total,
             coalesce(shipping_cost, 0) as shipping_cost, delivery_address,
             coalesce(discount, 0) as discount, promo_code,
-            payment_channel, payment_reference, payment_url, payment_provider
+            payment_channel, payment_reference, payment_url, payment_provider, payment_details->>'checkout_mode' as payment_checkout_mode
        from public.orders
       where store_id = $1 and customer_id = $2
       order by created_at desc
@@ -2502,6 +2528,8 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
   const deliveryAddress = String(body.delivery_address ?? '').trim();
   const deliveryProvince = String(body.delivery_province ?? '').trim().slice(0, 80);
   const deliveryCity = String(body.delivery_city ?? '').trim().slice(0, 80);
+  const deliveryDistrict = String(body.delivery_district ?? '').trim().slice(0, 100);
+  const deliveryVillage = String(body.delivery_village ?? '').trim().slice(0, 100);
   const paymentMethod = String(body.payment_method ?? '').trim();
   const notes = body.notes ? String(body.notes).trim().slice(0, 500) : null;
   const items = Array.isArray(body.items) ? body.items : [];
@@ -2558,8 +2586,16 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
     };
   });
 
-  const store = await pool.query('select id from public.stores where id = $1', [storeId]);
+  const store = await pool.query(
+    'select id, manual_transfer_enabled, manual_qris_enabled from public.stores where id = $1', [storeId],
+  );
   if (!store.rowCount) throw new HttpError(404, 'Toko tidak ditemukan.');
+  if (!paymentChannel && (
+    (paymentMethod === 'transfer' && store.rows[0].manual_transfer_enabled === false) ||
+    (paymentMethod === 'qris' && store.rows[0].manual_qris_enabled === false)
+  )) {
+    throw new HttpError(400, 'Metode pembayaran ini sedang dinonaktifkan. Muat ulang halaman dan pilih metode lain.');
+  }
 
   const productIds = [...new Set(cleanItems.map((it) => it.product_id))];
   const productRows = await pool.query(
@@ -2602,6 +2638,8 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
       return;
     }
     kirim = { wilayah, berat, ...dipilih };
+  } else if (!deliveryProvince || !deliveryCity || !deliveryDistrict || !deliveryVillage) {
+    throw new HttpError(400, 'Pilih provinsi, kota/kabupaten, kecamatan, dan desa/kelurahan pengiriman.');
   }
 
   const orderId = crypto.randomUUID();
@@ -2644,7 +2682,7 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
     }
     if (channels) {
       const kanal = channels.find((k) => String(k.code).toUpperCase() === paymentChannel);
-      if (!kanal || !tripay.kanalAktif(kanal)) throw new HttpError(400, 'Kanal pembayaran tidak tersedia. Muat ulang pilihan pembayaran.');
+      if (!kanal || !tripay.kanalAktif(kanal) || !channelAllowed(kanal, tripayConfig)) throw new HttpError(400, 'Kanal pembayaran tidak tersedia. Muat ulang pilihan pembayaran.');
       kanalTripay = kanal;
       metodeTercatat = kanal.code.startsWith('QRIS') ? 'qris' : PETA_GRUP[kanal.group] || 'other';
     }
@@ -2725,18 +2763,35 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         order_status, order_type, table_number, notes, created_at,
         sales_channel, payment_term, due_date, paid_amount, settled_at,
         customer_name, customer_phone, delivery_address, points_earned,
-        delivery_province, delivery_city, promo_code
+        delivery_province, delivery_city, promo_code, delivery_district, delivery_village
       ) values (
         $1, $2, $11, null, null, $3,
         $14, 0, $15, $4, $5, 'unpaid',
         'awaiting_confirmation', 'take_away', null, $6, $7,
         'website', 'cash', null, 0, null,
         $8, $9, $10, 0,
-        $12, $13, $16
+        $12, $13, $16, $17, $18
       )`,
       [orderId, storeId, orderNumber, total, metodeTercatat, notes, nowIso, customerName, customerPhone, deliveryAddress, pembeli.id,
-       (kirim ? kirim.wilayah.provinsi : deliveryProvince) || null, (kirim ? kirim.wilayah.kota : deliveryCity) || null, subtotal, diskon, voucher ? voucher.code : null],
+       (kirim ? kirim.wilayah.provinsi : deliveryProvince) || null, (kirim ? kirim.wilayah.kota : deliveryCity) || null, subtotal, diskon, voucher ? voucher.code : null,
+       kirim ? kirim.wilayah.kecamatan : deliveryDistrict, kirim ? kirim.wilayah.kelurahan : deliveryVillage],
     );
+    await client.query('savepoint tracking');
+    try {
+      const capi = await loadIntegration(client, storeId, 'meta_capi');
+      const pixel = await client.query('select meta_pixel_id from public.stores where id = $1', [storeId]);
+      const context = metaTrackingContext({ pixelId: pixel.rows[0]?.meta_pixel_id,
+        capi: capi.enabled && !!capi.accessToken && !!pixel.rows[0]?.meta_pixel_id,
+        cookies: req.headers.cookie, tracking: body.tracking, clientIp: publicOrderClientIp(req),
+        userAgent: req.headers['user-agent'], origin: ASAL_TOKO });
+      await client.query('update public.orders set meta_tracking = $2 where id = $1', [orderId, JSON.stringify(context)]);
+      await client.query('release savepoint tracking');
+    } catch {
+      await client.query('rollback to savepoint tracking');
+      // Browser paid tracking still works if encrypted CAPI settings cannot be read.
+      await client.query("update public.orders set meta_tracking = '{\"capi\":false}'::jsonb where id = $1", [orderId]);
+      console.error('[tracking] Konteks CAPI tidak dapat disimpan.');
+    }
     if (kirim) {
       await client.query(
         `update public.orders set shipping_cost = $2, shipping_courier = $3, shipping_service = $4, shipping_service_name = $5,
@@ -2820,8 +2875,8 @@ app.post('/api/public/orders', asyncHandler(async (req, res) => {
         }
         if (coba.provider === 'tripay') {
           await pool.query(
-            'update public.orders set payment_channel = $2, payment_reference = $3, payment_url = $4, payment_expires_at = $5 where id = $1',
-            [orderId, k.channel, k.reference, k.url, k.expiresAt],
+            'update public.orders set payment_channel = $2, payment_reference = $3, payment_url = $4, payment_expires_at = $5, payment_details = $6::jsonb where id = $1',
+            [orderId, k.channel, k.reference, k.url, k.expiresAt, JSON.stringify(k.details)],
           );
         } else {
           await pool.query(`update public.orders set payment_reference = $2, payment_transaction_id = $3,
@@ -2902,6 +2957,7 @@ app.get('/api/public/payment-channels', asyncHandler(async (req, res) => {
   res.json({
     data: {
       active: true, provider: hasil.provider, mode: hasil.config.mode, amount, channels: hasil.channels,
+      ...(hasil.provider === 'tripay' ? { checkout_mode: checkoutMode(hasil.config) } : {}),
       ...(hasil.provider !== rantai[0].provider ? { cadangan_dari: rantai[0].provider } : {}),
     },
   });
@@ -3078,9 +3134,10 @@ app.get('/api/public/catalog', asyncHandler(async (req, res) => {
   const storeRes = await pool.query(
     `select id, name, currency, logo_url, shop_phone, pdp_banner_url, shop_city,
             bank_name, bank_account_number, bank_account_name, qris_image_url,
+            manual_transfer_enabled, manual_qris_enabled,
             social_facebook, social_instagram, social_tiktok, social_youtube,
             footer_links, chat_enabled,
-            meta_pixel_id, tiktok_pixel_id, google_ads_id, google_ads_purchase_label
+            meta_pixel_id, tiktok_pixel_id, google_ads_id, google_ads_purchase_label, google_analytics_id, google_tag_manager_id
        from public.stores where id = $1`,
     [storeId],
   );
@@ -3240,6 +3297,15 @@ app.get('/api/public/flash-sale', asyncHandler(async (req, res) => {
   }
 
   res.json({ data: { flash_sale: flashSale, items: await itemSesi(flashSale.id), berikutnya: null, server_time: new Date().toISOString() } });
+}));
+
+app.get('/api/admin/mailketing/lists', requireUser, asyncHandler(async (req, res) => {
+  assertTableAccess(req.user, 'products', 'update');
+  res.setHeader('Cache-Control', 'no-store');
+  const auth = await mailketingAuth(pool, req.user.store_id);
+  if (!auth) return res.json({ data: { configured: false, lists: [] } });
+  try { res.json({ data: { configured: true, lists: await getMailketingLists(auth) } }); }
+  catch (error) { throw new HttpError(502, error.message); }
 }));
 
 app.post('/api/query', requireUser, asyncHandler(async (req, res) => {
@@ -3502,6 +3568,22 @@ if (!DI_VERCEL) {
   app.listen(PORT, HOST, () => {
     console.log(`Kasir API listening on ${HOST ?? ''}:${PORT}`);
   });
+  let metaCapiRunning = false;
+  setInterval(async () => {
+    if (metaCapiRunning) return;
+    metaCapiRunning = true;
+    try { await processMetaQueue(pool); }
+    catch (error) { if (!isConnectionError(error)) console.error('[meta-capi] Antrean gagal:', error.code || 'processing'); }
+    finally { metaCapiRunning = false; }
+  }, 30000).unref();
+  let mailketingRunning = false;
+  setInterval(async () => {
+    if (mailketingRunning) return;
+    mailketingRunning = true;
+    try { await processMailketingQueue(pool); }
+    catch (error) { console.error('[mailketing] antrean gagal:', error.code || 'database'); }
+    finally { mailketingRunning = false; }
+  }, 15000).unref();
   let paymentsRunning = false;
   setInterval(async () => {
     if (paymentsRunning) return;
@@ -3894,6 +3976,7 @@ function tenantWhere(table, meta, user, action, params) {
 }
 
 async function validateRowsForWrite(table, meta, rows, user) {
+  if (table === 'products') for (const row of rows) await periksaListMailketing(row, user);
   if (!rows.length) return;
   const role = effectiveRole(user.role);
 
@@ -3987,6 +4070,8 @@ async function validateRowsForWrite(table, meta, rows, user) {
 // ID pixel tampil di halaman publik dan ikut menyusun URL skrip pihak ketiga,
 // jadi formatnya dipaksa di server, bukan hanya di form pengaturan.
 const POLA_ID_PIXEL = {
+  google_analytics_id: [/^G-[A-Z0-9]{6,20}$/, 'Measurement ID GA4 harus berformat G-XXXXXXXXXX.'],
+  google_tag_manager_id: [/^GTM-[A-Z0-9]{4,15}$/, 'ID GTM harus berformat GTM-XXXXXXX.'],
   meta_pixel_id: [/^\d{10,20}$/, 'Meta Pixel ID berisi 10 sampai 20 angka.'],
   tiktok_pixel_id: [/^[A-Z0-9]{10,40}$/, 'TikTok Pixel ID berisi huruf besar dan angka saja.'],
   google_ads_id: [/^AW-\d{6,15}$/, 'Google Ads ID berbentuk AW- diikuti angka, contoh AW-123456789.'],
@@ -4005,7 +4090,15 @@ function periksaIdPixel(row) {
   }
 }
 
+async function periksaListMailketing(row, user) {
+  const values = ['mailketing_order_list_id', 'mailketing_complete_list_id'].map(key => row[key]).filter(value => value != null);
+  if (!values.length) return;
+  if (!await mailketingAuth(pool, user.store_id)) throw new HttpError(403, 'Mailketing belum dikonfigurasi untuk toko ini.');
+  if (values.some(value => !Number.isInteger(value) || value < 1 || value > 2147483647)) throw new HttpError(400, 'List Mailketing tidak valid.');
+}
+
 async function validatePatchForUpdate(table, patch, user) {
+  if (table === 'products') await periksaListMailketing(patch, user);
   const role = effectiveRole(user.role);
   if (table === 'stores') periksaIdPixel(patch);
   if (table === 'profiles' && ('role' in patch || 'store_id' in patch)) {

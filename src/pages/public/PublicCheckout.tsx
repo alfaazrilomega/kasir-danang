@@ -19,6 +19,7 @@ import {
   hargaBerlaku,
   petaFlashAktif,
   type PublicCatalogProduct,
+  type PublicCatalogStore,
   type PublicFlashSaleItem,
 } from '@/lib/publicCatalog';
 import { updateCustomerMe, useCustomer } from '@/lib/customerAccount';
@@ -67,10 +68,14 @@ export function PublicCheckout() {
   const lines: PublicCartLine[] =
     isDirect && buyNow ? [buyNow] : pilihIds ? cartLines.filter((l) => pilihIds.includes(l.product_id)) : cartLines;
 
-  const toko = useTokoPublik();
+  const tokoShell = useTokoPublik();
+  const [tokoCheckout, setTokoCheckout] = useState<PublicCatalogStore | null>(null);
+  const toko = tokoCheckout ?? tokoShell;
+  const transferEnabled = !!tokoCheckout && tokoCheckout.manual_transfer_enabled !== false;
+  const qrisEnabled = !!tokoCheckout && tokoCheckout.manual_qris_enabled !== false;
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [wilayah, setWilayah] = useState<NilaiAlamat>({ provinsi: '', kota: '', alamat: '' });
+  const [wilayah, setWilayah] = useState<NilaiAlamat>({ provinsi: '', kota: '', kecamatan: '', kelurahan: '', alamat: '' });
   const [payment, setPayment] = useState<PayOption>('cash');
   const [notes, setNotes] = useState('');
   const [galat, setGalat] = useState<Galat>({});
@@ -81,6 +86,12 @@ export function PublicCheckout() {
   const [refreshKanal, setRefreshKanal] = useState(0);
   const [kanalKode, setKanalKode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if ((payment === 'transfer' && !transferEnabled) || (payment === 'qris' && !qrisEnabled)) {
+      setPayment('cash');
+    }
+  }, [payment, transferEnabled, qrisEnabled]);
   const [voucher, setVoucher] = useState<VoucherToko | null>(null);
   // Ongkir KiriminAja (spec 0002). null = belum diketahui apakah toko memasangnya.
   const [kirimAktif, setKirimAktif] = useState<boolean | null>(null);
@@ -107,6 +118,8 @@ export function PublicCheckout() {
       return {
         provinsi: me.province || provinsiDariKota(kota),
         kota,
+        kecamatan: me.district || '',
+        kelurahan: me.village || '',
         alamat: me.address || '',
       };
     });
@@ -147,8 +160,12 @@ export function PublicCheckout() {
   const [petaFlashCheckout, setPetaFlashCheckout] = useState<Map<string, PublicFlashSaleItem>>(new Map());
   useEffect(() => {
     let alive = true;
-    fetchPublicCatalog(PUBLIC_STORE_ID)
-      .then((d) => alive && setKatalogProduk(d.products ?? []))
+    fetchPublicCatalog(PUBLIC_STORE_ID, { forceRefresh: true })
+      .then((d) => {
+        if (!alive) return;
+        setKatalogProduk(d.products ?? []);
+        setTokoCheckout(d.store);
+      })
       .catch(() => {});
     fetchPublicFlashSale(PUBLIC_STORE_ID)
       .then((d) => alive && setPetaFlashCheckout(petaFlashAktif(d.items)))
@@ -266,9 +283,9 @@ export function PublicCheckout() {
 
   const alamatTeks = kirimAktif
     ? [wilayah.alamat.trim(), wilayahKirim.kelurahan, wilayahKirim.kecamatan, wilayahKirim.kota, wilayahKirim.provinsi].filter(Boolean).join(', ')
-    : alamatSatuBaris({ alamat: wilayah.alamat, kota: wilayah.kota, provinsi: wilayah.provinsi });
+    : alamatSatuBaris(wilayah);
   const alamatLengkap = !!name.trim() && isValidWhatsAppPhone(phone) && !!wilayah.alamat.trim()
-    && (kirimAktif ? wilayahLengkap(wilayahKirim) : !!wilayah.provinsi && !!wilayah.kota);
+    && (kirimAktif ? wilayahLengkap(wilayahKirim) : !!wilayah.provinsi && !!wilayah.kota && !!wilayah.kecamatan && !!wilayah.kelurahan);
 
   /** Memilih metode manual membatalkan kanal otomatis yang sedang dipilih. */
   function pilihManual(p: PayOption) {
@@ -289,8 +306,10 @@ export function PublicCheckout() {
     } else {
       if (!wilayah.provinsi) g.provinsi = 'Pilih provinsi.';
       if (!wilayah.kota) g.kota = 'Pilih kota/kabupaten.';
+      if (!wilayah.kecamatan) g.kecamatan = 'Pilih kecamatan.';
+      if (!wilayah.kelurahan) g.kelurahan = 'Pilih desa/kelurahan.';
     }
-    if (!wilayah.alamat.trim()) g.address = 'Alamat pengiriman wajib diisi.';
+    if (!wilayah.alamat.trim()) g.address = 'Isi RT/RW dan patokan rumah.';
     const galatAlamat = Object.keys(g).length > 0;
     if (kirimAktif && !galatAlamat && !kurir) g.kurir = 'Pilih kurir pengiriman.';
     setGalat(g);
@@ -318,6 +337,8 @@ export function PublicCheckout() {
         delivery_address: alamatTeks,
         delivery_province: kirimAktif ? wilayahKirim.provinsi : wilayah.provinsi,
         delivery_city: kirimAktif ? wilayahKirim.kota : wilayah.kota,
+        delivery_district: kirimAktif ? wilayahKirim.kecamatan : wilayah.kecamatan,
+        delivery_village: kirimAktif ? wilayahKirim.kelurahan : wilayah.kelurahan,
         ...(kirimAktif && kurir ? {
           delivery_wilayah: {
             provinsi_id: wilayahKirim.provinsi_id!, kota_id: wilayahKirim.kota_id!,
@@ -334,9 +355,8 @@ export function PublicCheckout() {
       },
       token,
     );
-    setBusy(false);
-
     if (error || !data) {
+      setBusy(false);
       // Ongkir berubah atau kurir tidak tersedia lagi: daftar diganti yang terbaru
       // dan pembeli memeriksa total baru sebelum menekan lagi.
       if (shippingOptions) {
@@ -356,31 +376,22 @@ export function PublicCheckout() {
       return;
     }
 
-    // Pixel iklan: pembelian dicatat di sini, sebelum keranjang dikosongkan,
-    // karena halaman "pesanan terkirim" hanya tahu nomor pesanannya. Nilainya
-    // subtotal barang; ongkir baru dihitung toko sesudahnya.
-    lacakPixel({
-      jenis: 'Purchase',
-      barang: barangPixel(),
-      nilai: nominalBarang,
-      idPesanan: data.order_id,
-      nomorPesanan: data.order_number,
-    });
-
-    // Alamat pertama disimpan ke akun supaya checkout berikutnya terisi otomatis.
-    // Wilayah KiriminAja ikut disimpan bila berbeda dari yang tersimpan.
-    const wilayahBaru = kirimAktif && wilayahLengkap(wilayahKirim) && me?.wilayah?.kelurahan_id !== wilayahKirim.kelurahan_id;
-    if (me && (!me.address || wilayahBaru)) {
-      void updateCustomerMe(token, {
-        name: me.name,
-        phone: me.phone || phone.trim(),
-        address: me.address || wilayah.alamat.trim(),
-        province: me.address ? me.province || '' : kirimAktif ? wilayahKirim.provinsi : wilayah.provinsi,
-        city: me.address ? me.city || '' : kirimAktif ? wilayahKirim.kota : wilayah.kota,
-        ...(wilayahBaru ? { wilayah: wilayahKirim as NonNullable<typeof me.wilayah> } : {}),
-      }).then(({ data: baru }) => baru && setMe(baru));
+    // Simpan detail rumah terpisah dari wilayah agar checkout berikutnya tidak menggandakan alamat.
+    const alamatAkun = {
+      name: me?.name || name.trim(), phone: phone.trim(), address: wilayah.alamat.trim(),
+      province: kirimAktif ? wilayahKirim.provinsi : wilayah.provinsi,
+      city: kirimAktif ? wilayahKirim.kota : wilayah.kota,
+      district: kirimAktif ? wilayahKirim.kecamatan : wilayah.kecamatan,
+      village: kirimAktif ? wilayahKirim.kelurahan : wilayah.kelurahan,
+      wilayah: kirimAktif ? wilayahKirim as NonNullable<typeof me>['wilayah'] : null,
+    };
+    if (me) {
+      const { data: baru, error: galatSimpan } = await updateCustomerMe(token, alamatAkun);
+      if (baru) setMe(baru);
+      else if (galatSimpan) toast.warning('Pesanan tersimpan, tetapi alamat akun belum berhasil diperbarui.');
     }
-    if (data.payment?.provider === 'mayar') {
+    setBusy(false);
+    if (data.payment?.provider === 'mayar' || (data.payment?.provider === 'tripay' && data.payment.checkout_mode === 'direct')) {
       navigate(`/toko/checkout?order=${encodeURIComponent(data.order_id)}`, { replace: true });
       if (isDirect) clearBuyNow();
       else if (pilihIds) pilihIds.forEach(removeLine);
@@ -545,7 +556,7 @@ export function PublicCheckout() {
                   {kirimAktif ? (
                     <KolomAlamatKirim
                       wilayah={wilayahKirim}
-                      onWilayah={(w) => { setWilayahKirim(w); setWilayah((v) => ({ ...v, provinsi: w.provinsi, kota: w.kota })); }}
+                      onWilayah={(w) => { setWilayahKirim(w); setWilayah((v) => ({ ...v, provinsi: w.provinsi, kota: w.kota, kecamatan: w.kecamatan, kelurahan: w.kelurahan })); }}
                       alamat={wilayah.alamat}
                       onAlamat={(alamat) => setWilayah((v) => ({ ...v, alamat }))}
                       kelasKolom={KOLOM}
@@ -558,7 +569,7 @@ export function PublicCheckout() {
                       onChange={setWilayah}
                       kelasKolom={KOLOM}
                       kelasGalat={KOLOM_GALAT}
-                      galat={{ provinsi: galat.provinsi, kota: galat.kota, alamat: galat.address }}
+                      galat={{ provinsi: galat.provinsi, kota: galat.kota, kecamatan: galat.kecamatan, kelurahan: galat.kelurahan, alamat: galat.address }}
                     />
                   )}
                   <Kolom label="Catatan (opsional)" id="catatan">
@@ -657,45 +668,47 @@ export function PublicCheckout() {
                   </BarisBayar>
                 </GrupBayar>
 
-                <GrupBayar judul="Pembayaran manual">
-                  <BarisBayar
-                    aktif={payment === 'transfer' && !kanalKode}
-                    onClick={() => pilihManual('transfer')}
-                    ikon={<Landmark size={18} />}
-                    nama="Transfer Bank"
-                    catatan="Transfer manual, dicek admin"
-                  >
-                    {toko?.bank_account_number ? (
-                      <Rekening
-                        bank={toko.bank_name || 'Bank'}
-                        nomor={toko.bank_account_number}
-                        atasNama={toko.bank_account_name || toko.name}
-                      />
-                    ) : (
-                      'Nomor rekening toko dikirim admin lewat WhatsApp setelah pesanan dibuat.'
-                    )}
-                  </BarisBayar>
-                  <BarisBayar
-                    aktif={payment === 'qris' && !kanalKode}
-                    onClick={() => pilihManual('qris')}
-                    ikon={<QrCode size={18} />}
-                    nama="QRIS Manual"
-                    catatan="Scan dari aplikasi bank atau e-wallet"
-                  >
-                    {toko?.qris_image_url ? (
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={toko.qris_image_url}
-                          alt="QRIS toko"
-                          className="h-24 w-24 rounded-lg bg-white object-contain ring-1 ring-ink-100"
+                {(transferEnabled || qrisEnabled) && (
+                  <GrupBayar judul="Pembayaran manual">
+                    {transferEnabled && <BarisBayar
+                      aktif={payment === 'transfer' && !kanalKode}
+                      onClick={() => pilihManual('transfer')}
+                      ikon={<Landmark size={18} />}
+                      nama="Transfer Bank"
+                      catatan="Transfer manual, dicek admin"
+                    >
+                      {toko?.bank_account_number ? (
+                        <Rekening
+                          bank={toko.bank_name || 'Bank'}
+                          nomor={toko.bank_account_number}
+                          atasNama={toko.bank_account_name || toko.name}
                         />
-                        <span>Pindai kode ini setelah pesanan dibuat, lalu kirim bukti bayar ke admin.</span>
-                      </div>
-                    ) : (
-                      'Kode QR dikirim admin lewat WhatsApp setelah pesanan dibuat.'
-                    )}
-                  </BarisBayar>
-                </GrupBayar>
+                      ) : (
+                        'Nomor rekening toko dikirim admin lewat WhatsApp setelah pesanan dibuat.'
+                      )}
+                    </BarisBayar>}
+                    {qrisEnabled && <BarisBayar
+                      aktif={payment === 'qris' && !kanalKode}
+                      onClick={() => pilihManual('qris')}
+                      ikon={<QrCode size={18} />}
+                      nama="QRIS Manual"
+                      catatan="Scan dari aplikasi bank atau e-wallet"
+                    >
+                      {toko?.qris_image_url ? (
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={toko.qris_image_url}
+                            alt="QRIS toko"
+                            className="h-24 w-24 rounded-lg bg-white object-contain ring-1 ring-ink-100"
+                          />
+                          <span>Pindai kode ini setelah pesanan dibuat, lalu kirim bukti bayar ke admin.</span>
+                        </div>
+                      ) : (
+                        'Kode QR dikirim admin lewat WhatsApp setelah pesanan dibuat.'
+                      )}
+                    </BarisBayar>}
+                  </GrupBayar>
+                )}
 
                 {grupKanal.map(([judulGrup, daftar]) => (
                   <GrupBayar key={judulGrup} judul={judulGrup}>
@@ -722,7 +735,7 @@ export function PublicCheckout() {
                             : k.fee_customer == null ? 'Biaya belum tersedia. Muat ulang metode pembayaran.' : k.description || `${NAMA_LAYANAN[kanal.provider ?? 'tripay'] ?? 'Tripay'} · Pembayaran terverifikasi otomatis`}
                           biaya={tersedia ? (biaya ? `+ ${formatMoney(biaya)}` : 'Tanpa biaya gateway') : undefined}
                         >
-                          {kanal.provider === 'mayar' && k.code !== 'MAYAR'
+                          {(kanal.provider === 'mayar' && k.code !== 'MAYAR') || (kanal.provider === 'tripay' && kanal.checkout_mode === 'direct')
                             ? 'Setelah menekan Buat Pesanan, kode pembayaran ditampilkan di halaman checkout ini. Status pembayaran diperbarui otomatis.'
                             : kanal.provider === 'mayar' ? 'Pesanan tersimpan di checkout. Gunakan tombol pembayaran untuk membuka Mayar saat Anda siap.'
                             : kanal.provider === 'doku' ? 'Setelah menekan Buat Pesanan, Anda dibawa ke halaman pembayaran DOKU untuk memilih metode bayar.'

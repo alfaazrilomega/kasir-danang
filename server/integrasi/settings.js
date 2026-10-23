@@ -38,17 +38,18 @@ export function decryptConfig(value, context) {
 }
 
 export function assertProvider(provider) {
-  if (!['tripay', 'mayar', 'doku', 'kiriminaja', 'onesender', 'meta_whatsapp'].includes(provider)) throw new IntegrationError('Integrasi tidak dikenal.');
+  if (!['tripay', 'mayar', 'doku', 'kiriminaja', 'onesender', 'meta_whatsapp', 'meta_capi'].includes(provider)) throw new IntegrationError('Integrasi tidak dikenal.');
 }
 
 export function defaults(provider) {
   assertProvider(provider);
   if (provider === 'meta_whatsapp') return { wabaId: '', phoneNumberId: '', apiVersion: '', accessToken: '' };
+  if (provider === 'meta_capi') return { enabled: false, accessToken: '', testEventCode: '', apiVersion: 'v26.0' };
   if (provider === 'mayar') return { enabled: false, mode: 'sandbox', apiKey: '' };
   if (provider === 'doku') return { enabled: false, mode: 'sandbox', clientId: '', secretKey: '' };
   if (provider === 'onesender') return { phoneNumber: '', apiUrl: '', apiKey: '' };
   if (provider === 'tripay') return {
-    ...tripay.konfigurasi(), enabled: tripay.tripayAktif(),
+    ...tripay.konfigurasi(), enabled: tripay.tripayAktif(), checkoutMode: 'redirect',
     callbackUrl: process.env.TRIPAY_CALLBACK_URL || '',
     returnUrl: process.env.TRIPAY_RETURN_URL || '',
   };
@@ -71,6 +72,7 @@ export async function loadIntegration(db, storeId, provider) {
 }
 
 export function publicConfig(provider, config) {
+  if (provider === 'meta_capi') return { enabled: config.enabled, hasAccessToken: !!config.accessToken, testEventCode: config.testEventCode, apiVersion: config.apiVersion };
   if (provider === 'meta_whatsapp') return {
     wabaId: config.wabaId, phoneNumberId: config.phoneNumberId,
     apiVersion: config.apiVersion, hasAccessToken: !!config.accessToken,
@@ -82,7 +84,7 @@ export function publicConfig(provider, config) {
   if (provider === 'mayar') return { ...common, hasApiKey: !!config.apiKey };
   if (provider === 'doku') return { ...common, clientId: config.clientId, hasSecretKey: !!config.secretKey };
   if (provider === 'tripay') return {
-    ...common, merchantCode: config.merchantCode, callbackUrl: config.callbackUrl,
+    ...common, checkoutMode: config.checkoutMode === 'direct' ? 'direct' : 'redirect', merchantCode: config.merchantCode, callbackUrl: config.callbackUrl,
     returnUrl: config.returnUrl, hasApiKey: !!config.apiKey, hasPrivateKey: !!config.privateKey,
   };
   return { ...common, hasToken: !!config.token, originDistrict: config.originDistrict, originSubdistrict: config.originSubdistrict, originLabel: config.originLabel || '' };
@@ -95,11 +97,30 @@ export function validateConfig(provider, body, previous) {
     try { return validateMetaSettings(body, previous); }
     catch (error) { throw new IntegrationError(error.message); }
   }
+  if (provider === 'meta_capi') {
+    const config = { ...previous };
+    if (typeof body.enabled !== 'boolean') throw new IntegrationError('Status Meta CAPI tidak valid.');
+    config.enabled = body.enabled;
+    for (const field of ['accessToken', 'testEventCode', 'apiVersion']) {
+      if (!(field in body)) continue;
+      if (typeof body[field] !== 'string' || body[field].length > 4096 || /[\r\n]/.test(body[field])) throw new IntegrationError(`Isian ${field} tidak valid.`);
+      if (field === 'accessToken' && !body[field].trim()) continue;
+      config[field] = body[field].trim();
+    }
+    if (config.enabled && !config.accessToken) throw new IntegrationError('Access Token wajib diisi saat Meta CAPI diaktifkan.');
+    if (!/^v[1-9]\d{0,2}\.0$/.test(config.apiVersion)) throw new IntegrationError('Versi Graph API harus berformat vNN.0.');
+    if (config.testEventCode && !/^[A-Za-z0-9_-]{1,64}$/.test(config.testEventCode)) throw new IntegrationError('Test Event Code tidak valid.');
+    return config;
+  }
   const config = { ...previous };
   if (provider !== 'onesender' && typeof body.enabled !== 'boolean') throw new IntegrationError('Status integrasi tidak valid.');
   if (provider !== 'onesender' && !['sandbox', 'production'].includes(body.mode)) throw new IntegrationError('Mode harus sandbox atau production.');
   if (provider !== 'onesender') config.enabled = body.enabled;
   if (provider !== 'onesender') config.mode = body.mode;
+  if (provider === 'tripay') {
+    if (body.checkoutMode !== undefined && !['direct', 'redirect'].includes(body.checkoutMode)) throw new IntegrationError('Metode checkout harus DIRECT atau REDIRECT.');
+    config.checkoutMode = body.checkoutMode ?? previous.checkoutMode ?? 'redirect';
+  }
   const secrets = ['onesender', 'mayar'].includes(provider) ? ['apiKey'] : provider === 'tripay' ? ['apiKey', 'privateKey'] : provider === 'doku' ? ['secretKey'] : ['token'];
   const fields = provider === 'mayar' ? secrets : provider === 'doku' ? ['clientId', ...secrets] : provider === 'onesender' ? ['phoneNumber', 'apiUrl', ...secrets] : provider === 'tripay'
     ? ['merchantCode', 'callbackUrl', 'returnUrl', ...secrets]

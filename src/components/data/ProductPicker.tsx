@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/format';
 import { urutNamaSku } from '@/lib/sortProducts';
@@ -37,16 +38,40 @@ export function ProductPicker({
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<CSSProperties | null>(null);
   const selected = products.find((p) => p.id === value) ?? null;
   const selectedLabel = selected ? `${selected.name}${selected.sku ? ` (${selected.sku})` : ''}` : '';
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!boxRef.current?.contains(target) && !listRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // Daftar dirender di body dengan posisi fixed: di dalam modal yang bisa digulir,
+  // daftar absolute terpotong di tepi bawah modal dan memunculkan scrollbar.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = (e?: Event) => {
+      if (e && listRef.current?.contains(e.target as Node)) return;
+      const r = inputRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const below = window.innerHeight - r.bottom - 12;
+      const above = r.top - 12;
+      const up = below < 240 && above > below;
+      setPos({ position: 'fixed', left: r.left, width: r.width, maxHeight: Math.min(384, up ? above : below),
+        ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
   }, [open]);
 
   const exclude = useMemo(() => new Set(excludeIds ?? []), [excludeIds]);
@@ -74,7 +99,7 @@ export function ProductPicker({
 
   return (
     <div ref={boxRef} className={cn('relative', className)}>
-      <div className="input flex items-center gap-2">
+      <div ref={inputRef} className="input flex items-center gap-2">
         <Search size={14} className="shrink-0 text-ink-400" />
         <input
           className="w-full min-w-0 bg-transparent focus:outline-none"
@@ -98,8 +123,8 @@ export function ProductPicker({
         />
       </div>
 
-      {open && (
-        <div className="absolute left-0 right-0 z-30 mt-1 max-h-72 overflow-y-auto rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-700 dark:bg-ink-900">
+      {open && pos && createPortal(
+        <div ref={listRef} style={pos} className="z-[60] overflow-y-auto rounded-xl border border-ink-200 bg-white shadow-lg dark:border-ink-700 dark:bg-ink-900">
           {emptyLabel && (
             <button
               type="button"
@@ -134,7 +159,8 @@ export function ProductPicker({
               </button>
             ))
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 // Pelacakan iklan toko online (butir 15 PERMINTAAN-CLIENT.md): Meta Pixel,
-// TikTok Pixel, dan Google Ads.
+// TikTok Pixel, Google Ads, GA4, dan Google Tag Manager.
 //
 // Admin mengisi ID-nya di Pengaturan → Toko Online. Kode pemasang resmi tiap
 // platform dipasang di sini, hanya kalau ID-nya terisi dan hanya dari halaman
@@ -20,6 +20,8 @@ export const POLA_ID_PIXEL = {
   tiktok: /^[A-Z0-9]{10,40}$/,
   googleAds: /^AW-\d{6,15}$/,
   googleAdsLabel: /^[A-Za-z0-9_-]{4,60}$/,
+  googleAnalytics: /^G-[A-Z0-9]{6,20}$/,
+  googleTagManager: /^GTM-[A-Z0-9]{4,15}$/,
 } as const;
 
 export interface IdPixel {
@@ -27,6 +29,8 @@ export interface IdPixel {
   tiktok: string | null;
   googleAds: string | null;
   googleAdsLabel: string | null;
+  googleAnalytics: string | null;
+  googleTagManager: string | null;
 }
 
 export interface BarangPixel {
@@ -38,13 +42,15 @@ export interface BarangPixel {
 
 export type PeristiwaPixel =
   | { jenis: 'ViewContent' | 'AddToCart' | 'InitiateCheckout'; barang: BarangPixel[]; nilai: number }
-  | { jenis: 'Purchase'; barang: BarangPixel[]; nilai: number; idPesanan: string; nomorPesanan: string };
+  | { jenis: 'Purchase'; barang: BarangPixel[]; nilai: number; idPesanan: string; nomorPesanan: string; shipping?: number; tax?: number };
 
 interface SumberIdPixel {
   meta_pixel_id?: string | null;
   tiktok_pixel_id?: string | null;
   google_ads_id?: string | null;
   google_ads_purchase_label?: string | null;
+  google_analytics_id?: string | null;
+  google_tag_manager_id?: string | null;
 }
 
 /** ID dari data toko; yang formatnya tidak dikenal dianggap kosong, bukan dipasang apa adanya. */
@@ -58,6 +64,8 @@ export function idPixelDariToko(toko: SumberIdPixel | null | undefined): IdPixel
     tiktok: cocok(toko?.tiktok_pixel_id, POLA_ID_PIXEL.tiktok),
     googleAds: cocok(toko?.google_ads_id, POLA_ID_PIXEL.googleAds),
     googleAdsLabel: cocok(toko?.google_ads_purchase_label, POLA_ID_PIXEL.googleAdsLabel),
+    googleAnalytics: cocok(toko?.google_analytics_id, POLA_ID_PIXEL.googleAnalytics),
+    googleTagManager: cocok(toko?.google_tag_manager_id, POLA_ID_PIXEL.googleTagManager),
   };
 }
 
@@ -69,11 +77,12 @@ const jendela = (): any => window;
 /** null = data toko belum diketahui, panggilan masih ditahan. */
 let terpasang: IdPixel | null = null;
 let antre: Array<(ids: IdPixel) => void> = [];
-const sudahInit = { meta: '', tiktok: '', googleAds: '' };
+const sudahInit = { meta: '', tiktok: '', googleAds: '', googleAnalytics: '', googleTagManager: '' };
+let googleLoader = false;
 
 function jalankan(fn: (ids: IdPixel) => void) {
   if (typeof window === 'undefined') return;
-  if (terpasang) fn(terpasang);
+  if (terpasang) { try { fn(terpasang); } catch { /* Analytics cannot interrupt shopping. */ } }
   // Batas supaya antrean tidak tumbuh tanpa akhir kalau data toko gagal dimuat.
   else if (antre.length < 50) antre.push(fn);
 }
@@ -163,7 +172,10 @@ function pasangGoogle(id: string) {
       w.dataLayer.push(arguments);
     };
     w.gtag('js', new Date());
-    muatSkrip(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`);
+    if (!googleLoader) {
+      googleLoader = true;
+      muatSkrip(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`);
+    }
   }
   if (sudahInit.googleAds !== id) {
     // Aplikasi satu halaman: lihat halaman dikirim sendiri tiap pindah rute
@@ -173,29 +185,73 @@ function pasangGoogle(id: string) {
   }
 }
 
+function pasangGoogleAnalytics(id: string) {
+  const w = jendela();
+  w.dataLayer = w.dataLayer || [];
+  if (!w.gtag) {
+    w.gtag = function gtag() {
+      // eslint-disable-next-line prefer-rest-params
+      w.dataLayer.push(arguments);
+    };
+    w.gtag('js', new Date());
+  }
+  if (!googleLoader) {
+    googleLoader = true;
+    muatSkrip(`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`);
+  }
+  if (sudahInit.googleAnalytics !== id) {
+    w.gtag('config', id, { send_page_view: false });
+    sudahInit.googleAnalytics = id;
+  }
+}
+
+function pasangGtm(id: string) {
+  const w = jendela();
+  w.dataLayer = w.dataLayer || [];
+  if (sudahInit.googleTagManager === id) return;
+  w.dataLayer.push({ 'gtm.start': Date.now(), event: 'gtm.js' });
+  muatSkrip(`https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(id)}`);
+  sudahInit.googleTagManager = id;
+}
+
 /** Pasang skrip platform yang ID-nya terisi, lalu kirim panggilan yang tertahan. */
 export function pasangPixel(ids: IdPixel) {
   if (typeof window === 'undefined') return;
   if (ids.meta) pasangMeta(ids.meta);
   if (ids.tiktok) pasangTikTok(ids.tiktok);
-  if (ids.googleAds) pasangGoogle(ids.googleAds);
+  if (ids.googleTagManager) pasangGtm(ids.googleTagManager);
+  // Saat GTM dipakai, kirim ecommerce lewat dataLayer saja supaya tag GA4 di
+  // container tidak menerima salinan kedua dari gtag.js langsung.
+  if (!ids.googleTagManager && ids.googleAnalytics) pasangGoogleAnalytics(ids.googleAnalytics);
+  if (ids.googleAds && !ids.googleTagManager) pasangGoogle(ids.googleAds);
   terpasang = ids;
   const tertahan = antre;
   antre = [];
-  for (const fn of tertahan) fn(ids);
+  for (const fn of tertahan) { try { fn(ids); } catch { /* Optional vendor script. */ } }
 }
 
 /** Lihat halaman; dipanggil tiap rute /toko berganti. */
 export function lacakHalaman() {
+  if (typeof window === 'undefined') return;
+  const page = { page_location: window.location.origin + window.location.pathname, page_path: window.location.pathname, page_title: document.title };
   jalankan((ids) => {
     const w = jendela();
-    if (ids.meta) w.fbq('track', 'PageView');
+    if (ids.meta) w.fbq('trackSingle', ids.meta, 'PageView');
     if (ids.tiktok) w.ttq.page();
-    if (ids.googleAds) {
+    if (ids.googleAds && !ids.googleTagManager) {
       w.gtag('event', 'page_view', {
         send_to: ids.googleAds,
-        page_path: window.location.pathname + window.location.search,
+        ...page,
       });
+    }
+    if (ids.googleAnalytics && !ids.googleTagManager) {
+      w.gtag('event', 'page_view', {
+        send_to: ids.googleAnalytics,
+        ...page,
+      });
+    }
+    if (ids.googleTagManager) {
+      w.dataLayer.push({ event: 'storefront_page_view', ...page });
     }
   });
 }
@@ -207,9 +263,34 @@ const NAMA_GOOGLE = {
   Purchase: 'purchase',
 } as const;
 
+const purchaseMemory = new Set<string>();
+function firstPurchase(p: PeristiwaPixel, ids: IdPixel): boolean {
+  if (p.jenis !== 'Purchase') return true;
+  if (!(ids.meta || ids.tiktok || ids.googleAds || ids.googleAnalytics || ids.googleTagManager)) return false;
+  const key = `tokoku.purchase.v2:${Object.values(ids).join(':')}:${p.idPesanan}`;
+  if (purchaseMemory.has(key)) return false;
+  try {
+    if (localStorage.getItem(key)) return false;
+    localStorage.setItem(key, '1');
+  } catch { /* Memory fallback when storage is unavailable. */ }
+  purchaseMemory.add(key);
+  return true;
+}
+
+export function atribusiMeta(): { fbp?: string; fbc?: string } {
+  const result: { fbp?: string; fbc?: string } = {};
+  if (typeof document === 'undefined') return result;
+  for (const name of ['fbp', 'fbc'] as const) {
+    const value = document.cookie.split(';').map(v => v.trim()).find(v => v.startsWith(`_${name}=`))?.slice(5);
+    if (value && /^fb\.\d\.\d{10,16}\.[A-Za-z0-9_-]{1,200}$/.test(value)) result[name] = value;
+  }
+  return result;
+}
+
 /** Kirim satu peristiwa belanja ke semua platform yang terpasang. Nilai dalam rupiah. */
 export function lacakPixel(p: PeristiwaPixel) {
   jalankan((ids) => {
+    if (!firstPurchase(p, ids)) return;
     const w = jendela();
     const jumlah = p.barang.reduce((sum, b) => sum + b.qty, 0);
 
@@ -223,8 +304,8 @@ export function lacakPixel(p: PeristiwaPixel) {
         num_items: jumlah,
       };
       // eventID pesanan membuat Meta bisa membuang kiriman ganda.
-      if (p.jenis === 'Purchase') w.fbq('track', 'Purchase', data, { eventID: p.idPesanan });
-      else w.fbq('track', p.jenis, data);
+      if (p.jenis === 'Purchase') w.fbq('trackSingle', ids.meta, 'Purchase', data, { eventID: p.idPesanan });
+      else w.fbq('trackSingle', ids.meta, p.jenis, data);
     }
 
     if (ids.tiktok) {
@@ -244,7 +325,7 @@ export function lacakPixel(p: PeristiwaPixel) {
       else w.ttq.track(p.jenis, data);
     }
 
-    if (ids.googleAds) {
+    if (ids.googleAds && !ids.googleTagManager) {
       const items = p.barang.map((b) => ({
         id: b.id,
         google_business_vertical: 'retail',
@@ -256,21 +337,34 @@ export function lacakPixel(p: PeristiwaPixel) {
         value: p.nilai,
         currency: 'IDR',
         items,
-        ...(p.jenis === 'Purchase' ? { transaction_id: p.nomorPesanan } : {}),
+        ...(p.jenis === 'Purchase' ? { transaction_id: p.idPesanan } : {}),
       });
       if (p.jenis === 'Purchase' && ids.googleAdsLabel) {
         w.gtag('event', 'conversion', {
           send_to: `${ids.googleAds}/${ids.googleAdsLabel}`,
           value: p.nilai,
           currency: 'IDR',
-          transaction_id: p.nomorPesanan,
+          transaction_id: p.idPesanan,
         });
       }
+    }
+
+    const namaGoogle = NAMA_GOOGLE[p.jenis];
+    const ecommerce = {
+      currency: 'IDR', value: p.nilai,
+      ...(p.jenis === 'Purchase' ? { transaction_id: p.idPesanan, event_id: p.idPesanan, shipping: p.shipping ?? 0, tax: p.tax ?? 0 } : {}),
+      items: p.barang.map(b => ({ item_id: b.id, item_name: b.nama || b.id, price: b.harga, quantity: b.qty })),
+    };
+    if (ids.googleTagManager) {
+      w.dataLayer.push({ ecommerce: null });
+      w.dataLayer.push({ event: namaGoogle, ecommerce, event_id: p.jenis === 'Purchase' ? p.idPesanan : undefined });
+    } else if (ids.googleAnalytics) {
+      w.gtag('event', namaGoogle, { send_to: ids.googleAnalytics, ...ecommerce });
     }
   });
 }
 
 /** true bila ada platform yang terpasang; dipakai untuk memberi waktu kirim sebelum pindah situs. */
 export function pixelAktif(): boolean {
-  return !!terpasang && !!(terpasang.meta || terpasang.tiktok || terpasang.googleAds);
+  return !!terpasang && !!(terpasang.meta || terpasang.tiktok || terpasang.googleAds || terpasang.googleAnalytics || terpasang.googleTagManager);
 }

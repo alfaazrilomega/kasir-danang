@@ -83,6 +83,7 @@ export interface AdminSystemStats {
 }
 
 export interface TripaySettings {
+  checkoutMode: 'direct' | 'redirect';
   enabled: boolean;
   mode: 'sandbox' | 'production';
   merchantCode: string;
@@ -141,6 +142,7 @@ export interface MetaWhatsAppSettings {
 }
 
 export interface IntegrationSettings {
+  meta_capi: { enabled: boolean; hasAccessToken: boolean; accessToken?: string; testEventCode: string; apiVersion: string };
   mayar: MayarSettings;
   doku: DokuSettings;
   meta_whatsapp: MetaWhatsAppSettings;

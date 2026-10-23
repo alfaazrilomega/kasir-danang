@@ -65,6 +65,8 @@ export interface PublicCatalogStore {
   bank_account_number?: string | null;
   bank_account_name?: string | null;
   qris_image_url?: string | null;
+  manual_transfer_enabled?: boolean;
+  manual_qris_enabled?: boolean;
   social_facebook?: string | null;
   social_instagram?: string | null;
   social_tiktok?: string | null;
@@ -75,6 +77,8 @@ export interface PublicCatalogStore {
   tiktok_pixel_id?: string | null;
   google_ads_id?: string | null;
   google_ads_purchase_label?: string | null;
+  google_analytics_id?: string | null;
+  google_tag_manager_id?: string | null;
 }
 
 /** Banner beranda yang sedang berlaku (spec 0003). Gambarnya diambil lewat alamatGambarBanner. */
@@ -109,8 +113,8 @@ export function invalidatePublicCatalog() {
 }
 
 /** Dipanggil dari beberapa komponen (shell + halaman); permintaan dibagi lewat cache modul sederhana. */
-export function fetchPublicCatalog(storeId: string): Promise<PublicCatalogData> {
-  if (cached && cached.storeId === storeId) return cached.promise;
+export function fetchPublicCatalog(storeId: string, options: { forceRefresh?: boolean } = {}): Promise<PublicCatalogData> {
+  if (!options.forceRefresh && cached && cached.storeId === storeId) return cached.promise;
   const { apiBaseUrl } = loadConfig();
   const promise = fetch(`${apiBaseUrl}/api/public/catalog?store_id=${encodeURIComponent(storeId)}`)
     .then(async (response) => {

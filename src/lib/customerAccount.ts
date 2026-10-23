@@ -17,6 +17,8 @@ export interface CustomerMe {
   /** Provinsi & kota alamat utama; dipakai checkout dan perhitungan ongkir. */
   province?: string | null;
   city?: string | null;
+  district?: string | null;
+  village?: string | null;
   /** Wilayah KiriminAja terakhir yang dipakai checkout (spec 0002). */
   wilayah?: { provinsi_id: number; provinsi: string; kota_id: number; kota: string; kecamatan_id: number; kecamatan: string; kelurahan_id: number; kelurahan: string } | null;
 }
@@ -37,6 +39,7 @@ export interface CustomerOrder {
   payment_reference?: string | null;
   payment_provider?: 'tripay' | 'mayar' | 'doku' | null;
   payment_url?: string | null;
+  payment_checkout_mode?: 'direct' | 'redirect' | null;
   total: number;
   shipping_cost: number;
   /** Potongan voucher; 0 bila tanpa voucher. */
@@ -173,7 +176,7 @@ export function fetchCustomerConfig() {
 
 export function updateCustomerMe(
   token: string,
-  input: { name: string; phone: string; address: string; province?: string; city?: string; wilayah?: CustomerMe['wilayah'] },
+  input: { name: string; phone: string; address: string; province?: string; city?: string; district?: string; village?: string; wilayah?: CustomerMe['wilayah'] },
 ) {
   return panggil<CustomerMe>('/api/customer/me', { method: 'PATCH', body: input, token });
 }

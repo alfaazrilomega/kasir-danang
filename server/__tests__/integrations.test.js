@@ -361,7 +361,7 @@ describe('Pemakaian kredensial saat runtime', () => {
 describe('Kanal dan checkout Tripay', () => {
   const activeChannel = { code: 'BRIVA', name: 'BRI Virtual Account', group: 'Virtual Account', type: 'direct', active: true,
     fee_customer: { flat: 0, percent: 0 }, total_fee: { flat: 4250, percent: 0 }, minimum_amount: 10000, maximum_amount: 10000000 };
-  const orderInput = { store_id: storeA, customer_name: 'Pembeli Uji', customer_phone: '081234567890', delivery_address: 'Alamat Uji',
+  const orderInput = { store_id: storeA, customer_name: 'Pembeli Uji', customer_phone: '081234567890', delivery_address: 'Alamat Uji', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul',
     payment_method: 'cash', payment_channel: 'BRIVA', items: [{ product_id: storeB, qty: 1 }] };
   function setupGateway(channels = [activeChannel], rejectTransaction = false) {
     records.set(`${storeA}:tripay`, encryptConfig(config, `${storeA}:tripay`));
@@ -492,7 +492,7 @@ describe('Endpoint template WhatsApp', () => {
   it('checkout membuat jadwal reminder dalam transaksi pesanan', async () => {
     const settings = { ...whatsapp.defaultSettings(), reminders: { enabled: true, minutes: [10,30,50] } };
     clientQuery.mockImplementation(async sql => ({ rows: sql.includes('from public.whatsapp_settings') ? [{ config: settings }] : [], rowCount: 0 }));
-    const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Pembeli', customer_phone: '081234567890', delivery_address: 'Alamat', payment_method: 'transfer', items: [{ product_id: storeB, qty: 1 }] } });
+    const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Pembeli', customer_phone: '081234567890', delivery_address: 'Alamat', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul', payment_method: 'transfer', items: [{ product_id: storeB, qty: 1 }] } });
     expect(result.status).toBe(200);
     const calls = clientQuery.mock.calls;
     const jobs = calls.filter(([sql]) => sql.includes('insert into public.whatsapp_reminders'));
@@ -538,7 +538,7 @@ describe('Endpoint template WhatsApp', () => {
       return original(sql, args);
     });
     try {
-      const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Budi', customer_phone: '081234567890', delivery_address: 'Alamat', payment_method: 'cash', items: [{ product_id: storeB, qty: 1 }] } });
+      const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Budi', customer_phone: '081234567890', delivery_address: 'Alamat', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul', payment_method: 'cash', items: [{ product_id: storeB, qty: 1 }] } });
       expect(result.status).toBe(200);
       expect(clientQuery.mock.calls.some(([sql]) => sql === 'commit')).toBe(true);
       expect(notify).toHaveBeenCalledWith(expect.anything(), { storeId: storeA, customerId: userId, orderId: result.body.data.order_id });
@@ -548,7 +548,7 @@ describe('Endpoint template WhatsApp', () => {
   it.each(['pi', '0812abc34567890', '123', '6281,6282', '0'.repeat(21)])('menolak nomor checkout %s sebelum menyimpan order atau mengirim notifikasi', async (phone) => {
     const notify = vi.spyOn(whatsapp, 'notifyOrder').mockResolvedValue(undefined);
     try {
-      const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Budi', customer_phone: phone, delivery_address: 'Alamat', payment_method: 'cash', items: [{ product_id: storeB, qty: 1 }] } });
+      const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Budi', customer_phone: phone, delivery_address: 'Alamat', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul', payment_method: 'cash', items: [{ product_id: storeB, qty: 1 }] } });
       expect(result.status).toBe(400);
       expect(result.body.error).toMatch(/Nomor (WhatsApp|HP)/);
       expect(clientQuery).not.toHaveBeenCalled();
@@ -607,7 +607,7 @@ describe('Endpoint email dan template', () => {
     const send = vi.spyOn(emailSettings, 'sendEmail').mockRejectedValueOnce(new Error('simulasi gagal')).mockResolvedValue('mail-id');
     const wa = vi.spyOn(whatsapp, 'notifyOrder').mockResolvedValue();
     try {
-      const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Pembeli Uji', customer_phone: '081234567890', delivery_address: 'Alamat Uji', payment_method: 'cash', items: [{ product_id: storeB, qty: 1 }] } });
+      const result = await request('/api/public/orders', { method: 'POST', body: { store_id: storeA, customer_name: 'Pembeli Uji', customer_phone: '081234567890', delivery_address: 'Alamat Uji', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul', payment_method: 'cash', items: [{ product_id: storeB, qty: 1 }] } });
       expect(result.status).toBe(200);expect(send).toHaveBeenCalledTimes(2);
       expect(send.mock.calls[0][1]).toMatchObject({ to: 'buyer@tokouji.id', subject: expect.stringMatching(/^Halo Pembeli Uji - WEB-/), html: expect.stringContaining('Produk Uji') });
       expect(send.mock.calls[1][1].to).toBe('admin@tokouji.id');expect(wa).toHaveBeenCalled();
@@ -639,7 +639,7 @@ describe('Reset kata sandi dengan email per toko', () => {
 
 describe('Checkout dengan satu gateway dan Mayar', () => {
   const mayarConfig = { enabled: true, mode: 'sandbox', apiKey: 'mayar-private-key' };
-  const input = { store_id: storeA, customer_name: 'Pembeli', customer_phone: '081234567890', delivery_address: 'Alamat', payment_method: 'transfer', payment_channel: 'MAYAR', payment_provider: 'mayar', items: [{ product_id: storeB, qty: 1 }] };
+  const input = { store_id: storeA, customer_name: 'Pembeli', customer_phone: '081234567890', delivery_address: 'Alamat', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul', payment_method: 'transfer', payment_channel: 'MAYAR', payment_provider: 'mayar', items: [{ product_id: storeB, qty: 1 }] };
   const requestId = '11111111-1111-4111-a111-111111111111';
   const transactionId = '22222222-2222-4222-a222-222222222222';
   function setup(failCreate = false) {
@@ -736,7 +736,7 @@ describe('Gateway cadangan, DOKU, dan ongkir KiriminAja', () => {
   const doku = { enabled: true, mode: 'sandbox', clientId: 'BRN-0001-UJI', secretKey: 'doku-secret-uji' };
   const briva = { code: 'BRIVA', name: 'BRI Virtual Account', group: 'Virtual Account', type: 'direct', active: true,
     fee_customer: { flat: 0, percent: 0 }, total_fee: { flat: 0, percent: 0 }, minimum_amount: 10000, maximum_amount: 10000000 };
-  const pesan = { store_id: storeA, customer_name: 'Pembeli Uji', customer_phone: '081234567890', delivery_address: 'Alamat Uji',
+  const pesan = { store_id: storeA, customer_name: 'Pembeli Uji', customer_phone: '081234567890', delivery_address: 'Alamat Uji', delivery_province: 'Jawa Timur', delivery_city: 'Kabupaten Sidoarjo', delivery_district: 'Sidoarjo', delivery_village: 'Sidokumpul',
     payment_method: 'cash', payment_channel: 'BRIVA', payment_provider: 'tripay', items: [{ product_id: storeB, qty: 1 }] };
   let pesananDoku;
   beforeEach(() => {

@@ -128,6 +128,14 @@ function TripayForm({ initial }: { initial: TripaySettings }) {
   return <form onSubmit={(event) => { event.preventDefault(); void state.save(); }} className="min-w-0">
     <fieldset disabled={state.busy} className="min-w-0 space-y-5">
       <legend className="sr-only">Tripay</legend>
+      <div className="space-y-2">
+        <label htmlFor="tripay-checkout-mode" className="block text-sm font-medium">Metode Checkout</label>
+        <select id="tripay-checkout-mode" className="input w-full" value={form.checkoutMode || 'redirect'} onChange={(event) => change({ checkoutMode: event.target.value as 'direct' | 'redirect' })}>
+          <option value="direct">DIRECT — Bayar di situs toko</option>
+          <option value="redirect">REDIRECT — Halaman pembayaran Tripay</option>
+        </select>
+        <p className="text-xs text-ink-500">DIRECT menampilkan nomor pembayaran atau QRIS di invoice toko. Hanya kanal Tripay bertipe direct yang ditawarkan kepada pembeli.</p>
+      </div>
       <ModeFields provider="tripay" enabled={form.enabled} mode={form.mode} onChange={change} />
       <p className="text-xs text-ink-500">{form.mode === 'sandbox'
         ? 'Sandbox: salin Merchant Code, API Key, dan Private Key dari API & Integrasi > Simulator > Merchant. Aktifkan kanal pada merchant Simulator yang sama.'
@@ -410,7 +418,24 @@ function PaymentGatewaySelector() {
   </div>;
 }
 
+function MetaCapiForm({ initial }: { initial: IntegrationSettings['meta_capi'] }) {
+  const state = useIntegration('meta_capi', initial);
+  const { form, change } = state;
+  return <form onSubmit={(event) => { event.preventDefault(); void state.save(); }} className="min-w-0">
+    <fieldset disabled={state.busy} className="space-y-4">
+      <legend className="mb-3 text-base font-semibold">Meta Conversions API</legend>
+      <p className="text-sm text-ink-500">Mengirim Purchase dari server setelah pembayaran lunas. Isi Meta Pixel ID di pengaturan Toko Online; Access Token dienkripsi di server.</p>
+      <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={form.enabled} onChange={(event) => change({ enabled: event.target.checked })} />Aktifkan Meta CAPI</label>
+      <Input id="meta-capi-token" label="Access Token" type="password" value={form.accessToken ?? ''} onChange={(event) => change({ accessToken: event.target.value })} required={form.enabled && !form.hasAccessToken} autoComplete="new-password" spellCheck={false} hint={secretHint(form.hasAccessToken)} />
+      <Input id="meta-capi-version" label="Versi Graph API" value={form.apiVersion} onChange={(event) => change({ apiVersion: event.target.value })} pattern="v[1-9][0-9]{0,2}\.0" required />
+      <Input id="meta-capi-test-code" label="Test Event Code (opsional)" value={form.testEventCode} onChange={(event) => change({ testEventCode: event.target.value })} hint="Isi hanya saat menguji melalui Test Events di Events Manager; kosongkan untuk event produksi." />
+      <Button type="submit" disabled={state.busy || !state.dirty}>{state.busy ? 'Menyimpan...' : 'Simpan Meta CAPI'}</Button>
+    </fieldset>
+  </form>;
+}
+
 const INTEGRATION_TABS = [
+  { id: 'meta_capi', label: 'Meta CAPI', category: 'Pelacakan server', icon: ShieldCheck, description: 'Kirim pembelian lunas dari server dengan ID yang sama seperti Meta Pixel untuk deduplikasi.' },
   { id: 'tripay', label: 'Tripay', category: 'Pembayaran', icon: CreditCard, description: 'Kelola koneksi pembayaran dan kanal yang tersedia di checkout customer.' },
   { id: 'mayar', label: 'Mayar', category: 'Pembayaran', icon: CreditCard, description: 'Hubungkan Mayar dan kelola pembayaran melalui halaman checkout Mayar.' },
   { id: 'doku', label: 'DOKU', category: 'Pembayaran', icon: CreditCard, description: 'Hubungkan DOKU Checkout sebagai layanan pembayaran utama atau cadangan.' },
@@ -473,6 +498,7 @@ export function IntegrationsPanel() {
         <div className="min-w-0"><p className="mb-0.5 text-xs font-medium text-ink-500">{tab.category}</p><h3 className="text-base font-semibold">{tab.label}</h3><p className="mt-1 text-sm leading-relaxed text-ink-500">{tab.description}</p></div>
       </div>
       <div className="p-4 sm:p-5">
+        {tab.id === 'meta_capi' && <MetaCapiForm initial={data.meta_capi} />}
         {tab.id === 'tripay' && <TripayForm initial={data.tripay} />}
         {tab.id === 'mayar' && <MayarForm initial={data.mayar} />}
         {tab.id === 'doku' && <DokuForm initial={data.doku} />}

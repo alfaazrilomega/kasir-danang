@@ -504,3 +504,4 @@ export async function targetAffiliate(db, storeId, affiliateId, pengaturan) {
     bonus: hitungBonus(omset, pengaturan),
   };
 }
+

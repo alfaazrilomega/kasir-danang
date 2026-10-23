@@ -1,3 +1,4 @@
+import { ProductImage } from '@/components/public/ProductImage';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from 'react';
 import {
   ChevronDown,
@@ -562,8 +563,7 @@ export function PublicProductDetail() {
   }
 
   function tambahKeranjang() {
-    add({ product_id: product.id, name: product.name, price: harga, image_url: product.image_url }, qty);
-    toast.success(`${product.name} ×${qty} masuk keranjang.`);
+    add({ product_id: product.id, name: product.name, price: harga, image_url: product.image_url, variant_name: product.variant_name }, qty);
   }
 
   function beliSekarang() {
@@ -933,7 +933,7 @@ export function PublicProductDetail() {
     >
       <div className="flex items-center gap-3">
         <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded bg-white text-ink-300 ring-1 ring-ink-100 dark:bg-ink-900 dark:ring-ink-800">
-          {product.image_url ? <img src={product.image_url} alt="" className="h-full w-full object-contain" /> : <ShoppingBag size={22} />}
+          {product.image_url ? <ProductImage src={product.image_url} alt="" className="h-full w-full object-contain" /> : <ShoppingBag size={22} />}
         </span>
         <span>
           {itemFlash && (
@@ -1028,7 +1028,7 @@ export function PublicProductDetail() {
                     <video src={aktifMedia.src} controls className="h-full w-full bg-black object-contain" />
                   )
                 ) : (
-                  <img src={aktifMedia.src} alt={product.name} className="h-full w-full object-contain" />
+                  <ProductImage src={aktifMedia.src} alt={product.name} className="h-full w-full object-contain" />
                 )}
               </div>
               {media.length > 1 && (
@@ -1085,7 +1085,7 @@ export function PublicProductDetail() {
                           <Play size={20} className="fill-white" />
                         </span>
                       ) : (
-                        <img src={m.src} alt="" className="h-full w-full object-contain" />
+                        <ProductImage src={m.src} alt="" className="h-full w-full object-contain" />
                       )}
                     </button>
                   ))}
@@ -1616,7 +1616,7 @@ export function PublicProductDetail() {
               <>
                 <div className="flex items-center gap-3">
                   <span className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-white ring-1 ring-ink-100 dark:ring-ink-800">
-                    {product.image_url && <img src={product.image_url} alt="" className="h-full w-full object-contain" />}
+                    {product.image_url && <ProductImage src={product.image_url} alt="" className="h-full w-full object-contain" />}
                   </span>
                   <div>
                     <div className="text-lg font-semibold text-brand-600">{formatMoney(harga, store.currency)}</div>

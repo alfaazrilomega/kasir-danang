@@ -1,4 +1,4 @@
-// Kolom alamat bertingkat: Provinsi → Kota/Kabupaten → Alamat lengkap.
+// Kolom alamat bertingkat: Provinsi → Kota/Kabupaten → Kecamatan → Desa/Kelurahan.
 //
 // Dipakai di checkout dan di Profil & Alamat akun pembeli supaya keduanya
 // menghasilkan bentuk alamat yang sama. Provinsi dan kota disimpan terpisah
@@ -9,7 +9,7 @@
 
 import { useEffect, useId, useState } from 'react';
 import { cn } from '@/lib/format';
-import { PROVINSI, kotaDari } from '@/lib/wilayah';
+import { PROVINSI, kotaDari, kecamatanDari, alamatLengkap, type Kecamatan } from '@/lib/wilayah';
 import { ambilWilayah, type ItemWilayah, type LevelWilayah, type WilayahKirim } from '@/lib/pengirimanToko';
 
 /**
@@ -23,6 +23,8 @@ const TINGGI_PILIH = 'h-[44px]';
 export interface NilaiAlamat {
   provinsi: string;
   kota: string;
+  kecamatan: string;
+  kelurahan: string;
   alamat: string;
 }
 
@@ -32,7 +34,7 @@ export function KolomAlamat({
   kelasKolom,
   kelasGalat,
   galat,
-  label = 'Alamat Pengiriman',
+  label = 'RT/RW dan patokan rumah',
   bantuan,
 }: {
   nilai: NilaiAlamat;
@@ -40,12 +42,42 @@ export function KolomAlamat({
   /** Kelas dasar kolom, mengikuti gaya halaman pemakainya. */
   kelasKolom: string;
   kelasGalat?: string;
-  galat?: { provinsi?: string; kota?: string; alamat?: string };
+  galat?: { provinsi?: string; kota?: string; kecamatan?: string; kelurahan?: string; alamat?: string };
   label?: string;
   bantuan?: string;
 }) {
   const id = useId();
   const daftarKota = kotaDari(nilai.provinsi);
+  const kunci = `${nilai.provinsi}/${nilai.kota}`;
+  const [ulang, setUlang] = useState(0);
+  const [data, setData] = useState<{ kunci: string; rows: Kecamatan[]; loading: boolean; error: boolean }>({
+    kunci: '', rows: [], loading: false, error: false,
+  });
+  const memuat = !!nilai.kota && (data.kunci !== kunci || data.loading);
+  const gagal = data.kunci === kunci && data.error;
+  const daftarKecamatan = data.kunci === kunci && !data.loading ? data.rows : [];
+  const daftarDesa = daftarKecamatan.find((k) => k.nama === nilai.kecamatan)?.desa ?? [];
+
+  useEffect(() => {
+    let aktif = true;
+    setData({ kunci, rows: [], loading: !!nilai.kota, error: false });
+    if (nilai.kota) {
+      kecamatanDari(nilai.provinsi, nilai.kota).then(
+        (rows) => aktif && setData({ kunci, rows, loading: false, error: rows.length === 0 }),
+        () => aktif && setData({ kunci, rows: [], loading: false, error: true }),
+      );
+    }
+    return () => { aktif = false; };
+  }, [nilai.provinsi, nilai.kota, kunci, ulang]);
+
+  useEffect(() => {
+    if (data.kunci !== kunci || data.loading || data.error || !data.rows.length) return;
+    const kecamatan = data.rows.find((k) => k.nama === nilai.kecamatan);
+    if (nilai.kecamatan && !kecamatan) onChange({ ...nilai, kecamatan: '', kelurahan: '' });
+    else if (nilai.kelurahan && !kecamatan?.desa.some((d) => d.nama === nilai.kelurahan)) {
+      onChange({ ...nilai, kelurahan: '' });
+    }
+  }, [data, kunci, nilai, onChange]);
 
   return (
     <div className="space-y-3">
@@ -59,7 +91,7 @@ export function KolomAlamat({
             name="province"
             aria-label="Provinsi"
             value={nilai.provinsi}
-            onChange={(e) => onChange({ ...nilai, provinsi: e.target.value, kota: '' })}
+            onChange={(e) => onChange({ ...nilai, provinsi: e.target.value, kota: '', kecamatan: '', kelurahan: '' })}
             className={cn(kelasKolom, TINGGI_PILIH, galat?.provinsi && kelasGalat)}
           >
             <option value="">Pilih provinsi…</option>
@@ -82,7 +114,7 @@ export function KolomAlamat({
             aria-label="Kota/Kabupaten"
             value={nilai.kota}
             disabled={!nilai.provinsi}
-            onChange={(e) => onChange({ ...nilai, kota: e.target.value })}
+            onChange={(e) => onChange({ ...nilai, kota: e.target.value, kecamatan: '', kelurahan: '' })}
             className={cn(kelasKolom, TINGGI_PILIH, 'disabled:cursor-not-allowed disabled:opacity-60', galat?.kota && kelasGalat)}
           >
             <option value="">{nilai.provinsi ? 'Pilih kota/kabupaten…' : 'Pilih provinsi dulu'}</option>
@@ -96,6 +128,49 @@ export function KolomAlamat({
         </div>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor={`${id}-kecamatan`} className="mb-1.5 block text-[13px] font-medium text-ink-700 dark:text-ink-300">Kecamatan</label>
+          <select
+            id={`${id}-kecamatan`}
+            name="district"
+            aria-label="Kecamatan"
+            value={nilai.kecamatan}
+            disabled={!nilai.kota || memuat || gagal}
+            onChange={(e) => onChange({ ...nilai, kecamatan: e.target.value, kelurahan: '' })}
+            className={cn(kelasKolom, TINGGI_PILIH, 'disabled:cursor-not-allowed disabled:opacity-60', galat?.kecamatan && kelasGalat)}
+          >
+            <option value="">{!nilai.kota ? 'Pilih kota/kabupaten dulu' : memuat ? 'Memuat kecamatan…' : gagal ? 'Daftar wilayah belum tersedia' : 'Pilih kecamatan…'}</option>
+            {(memuat || gagal) && nilai.kecamatan && <option value={nilai.kecamatan}>{nilai.kecamatan}</option>}
+            {daftarKecamatan.map((k) => <option key={k.kode} value={k.nama}>{k.nama}</option>)}
+          </select>
+          {galat?.kecamatan && <p data-galat className="mt-1 text-xs text-rose-600">{galat.kecamatan}</p>}
+        </div>
+        <div>
+          <label htmlFor={`${id}-desa`} className="mb-1.5 block text-[13px] font-medium text-ink-700 dark:text-ink-300">Desa/Kelurahan</label>
+          <select
+            id={`${id}-desa`}
+            name="village"
+            aria-label="Desa/Kelurahan"
+            value={nilai.kelurahan}
+            disabled={!nilai.kecamatan || memuat || gagal}
+            onChange={(e) => onChange({ ...nilai, kelurahan: e.target.value })}
+            className={cn(kelasKolom, TINGGI_PILIH, 'disabled:cursor-not-allowed disabled:opacity-60', galat?.kelurahan && kelasGalat)}
+          >
+            <option value="">{!nilai.kecamatan ? 'Pilih kecamatan dulu' : memuat ? 'Memuat desa/kelurahan…' : 'Pilih desa/kelurahan…'}</option>
+            {(memuat || gagal) && nilai.kelurahan && <option value={nilai.kelurahan}>{nilai.kelurahan}</option>}
+            {daftarDesa.map((d) => <option key={d.kode} value={d.nama}>{d.nama}</option>)}
+          </select>
+          {galat?.kelurahan && <p data-galat className="mt-1 text-xs text-rose-600">{galat.kelurahan}</p>}
+        </div>
+      </div>
+      {gagal && (
+        <p role="alert" className="text-xs text-rose-600">
+          Daftar wilayah gagal dimuat. Periksa koneksi lalu{' '}
+          <button type="button" className="font-semibold underline" onClick={() => setUlang((v) => v + 1)}>coba lagi</button>.
+        </p>
+      )}
+
       <div>
         <label htmlFor={`${id}-alamat`} className="mb-1.5 block text-[13px] font-medium text-ink-700 dark:text-ink-300">
           {label}
@@ -105,7 +180,7 @@ export function KolomAlamat({
           name="delivery_address"
           aria-label={label}
           rows={3}
-          placeholder="Jalan, nomor rumah, RT/RW, kelurahan, kecamatan, kode pos"
+          placeholder="Contoh: RT 003/RW 005, rumah pagar hijau dekat masjid"
           value={nilai.alamat}
           onChange={(e) => onChange({ ...nilai, alamat: e.target.value })}
           className={cn(kelasKolom, 'h-auto resize-none py-2.5', galat?.alamat && kelasGalat)}
@@ -116,6 +191,13 @@ export function KolomAlamat({
           bantuan && <p className="mt-1 text-xs text-ink-500">{bantuan}</p>
         )}
       </div>
+      <p className="text-xs text-ink-500">Cukup isi RT/RW dan patokan rumah. Nama jalan atau nomor rumah boleh ditambahkan agar mudah ditemukan.</p>
+      {nilai.kelurahan && nilai.alamat.trim() && (
+        <div className="rounded-lg bg-ink-50 p-3 text-sm dark:bg-ink-900">
+          <div className="mb-1 text-xs font-medium text-ink-500">Alamat pengiriman lengkap</div>
+          {alamatLengkap(nilai)}
+        </div>
+      )}
     </div>
   );
 }
@@ -237,20 +319,27 @@ export function KolomAlamatKirim({
 
       <div>
         <label htmlFor={`${id}-alamat`} className="mb-1.5 block text-[13px] font-medium text-ink-700 dark:text-ink-300">
-          Alamat Pengiriman
+          RT/RW dan patokan rumah
         </label>
         <textarea
           id={`${id}-alamat`}
           name="delivery_address"
-          aria-label="Alamat Pengiriman"
+          aria-label="RT/RW dan patokan rumah"
           rows={3}
-          placeholder="Jalan, nomor rumah, RT/RW, patokan, kode pos"
+          placeholder="Contoh: RT 003/RW 005, rumah pagar hijau dekat masjid"
           value={alamat}
           onChange={(e) => onAlamat(e.target.value)}
           className={cn(kelasKolom, 'h-auto resize-none py-2.5', galat?.alamat && kelasGalat)}
         />
         {galat?.alamat && <p data-galat className="mt-1 text-xs text-rose-600">{galat.alamat}</p>}
+        <p className="mt-1 text-xs text-ink-500">Cukup isi RT/RW dan patokan rumah. Nama jalan atau nomor rumah boleh ditambahkan.</p>
       </div>
+      {wilayah.kelurahan && alamat.trim() && (
+        <div className="rounded-lg bg-ink-50 p-3 text-sm dark:bg-ink-900">
+          <div className="mb-1 text-xs font-medium text-ink-500">Alamat pengiriman lengkap</div>
+          {alamatLengkap({ ...wilayah, alamat })}
+        </div>
+      )}
     </div>
   );
 }

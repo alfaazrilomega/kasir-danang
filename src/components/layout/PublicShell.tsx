@@ -1,3 +1,4 @@
+import { PurchaseTracking } from '@/components/public/PurchaseTracking';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, Facebook, Flame, Instagram, MessageCircle, Moon, Search, ShoppingCart, Star, Store, Sun, UserRound, Youtube } from 'lucide-react';
 import { Link, useLocation, useNavigate } from '@/lib/router';
@@ -9,6 +10,7 @@ import { useCustomer } from '@/lib/customerAccount';
 import { useKlikMasuk } from '@/components/public/KerangkaAuth';
 import { ModalMasuk } from '@/components/public/ModalMasuk';
 import { idPixelDariToko, lacakHalaman, pasangPixel } from '@/lib/pixelToko';
+import { PublicCartDrawer } from '@/components/public/PublicCartDrawer';
 import { useUI } from '@/stores/ui';
 
 /** Nomor toko menjadi tautan WhatsApp (0812… → 62812…). */
@@ -161,6 +163,7 @@ export function PublicShell({
   const tabAkun = new URLSearchParams(search).get('tab') ?? 'pesanan';
   const aktifLacak = diAkun && tabAkun === 'pesanan';
   const aktifAkun = diAkun && tabAkun !== 'pesanan';
+  const openCart = usePublicCart((s) => s.openDrawer);
   const themeToko = useUI((s) => s.themeToko);
   const setThemeToko = useUI((s) => s.setThemeToko);
   const gelap = themeToko === 'dark';
@@ -172,6 +175,7 @@ export function PublicShell({
 
   return (
     <div className="flex min-h-screen flex-col bg-[#eff0f5] text-ink-900 dark:bg-ink-950 dark:text-ink-100">
+      <PurchaseTracking />
       <header ref={headerRef} className="sticky top-0 z-30 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-ink-900">
         {/* Baris tautan kecil: tingginya menyusut 0,25 dtk saat halaman digulir. */}
         <div
@@ -207,11 +211,11 @@ export function PublicShell({
         </div>
 
         {/* Baris logo, pencarian, keranjang. */}
-        <div className={cn(LEBAR, 'flex items-center gap-3 py-3 lg:h-[78px] lg:gap-0 lg:py-0')}>
-          <Link to="/toko" aria-label={namaToko} className="flex shrink-0 items-center gap-2 lg:w-[204px]">
+        <div className={cn(LEBAR, 'flex flex-wrap items-center gap-2 py-3 lg:h-[78px] lg:flex-nowrap lg:gap-0 lg:py-0')}>
+          <Link to="/toko" aria-label={namaToko} className="mr-auto flex shrink-0 items-center gap-2 lg:mr-0 lg:w-[204px]">
             {store?.logo_url ? (
               // Logo toko sudah memuat namanya: tampil utuh (tidak dipotong) tanpa teks tambahan.
-              <img src={store.logo_url} alt={namaToko} className="h-11 w-auto max-w-[180px] object-contain" />
+              <img src={store.logo_url} alt={namaToko} className="h-11 w-auto max-w-[140px] object-contain lg:max-w-[180px]" />
             ) : (
               <>
                 {logo('h-9 w-9', 18)}
@@ -219,7 +223,7 @@ export function PublicShell({
               </>
             )}
           </Link>
-          <div className="min-w-0 flex-1 lg:max-w-[686px]">
+          <div className="order-last min-w-0 basis-full lg:order-none lg:basis-auto lg:flex-1 lg:max-w-[686px]">
             <form
               role="search"
               className="flex h-10 lg:h-[42px]"
@@ -261,27 +265,15 @@ export function PublicShell({
             to={token ? '/toko/akun' : '/toko/masuk'}
             onClick={token ? undefined : klikMasuk('masuk', '/toko/akun')}
             aria-label={token ? 'Akun saya' : 'Masuk'}
-            className="grid h-10 w-10 place-items-center text-ink-700 lg:hidden dark:text-ink-200"
+            className="grid h-[44px] w-[44px] shrink-0 place-items-center text-ink-700 lg:hidden dark:text-ink-200"
           >
             <UserRound size={22} />
           </Link>
-          {/* Hanya di layar lebar: di HP baris ini sudah penuh (kolom cari tinggal
-              119 px di 393 px), jadi pilihan tema HP ada di footer. */}
           <button
             type="button"
-            data-tombol-tema-toko
-            onClick={() => setThemeToko(gelap ? 'light' : 'dark')}
-            aria-label={gelap ? 'Ganti ke tampilan terang' : 'Ganti ke tampilan gelap'}
-            title={gelap ? 'Tampilan terang' : 'Tampilan gelap'}
-            className="relative hidden h-10 w-10 shrink-0 place-items-center text-ink-700 transition-[color,transform] duration-200 ease-out hover:text-brand-600 active:scale-[0.97] lg:ml-[34px] lg:grid dark:text-ink-200"
-          >
-            <Moon size={22} strokeWidth={1.8} className={cn('absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none', gelap ? 'scale-75 opacity-0' : 'scale-100 opacity-100')} />
-            <Sun size={22} strokeWidth={1.8} className={cn('absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none', gelap ? 'scale-100 opacity-100' : 'scale-75 opacity-0')} />
-          </button>
-          <Link
-            to="/toko/keranjang"
+            onClick={openCart}
             aria-label="Keranjang"
-            className="relative grid h-10 w-10 shrink-0 place-items-center text-ink-800 transition-colors duration-300 hover:text-brand-600 lg:ml-3 dark:text-ink-100"
+            className="relative grid h-[44px] w-[44px] shrink-0 place-items-center text-ink-800 transition-colors duration-300 hover:text-brand-600 lg:ml-3 dark:text-ink-100"
           >
             <ShoppingCart size={26} strokeWidth={1.8} />
             {cartCount > 0 && (
@@ -289,7 +281,19 @@ export function PublicShell({
                 {cartCount}
               </span>
             )}
-          </Link>
+          </button>
+          <button
+            type="button"
+            data-tombol-tema-toko
+            onClick={() => setThemeToko(gelap ? 'light' : 'dark')}
+            aria-label={gelap ? 'Ganti ke tampilan terang' : 'Ganti ke tampilan gelap'}
+            aria-pressed={gelap}
+            title={gelap ? 'Tampilan terang' : 'Tampilan gelap'}
+            className="relative grid h-[44px] w-[44px] shrink-0 place-items-center text-ink-700 transition-[color,transform] duration-200 ease-out hover:text-brand-600 active:scale-[0.97] lg:ml-3 dark:text-ink-200"
+          >
+            <Moon size={22} strokeWidth={1.8} className={cn('absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none', gelap ? 'scale-75 opacity-0' : 'scale-100 opacity-100')} />
+            <Sun size={22} strokeWidth={1.8} className={cn('absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none', gelap ? 'scale-100 opacity-100' : 'scale-75 opacity-0')} />
+          </button>
         </div>
 
         {/* Baris "Kategori" + tautan cepat (tidak ada di beranda, seperti Lazada). */}
@@ -334,6 +338,7 @@ export function PublicShell({
         )}
       </header>
 
+      <PublicCartDrawer />
       <main className={cn('flex-1', latar === 'putih' && 'bg-white dark:bg-ink-900')}>
         <div className={cn('mx-auto w-full px-4 py-4 xl:px-0', wide ? 'max-w-[1188px]' : 'max-w-[1000px]')}>{children}</div>
       </main>

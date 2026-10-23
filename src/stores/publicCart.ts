@@ -14,6 +14,7 @@ export interface PublicCartLine {
   price: number;
   qty: number;
   image_url?: string | null;
+  variant_name?: string | null;
 }
 
 interface PublicCartState {
@@ -24,6 +25,9 @@ interface PublicCartState {
    * beli sekarang tidak ikut mengubah isi keranjang orang).
    */
   buyNow: PublicCartLine | null;
+  drawerOpen: boolean;
+  openDrawer: () => void;
+  closeDrawer: () => void;
   add: (line: Omit<PublicCartLine, 'qty'>, qty?: number) => void;
   updateQty: (productId: string, qty: number) => void;
   remove: (productId: string) => void;
@@ -37,6 +41,9 @@ export const usePublicCart = create<PublicCartState>()(
     (set, get) => ({
       lines: [],
       buyNow: null,
+      drawerOpen: false,
+      openDrawer: () => set({ drawerOpen: true }),
+      closeDrawer: () => set({ drawerOpen: false }),
       add: (line, qty = 1) => {
         // Pixel iklan: semua jalur "tambah ke keranjang" (halaman produk,
         // tawaran di keranjang) lewat sini, jadi dicatat di satu tempat.
@@ -48,13 +55,14 @@ export const usePublicCart = create<PublicCartState>()(
         const existing = get().lines.find((l) => l.product_id === line.product_id);
         if (existing) {
           set({
+            drawerOpen: true,
             lines: get().lines.map((l) =>
               l.product_id === line.product_id ? { ...l, qty: l.qty + qty } : l,
             ),
           });
           return;
         }
-        set({ lines: [...get().lines, { ...line, qty }] });
+        set({ lines: [...get().lines, { ...line, qty }], drawerOpen: true });
       },
       updateQty: (productId, qty) => {
         if (qty <= 0) {
@@ -70,6 +78,9 @@ export const usePublicCart = create<PublicCartState>()(
       setBuyNow: (line) => set({ buyNow: line }),
       clearBuyNow: () => set({ buyNow: null }),
     }),
-    { name: 'tokoku.public_cart.v1' },
+    {
+      name: 'tokoku.public_cart.v1',
+      partialize: ({ lines, buyNow }) => ({ lines, buyNow }),
+    },
   ),
 );

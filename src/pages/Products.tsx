@@ -1,3 +1,5 @@
+import { readProductDrafts, saveProductDraft, removeProductDraft, type ProductDraft } from '@/lib/productDrafts';
+import { MailketingProductSettings } from '@/components/products/MailketingProductSettings';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -47,7 +49,7 @@ import {
 } from '@/components/products/ProductSetSection';
 import { findSkuConflict, normalizeSku } from '@/lib/skuLookup';
 import { urutNamaSku } from '@/lib/sortProducts';
-import { kunciKelompok, slugDariTeks } from '@/lib/publicCatalog';
+import { alamatProduk, kunciKelompok, slugDariTeks } from '@/lib/publicCatalog';
 import { ImportExportModal } from '@/components/data/ImportExportModal';
 import { channelLabel } from '@/lib/channels';
 import { cn, formatMoney, uuid } from '@/lib/format';
@@ -113,6 +115,8 @@ interface FormState {
   license_type: string;
   license_code: string;
   video_url: string;
+  mailketing_order_list_id: number | null;
+  mailketing_complete_list_id: number | null;
   affiliate_enabled: boolean;
   affiliate_if_bought: boolean;
   /** Kosong = memakai komisi bawaan toko (FR-10). */
@@ -160,6 +164,8 @@ const emptyForm: FormState = {
   license_type: '',
   license_code: '',
   video_url: '',
+  mailketing_order_list_id: null,
+  mailketing_complete_list_id: null,
   affiliate_enabled: true,
   affiliate_if_bought: false,
   affiliate_commission: [],
@@ -206,9 +212,50 @@ export function Products() {
   const [importOpen, setImportOpen] = useState(false);
   const [labelOpen, setLabelOpen] = useState(false);
   const [labelIds, setLabelIds] = useState<string[]>([]);
+  const [linkManual, setLinkManual] = useState<{ name: string; url: string } | null>(null);
   const navigate = useNavigate();
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
+  const [drafts, setDrafts] = useState<ProductDraft<FormState>[]>([]);
+  const [activeDraft, setActiveDraft] = useState<{ id: string; storeId: string } | null>(null);
+  const [draftStatus, setDraftStatus] = useState<{ at: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    setOpen(false); setActiveDraft(null); setDraftStatus(null);
+    try { setDrafts(readProductDrafts(storeId, emptyForm)); }
+    catch { setDrafts([]); }
+  }, [storeId]);
+
+  function persistDraft(): boolean {
+    if (!activeDraft || activeDraft.storeId !== storeId || form.id) return true;
+    try {
+      const draft = saveProductDraft(storeId, activeDraft.id, form);
+      setDrafts(current => [draft, ...current.filter(d => d.id !== draft.id)]);
+      setDraftStatus({ at: draft.updatedAt, ok: true });
+      return true;
+    } catch {
+      setDraftStatus({ at: '', ok: false });
+      return false;
+    }
+  }
+  useEffect(() => {
+    if (open && activeDraft && !form.id) persistDraft();
+    // A draft is written after every form change, including the initial duplicate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, open, activeDraft, storeId]);
+
+  function closeProductForm() {
+    if (busy) return;
+    if (!persistDraft()) { toast.error('Cadangan gagal disimpan. Penyimpanan browser mungkin penuh. Simpan produk atau buang cadangan secara eksplisit.'); return; }
+    setOpen(false);
+  }
+  function discardDraft(id: string) {
+    try {
+      removeProductDraft(storeId, id);
+      setDrafts(current => current.filter(d => d.id !== id));
+      if (activeDraft?.id === id) { setActiveDraft(null); setDraftStatus(null); setOpen(false); }
+    } catch { toast.error('Cadangan belum dapat dibuang.'); }
+  }
+
   // Baris induk yang statusnya diubah manual oleh user. Kalau kelompoknya
   // tidak ada di sini, keadaan bukanya ikut `bukaOtomatis` (lihat kelompokTampil).
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -362,6 +409,7 @@ export function Products() {
   );
 
   function startNew() {
+    setActiveDraft({ id: uuid(), storeId }); setDraftStatus(null);
     const features = resolveFeatures(store?.industry, store?.features as never);
     setForm({
       ...emptyForm,
@@ -372,6 +420,7 @@ export function Products() {
     setOpen(true);
   }
   function startEdit(p: Product) {
+    setActiveDraft(null); setDraftStatus(null);
     setForm({
       id: p.id,
       name: p.name,
@@ -415,6 +464,8 @@ export function Products() {
       license_type: p.license_type ?? '',
       license_code: p.license_code ?? '',
       video_url: p.video_url ?? '',
+      mailketing_order_list_id: p.mailketing_order_list_id ?? null,
+      mailketing_complete_list_id: p.mailketing_complete_list_id ?? null,
       affiliate_enabled: p.affiliate_enabled ?? true,
       affiliate_if_bought: p.affiliate_if_bought ?? false,
       affiliate_commission: p.affiliate_commission ?? [],
@@ -428,6 +479,34 @@ export function Products() {
       newVariants: [],
     });
     setOpen(true);
+  }
+
+  async function salinLinkProduk(p: Product, varian: boolean) {
+    const url = new URL(alamatProduk(p, varian ? p.id : undefined), window.location.origin).href;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link produk disalin.');
+    } catch {
+      // Browser tanpa izin clipboard tetap bisa menyalin lewat kolom teks.
+      setLinkManual({ name: p.name, url });
+    }
+  }
+
+  function tombolSalinLink(p: Product | undefined, varian = false) {
+    const aktif = !!p?.is_active;
+    const label = aktif ? 'Salin Link Produk' : 'Aktifkan produk untuk menyalin link';
+    return (
+      <button
+        type="button"
+        title={label}
+        aria-label={label}
+        disabled={!aktif}
+        onClick={() => p && void salinLinkProduk(p, varian)}
+        className="inline-flex items-center justify-center rounded-full p-1.5 text-brand-600 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40 max-sm:min-h-[44px] max-sm:min-w-[44px] dark:text-brand-400 dark:hover:bg-ink-800"
+      >
+        <Link2 size={14} />
+      </button>
+    );
   }
 
   /**
@@ -445,6 +524,7 @@ export function Products() {
    * fisik, bukan barang yang stoknya sudah diketahui.
    */
   function startDuplicate(p: Product) {
+    setActiveDraft({ id: uuid(), storeId }); setDraftStatus(null);
     const isiSet = isiByParent.get(p.id) ?? [];
     setForm({
       name: `${p.name} (Salinan)`,
@@ -482,6 +562,8 @@ export function Products() {
       license_type: p.license_type ?? '',
       license_code: p.license_code ?? '',
       video_url: p.video_url ?? '',
+      mailketing_order_list_id: p.mailketing_order_list_id ?? null,
+      mailketing_complete_list_id: p.mailketing_complete_list_id ?? null,
       affiliate_enabled: p.affiliate_enabled ?? true,
       affiliate_if_bought: p.affiliate_if_bought ?? false,
       affiliate_commission: p.affiliate_commission ?? [],
@@ -495,7 +577,7 @@ export function Products() {
       newVariants: [],
     });
     setOpen(true);
-    toast.info('Produk disalin. Isi SKU baru sebelum menyimpan — stok diawali dari 0.');
+    toast.info('Produk disalin ke cadangan. Isi SKU baru, lalu simpan atau lanjutkan nanti. Stok diawali dari 0.');
   }
 
   /**
@@ -681,7 +763,7 @@ export function Products() {
     // 'induk:...'.
     const parentSkuUntukSimpan = form.parent_sku.trim() || null;
     const row: Product = {
-      id: form.id ?? uuid(),
+      id: form.id ?? (activeDraft?.storeId === storeId ? activeDraft.id : uuid()),
       store_id: storeId,
       category_id: form.category_id,
       name: form.name,
@@ -714,6 +796,8 @@ export function Products() {
       license_type: form.license_type.trim() || null,
       license_code: form.license_code.trim() || null,
       video_url: form.video_url.trim() || null,
+      mailketing_order_list_id: form.mailketing_order_list_id,
+      mailketing_complete_list_id: form.mailketing_complete_list_id,
       affiliate_enabled: form.affiliate_enabled,
       affiliate_if_bought: form.affiliate_if_bought,
       affiliate_commission: form.affiliate_commission.length ? form.affiliate_commission : null,
@@ -766,6 +850,8 @@ export function Products() {
           license_type: null,
           license_code: null,
           video_url: null,
+          mailketing_order_list_id: row.mailketing_order_list_id,
+          mailketing_complete_list_id: row.mailketing_complete_list_id,
           affiliate_enabled: row.affiliate_enabled,
           affiliate_if_bought: row.affiliate_if_bought,
           affiliate_commission: row.affiliate_commission,
@@ -783,6 +869,11 @@ export function Products() {
             : 'Produk ditambahkan.') +
           (variantDrafts.length ? ` +${variantDrafts.length} SKU baru.` : ''),
       );
+      if (activeDraft && !form.id) {
+        try { removeProductDraft(storeId, activeDraft.id); setDrafts(current => current.filter(d => d.id !== activeDraft.id)); }
+        catch { toast.warning('Produk tersimpan, tetapi cadangan browser belum dapat dibersihkan.'); }
+      }
+      setActiveDraft(null); setDraftStatus(null);
       setOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Gagal menyimpan.');
@@ -920,6 +1011,7 @@ export function Products() {
         </td>
         <td className="py-3">
           <div className="flex justify-end gap-1">
+            {tombolSalinLink(p, anggotaKelompok)}
             <button
               onClick={() => navigate(`/stock-mutation?q=${encodeURIComponent(p.sku || p.name)}`)}
               className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800"
@@ -940,7 +1032,7 @@ export function Products() {
             <button onClick={() => startEdit(p)} className="rounded-full p-1.5 hover:bg-ink-100 dark:hover:bg-ink-800" title="Edit">
               <Pencil size={14} />
             </button>
-            <button onClick={() => startDuplicate(p)} className="hidden rounded-full p-1.5 hover:bg-ink-100 sm:inline-flex dark:hover:bg-ink-800" title="Duplikat">
+            <button onClick={() => startDuplicate(p)} className="inline-flex rounded-full p-1.5 hover:bg-ink-100 max-sm:min-h-[44px] max-sm:min-w-[44px] items-center justify-center dark:hover:bg-ink-800" title="Duplikat">
               <Copy size={14} />
             </button>
             <button onClick={() => remove(p)} className="rounded-full p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10" title="Hapus">
@@ -1034,7 +1126,11 @@ export function Products() {
             {semuaAktif ? 'Aktif' : semuaNonaktif ? 'Nonaktif' : 'Campuran'}
           </Badge>
         </td>
-        <td className="py-3" />
+        <td className="py-3">
+          <div className="flex justify-end gap-1">
+            {tombolSalinLink(anggota.find((p) => p.is_active))}
+          </div>
+        </td>
       </tr>
     );
     return terbuka ? [baris, ...anggota.map((p) => renderBarisProduk(p, true))] : [baris];
@@ -1042,6 +1138,21 @@ export function Products() {
 
   return (
     <div className="space-y-5">
+      <Modal open={!!linkManual} onClose={() => setLinkManual(null)} title="Salin Link Produk" size="sm">
+        <div className="space-y-3">
+          <p className="text-sm font-medium">{linkManual?.name}</p>
+          <p className="text-sm text-ink-500">Browser belum mengizinkan penyalinan otomatis. Pilih link di bawah lalu salin.</p>
+          <Input
+            id="salin-link-produk"
+            label="Link produk"
+            value={linkManual?.url ?? ''}
+            readOnly
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            onClick={(e) => e.currentTarget.select()}
+          />
+        </div>
+      </Modal>
       <div className="rounded-3xl bg-brand-600 text-white p-6 md:p-8 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Products</h1>
@@ -1106,6 +1217,14 @@ export function Products() {
         </div>
       </div>
 
+      {!open && drafts.length > 0 && <Card className="space-y-3 border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+        <div><h2 className="font-semibold">Cadangan produk ({drafts.length})</h2><p className="text-xs text-ink-500">Tersimpan di browser ini, belum menjadi produk yang tayang. Lanjutkan untuk melengkapi dan menyimpan.</p></div>
+        {drafts.map(draft => <div key={draft.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-amber-200/60 pt-3">
+          <div className="min-w-0"><p className="break-words text-sm font-medium">{draft.form.name || '(Nama produk belum diisi)'}</p><p className="text-xs text-ink-500">{draft.form.sku || 'SKU belum diisi'} · {new Date(draft.updatedAt).toLocaleString('id-ID')}</p></div>
+          <div className="flex gap-2"><Button variant="secondary" onClick={() => discardDraft(draft.id)}>Buang</Button><Button onClick={() => { setForm(draft.form); setActiveDraft({ id: draft.id, storeId }); setOpen(true); }}>Lanjutkan</Button></div>
+        </div>)}
+      </Card>}
+
       {lowStock.length > 0 && (
         <Card className="border-amber-200 bg-amber-50 p-4 dark:bg-amber-500/10 dark:border-amber-500/30">
           <div className="flex items-start gap-3">
@@ -1165,7 +1284,11 @@ export function Products() {
           platform, dan deskripsi panjang. Di lebar "lg" nama produk pada daftar
           isi set terpotong, dan client tidak bisa memastikan barang yang dipilih
           sudah benar. */}
-      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? 'Edit Produk' : 'Tambah Produk'} size="xl">
+      <Modal open={open} onClose={closeProductForm} title={form.id ? 'Edit Produk' : 'Tambah Produk'} size="xl">
+        {activeDraft && !form.id && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-ink-50 p-3 dark:bg-ink-900">
+          <p role="status" className={draftStatus?.ok === false ? 'text-sm text-rose-600' : 'text-xs text-ink-500'}>{draftStatus?.ok ? `Cadangan tersimpan otomatis · ${new Date(draftStatus.at).toLocaleTimeString('id-ID')}` : draftStatus ? 'Cadangan gagal disimpan. Periksa ruang penyimpanan browser.' : 'Menyiapkan cadangan...'}</p>
+          <div className="flex gap-2"><Button variant="secondary" disabled={busy} onClick={closeProductForm}>Cadangkan & lanjutkan nanti</Button><Button variant="ghost" disabled={busy} onClick={() => discardDraft(activeDraft.id)}>Buang cadangan</Button></div>
+        </div>}
         <ProductForm
           form={form}
           setForm={setForm}
@@ -1177,7 +1300,7 @@ export function Products() {
           products={products}
           dipakaiSebagaiIsi={dipakaiSebagaiIsi}
           produkSet={produkSet}
-          onCancel={() => setOpen(false)}
+          onCancel={closeProductForm}
           onSave={save}
           busy={busy}
         />
@@ -1563,6 +1686,9 @@ function ProductForm({
             </Button>
           </div>
         </section>
+
+        <MailketingProductSettings orderList={form.mailketing_order_list_id} completeList={form.mailketing_complete_list_id}
+          onChange={(key, value) => setForm({ ...form, [key]: value })} />
 
         {/* Affiliasi (Sejoli, FR-10) =================================== */}
         <section className="rounded-xl border border-ink-100 p-3 dark:border-ink-800" data-seksi-affiliasi>

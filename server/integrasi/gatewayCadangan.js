@@ -4,6 +4,7 @@
 import { loadIntegration } from './settings.js';
 import { selectedGateway } from './payments.js';
 import * as tripay from './tripay.js';
+import { channelAllowed, paymentInvoice } from './tripayInvoice.js';
 import * as mayar from './mayar.js';
 import * as doku from './doku.js';
 
@@ -49,7 +50,7 @@ export async function kanalCheckout(provider, config, amount) {
   const kanal = await tripay.daftarKanal(config);
   let fees = [];
   if (amount !== null && kanal.some(tripay.kanalAktif)) fees = await tripay.hitungBiaya(amount, config);
-  return kanal.filter(tripay.kanalAktif).map((k) => {
+  return kanal.filter((k) => tripay.kanalAktif(k) && channelAllowed(k, config)).map((k) => {
     const fee = fees.find((item) => item.code === k.code)?.total_fee?.customer;
     return { ...tripay.kanalPublik(k), fee_customer: fee != null && Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null };
   });
@@ -96,7 +97,7 @@ export async function kanalSetara(kanalAsal, provider, config, total) {
     if (bank && inline.some((c) => c.code === `VA/${bank}`)) return { code: `VA/${bank}`, kanal: null };
     return channels.some((c) => c.active) ? { code: 'MAYAR', kanal: null } : null;
   }
-  const channels = (await tripay.daftarKanal(config, true)).filter((k) => tripay.kanalAktif(k) && tripay.nominalSah(k, total));
+  const channels = (await tripay.daftarKanal(config, true)).filter((k) => tripay.kanalAktif(k) && channelAllowed(k, config) && tripay.nominalSah(k, total));
   const sama = qris ? channels.find((k) => String(k.code).startsWith('QRIS'))
     : bank ? channels.find((k) => k.code === (bank === 'BRI' ? 'BRIVA' : `${bank}VA`)) : null;
   const pilih = sama || channels.find((k) => String(k.code).startsWith('QRIS'));
@@ -117,12 +118,12 @@ export async function buatPembayaran(provider, config, { kode, kanalTripay }, p)
       callbackUrl: config.callbackUrl || `${p.asalToko}/api/tripay/callback`,
       returnUrl: config.returnUrl || `${p.asalToko}/toko/akun?tab=pesanan`,
     }, config);
+    const invoice = paymentInvoice(trx, kanalTripay, config, p.total);
     return {
-      kolom: { channel: kanalTripay.code, reference: trx.reference ?? null, transactionId: null, url: trx.checkout_url ?? null,
-        expiresAt: trx.expired_time ? new Date(Number(trx.expired_time) * 1000).toISOString() : null, instructions: null },
-      respons: { provider: 'tripay', channel: kanalTripay.code, channel_name: kanalTripay.name, reference: trx.reference ?? null,
-        checkout_url: trx.checkout_url ?? null, pay_code: trx.pay_code ?? null, qr_url: trx.qr_url ?? null,
-        expired_time: trx.expired_time ?? null, amount: trx.amount ?? p.total, fee_customer: trx.fee_customer ?? 0 },
+      kolom: { channel: kanalTripay.code, reference: invoice.reference, transactionId: null, url: invoice.checkout_url,
+        expiresAt: invoice.expired_time ? new Date(invoice.expired_time * 1000).toISOString() : null,
+        instructions: null, details: invoice },
+      respons: { provider: 'tripay', ...invoice, fee_customer: trx.fee_customer ?? 0 },
     };
   }
   if (provider === 'mayar') {
